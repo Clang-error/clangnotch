@@ -39,7 +39,7 @@ questions += "}\n"
 with tempfile.TemporaryDirectory(prefix="clangnotch-layout-checks-") as folder:
     temp = Path(folder)
     enum_file = temp / "NotchMode.swift"
-    enum_file.write_text("import SwiftUI\nimport AppKit\n" + mode + questions)
+    enum_file.write_text("import SwiftUI\nimport AppKit\nfunc L(_ korean: String, _ english: String) -> String { korean }\n" + mode + questions)
     binary = temp / "checks"
     subprocess.run([
         "xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",

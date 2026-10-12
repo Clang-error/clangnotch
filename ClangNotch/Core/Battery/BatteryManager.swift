@@ -7,6 +7,9 @@ import UserNotifications
 struct BatteryPart: Equatable, Codable {
     let label: String   // "L" / "R" / "케이스"
     let percent: Int
+
+    /// `label` doubles as a stored key ("케이스"), so translate only for display.
+    var displayLabel: String { label == "케이스" ? L("케이스", "Case") : label }
 }
 
 struct BatteryDevice: Identifiable, Equatable, Codable {
@@ -340,8 +343,8 @@ final class BatteryManager: ObservableObject {
 
     private func notify(_ device: BatteryDevice) {
         let content = UNMutableNotificationContent()
-        content.title = "\(device.name) 배터리 부족"
-        content.body = "\(device.percent)% 남았습니다."
+        content.title = L("\(device.name) 배터리 부족", "\(device.name) battery low")
+        content.body = L("\(device.percent)% 남았습니다.", "\(device.percent)% left.")
         content.sound = .default
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "battery-\(device.id)", content: content, trigger: nil)

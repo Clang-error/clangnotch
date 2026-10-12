@@ -18,7 +18,7 @@ struct TodoListView: View {
             }
 
             if todos.count > maxItems {
-                Text("+\(todos.count - maxItems)개 더")
+                Text(L("+\(todos.count - maxItems)개 더", "+\(todos.count - maxItems) more..."))
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.5))
                     .padding(.leading, 16)

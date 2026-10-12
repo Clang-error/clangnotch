@@ -517,7 +517,7 @@ struct ClangNotchContentView: View {
                 .onChange(of: settings.enableCodexJSONL) { _, enabled in
                     codexManager.setTrackingEnabled(enabled && !isTrackingPaused)
                 }
-                // "꺼짐" in the header has to mean nothing is tracked — the OTLP receiver
+                // "Stopped" in the header has to mean nothing is tracked — the OTLP receiver
                 // alone stopping left the JSONL watchers lighting the notch up as Working.
                 .onChange(of: isTrackingPaused, initial: true) { _, paused in
                     claudeCodeManager.setTrackingEnabled(!paused)
@@ -840,7 +840,7 @@ struct ClangNotchContentView: View {
         let tetherPlace = tetherMonitor.activePlaceName
         let showsTetherWings = tetherPlace != nil && !showLeftWing && agentRightWingWidth == 0
         let tetherRightLabel = tetherPlace.map { "\($0) · \(tetherMonitor.connectedLabel)" } ?? ""
-        let tetherLeftWidth = 14 + 6 + measuredTextWidth("테더링", 10, .semibold)
+        let tetherLeftWidth = 14 + 6 + measuredTextWidth(L("테더링", "Tethering"), 10, .semibold)
         let baseRightWingWidth = showsTetherWings ? measuredTextWidth(tetherRightLabel, 10, .medium) : agentRightWingWidth
         let showsTetherIcon = tetherPlace != nil && !showsTetherWings
         let tetherIconWidth: CGFloat = showsTetherIcon ? 14 + (baseRightWingWidth > 0 ? 6 : 0) : 0
@@ -885,7 +885,7 @@ struct ClangNotchContentView: View {
                             Image(systemName: "personalhotspot")
                                 .font(.system(size: 10, weight: .semibold))
                                 .frame(width: 14)
-                            Text("테더링")
+                            Text(L("테더링", "Tethering"))
                                 .font(.system(size: 10, weight: .semibold))
                                 .lineLimit(1)
                                 .fixedSize()
@@ -1176,16 +1176,16 @@ struct ClangNotchContentView: View {
                 if telemetryCoordinator.state == .running {
                     NotchControlButton(systemName: "stop.fill", tint: .orange) {
                         Task { await telemetryCoordinator.stop() }
-                    }.help("텔레메트리 중지")
+                    }.help(L("텔레메트리 중지", "Stop telemetry"))
                 } else if telemetryCoordinator.state == .stopped {
                     NotchControlButton(systemName: "play.fill", tint: chipAccent) {
                         Task { await telemetryCoordinator.start() }
-                    }.help("텔레메트리 시작")
+                    }.help(L("텔레메트리 시작", "Start telemetry"))
                 }
                 NotchControlButton(systemName: "gearshape") { openSettings() }
-                    .help("설정")
+                    .help(L("설정", "Settings"))
                 NotchControlButton(systemName: "power", tint: .white.opacity(0.5)) { confirmQuit() }
-                    .help("ClangNotch 종료")
+                    .help(L("ClangNotch 종료", "Quit ClangNotch"))
             }
             .frame(height: openHeaderHeight)
             // Centred on the whole header, not squeezed between the title and the controls.
@@ -1267,13 +1267,15 @@ struct ClangNotchContentView: View {
 
     private var agentOverview: some View {
         HStack(spacing: 12) {
-            Text(overviewHasActivity ? "작업 중" : "대기 중")
+            Text(overviewHasActivity ? L("작업 중", "Working") : L("대기 중", "Quiet"))
                 .foregroundStyle(overviewHasActivity ? chipAccent : .secondary)
             Spacer(minLength: 0)
-            Text("세션 \((settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0) + (settings.showSourceCodex ? codexManager.availableSessions.count : 0))")
+            let sessionCount = (settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0)
+                + (settings.showSourceCodex ? codexManager.availableSessions.count : 0)
+            Text(L("세션 \(sessionCount)", "Sessions \(sessionCount)"))
             Label("\(attentionCount)", systemImage: "bubble.left.and.exclamationmark.bubble.right")
                 .foregroundStyle(attentionCount > 0 ? .orange : .secondary)
-                .help("답변·승인 대기")
+                .help(L("답변·승인 대기", "Waiting for your response"))
         }
         .font(.system(size: 11, weight: .medium))
         .monospacedDigit()
@@ -1289,14 +1291,14 @@ struct ClangNotchContentView: View {
                         ClaudeUsageNotchSection()
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Claude 사용량")
+                            Text(L("Claude 사용량", "Claude usage"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.55))
-                            Text("사용량 조회가 꺼져 있습니다. 설정에서 켜면 5시간·7일 사용량을 확인할 수 있습니다.")
+                            Text(L("사용량 조회가 꺼져 있습니다. 설정에서 켜면 5시간·7일 사용량을 확인할 수 있습니다.", "Usage tracking is off. Turn it on in Settings to see 5-hour and 7-day usage."))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Button("사용량 설정 열기") { openSettings() }
+                            Button(L("사용량 설정 열기", "Open usage settings")) { openSettings() }
                                 .buttonStyle(.plain)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(chipAccent)
@@ -1310,10 +1312,10 @@ struct ClangNotchContentView: View {
                         CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Codex 사용량")
+                            Text(L("Codex 사용량", "Codex usage"))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.55))
-                            Text("아직 사용량 데이터가 없습니다. Codex 세션에서 한도 정보가 수신되면 표시됩니다.")
+                            Text(L("아직 사용량 데이터가 없습니다. Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "No usage data yet. It appears once a Codex session reports its limits."))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1342,7 +1344,7 @@ struct ClangNotchContentView: View {
                                 claudeCodeManager.focusIDE(for: session)
                             }
                         } label: {
-                            Label("에디터에서 권한 확인", systemImage: "arrow.up.forward.app")
+                            Label(L("에디터에서 권한 확인", "Review permission in your editor"), systemImage: "arrow.up.forward.app")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.orange)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1364,14 +1366,14 @@ struct ClangNotchContentView: View {
                             notchVM.close()
                             SessionAppLauncher.open(.antigravity)
                         } label: {
-                            Label(antigravityManager.state.currentAction ?? "활동 대기 중", systemImage: "sparkles")
+                            Label(antigravityManager.state.currentAction ?? L("활동 대기 중", "Waiting for activity"), systemImage: "sparkles")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.purple)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("Antigravity 열기")
+                        .help(L("Antigravity 열기", "Open Antigravity"))
                     }
                 }
 
@@ -1403,7 +1405,7 @@ struct ClangNotchContentView: View {
                             .padding(3)
                     }
                     .buttonStyle(NotchHoverButtonStyle(cornerRadius: 6))
-                    .help("에디터에서 권한 확인")
+                    .help(L("에디터에서 권한 확인", "Review permission in your editor"))
                 }
 
             // Context progress bar (with integrated API usage badges)
@@ -1512,7 +1514,7 @@ struct ClangNotchContentView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
 
-                Text(codexInputRequest == nil ? "Claude가 질문했습니다" : "Codex가 질문했습니다")
+                Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.7))
             }
@@ -1522,14 +1524,14 @@ struct ClangNotchContentView: View {
             Button {
                 goToAskingSession()
             } label: {
-                Label("이동", systemImage: "arrow.up.forward.app")
+                Label(L("이동", "Go"), systemImage: "arrow.up.forward.app")
                     .font(.system(size: 10, weight: .medium))
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundColor(questionNoticeColor)
-            .help("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동")
+            .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
 
             Button { dismissQuestionNotice() } label: {
                 Image(systemName: "xmark").font(.system(size: 10))
@@ -1537,7 +1539,7 @@ struct ClangNotchContentView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("알림 접기 — 질문 대기는 유지됩니다")
+            .help(L("알림 접기 — 질문 대기는 유지됩니다", "Collapse — the question stays pending"))
         }
     }
 
@@ -1567,14 +1569,14 @@ struct ClangNotchContentView: View {
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Codex 사용량")
+                    Text(L("Codex 사용량", "Codex usage"))
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
                         .foregroundColor(.white.opacity(0.5))
                     if rateLimits.limitReached {
                         // A window can sit well under 100% while a different one
                         // is what's actually blocking, so say so outright.
-                        Text("한도 도달")
+                        Text(L("한도 도달", "Limit reached"))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.red)
                             .padding(.horizontal, 5)
@@ -1585,7 +1587,7 @@ struct ClangNotchContentView: View {
                     if codexManager.isRefreshingRateLimits {
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.clockwise")
-                            Text("갱신 중")
+                            Text(L("갱신 중", "Refreshing"))
                         }
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.5))
@@ -1596,7 +1598,7 @@ struct ClangNotchContentView: View {
                             let remaining = max(0, nextRefreshAt.timeIntervalSince(context.date))
                             HStack(spacing: 3) {
                                 Image(systemName: "timer")
-                                Text(remaining >= 1 ? ClaudeUsageNotchSection.formatCountdown(remaining) : "곧")
+                                Text(remaining >= 1 ? ClaudeUsageNotchSection.formatCountdown(remaining) : L("곧", "soon"))
                             }
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundColor(.white.opacity(0.5))
@@ -1668,15 +1670,15 @@ struct ClangNotchContentView: View {
             formatter.unitsStyle = .abbreviated
             formatter.maximumUnitCount = 2
             var calendar = Calendar.current
-            calendar.locale = Locale(identifier: "ko_KR")
+            calendar.locale = Locale(identifier: L("ko_KR", "en_US"))
             formatter.calendar = calendar
-            return formatter.string(from: max(0, date.timeIntervalSinceNow)) ?? "0분"
+            return formatter.string(from: max(0, date.timeIntervalSinceNow)) ?? L("0분", "0m")
         }
 
         private func windowLabel(_ minutes: Int) -> String {
-            if minutes % 1_440 == 0 { return "\(minutes / 1_440)일" }
-            if minutes % 60 == 0 { return "\(minutes / 60)시간" }
-            return "\(minutes)분"
+            if minutes % 1_440 == 0 { return L("\(minutes / 1_440)일", "\(minutes / 1_440)d") }
+            if minutes % 60 == 0 { return L("\(minutes / 60)시간", "\(minutes / 60)h") }
+            return L("\(minutes)분", "\(minutes)m")
         }
 
         private func levelColor(_ percentage: Double) -> Color {
@@ -1695,7 +1697,7 @@ struct ClangNotchContentView: View {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(questions.enumerated()), id: \.offset) { _, question in
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(question.multiSelect ? "\(question.header) · 복수 선택" : question.header)
+                        Text(question.multiSelect ? L("\(question.header) · 복수 선택", "\(question.header) · multiple choice") : question.header)
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(accentColor)
                         Text(question.question)
@@ -1723,11 +1725,11 @@ struct ClangNotchContentView: View {
                 }
 
                 if questions.isEmpty {
-                    Text("질문 내용은 \(sourceName)에서 확인해 주세요.")
+                    Text(L("질문 내용은 \(sourceName)에서 확인해 주세요.", "See \(sourceName) for the question."))
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.7))
                 }
-                Label("\(sourceName)에서 응답", systemImage: "arrow.up.right.square")
+                Label(L("\(sourceName)에서 응답", "Answer in \(sourceName)"), systemImage: "arrow.up.right.square")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(accentColor.opacity(0.8))
             }
@@ -2285,7 +2287,7 @@ struct ClangNotchContentView: View {
                 Text(isSuccess ? "Task Complete" : "Task Failed")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
-                Text("출처: \(toolCall.source.displayName)")
+                Text(L("출처: \(toolCall.source.displayName)", "Source: \(toolCall.source.displayName)"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(sourceTint(for: toolCall.source))
             }
@@ -2350,9 +2352,9 @@ struct ClangNotchContentView: View {
             }
         }
         if isCompletionToolCall(toolCall) {
-            return "응답 완료"
+            return L("응답 완료", "Model finished response")
         }
-        return "\(toolCall.toolName) 완료"
+        return L("\(toolCall.toolName) 완료", "Finished \(toolCall.toolName)")
     }
 
     private func stopActivityGlowForCompletion() {
@@ -2587,9 +2589,9 @@ struct ClangNotchContentView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(notchCloseDuration))
             let alert = NSAlert()
-            alert.messageText = "ClangNotch를 종료할까요?"
-            alert.addButton(withTitle: "종료")
-            alert.addButton(withTitle: "취소")
+            alert.messageText = L("ClangNotch를 종료할까요?", "Quit ClangNotch?")
+            alert.addButton(withTitle: L("종료", "Quit"))
+            alert.addButton(withTitle: L("취소", "Cancel"))
             NSApp.activate(ignoringOtherApps: true)
             if alert.runModal() == .alertFirstButtonReturn {
                 NSApp.terminate(nil)

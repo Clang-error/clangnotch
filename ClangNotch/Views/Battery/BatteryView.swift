@@ -17,20 +17,20 @@ struct BatteryView: View {
                         BatteryRow(device: device, pinned: headerIDs.contains(device.id),
                                    closedRank: closedIDs.firstIndex(of: device.id))
                             .contextMenu {
-                                Button(headerIDs.contains(device.id) ? "헤더에서 빼기" : "헤더에 표시") {
+                                Button(headerIDs.contains(device.id) ? L("헤더에서 빼기", "Remove from header") : L("헤더에 표시", "Show in header")) {
                                     toggleHeader(device.id)
                                 }
                                 Divider()
                                 if let rank = closedIDs.firstIndex(of: device.id) {
                                     if rank > 0 {
-                                        Button("닫힌 노치 순위 올리기") { moveClosed(device.id, by: -1) }
+                                        Button(L("닫힌 노치 순위 올리기", "Move up in closed notch")) { moveClosed(device.id, by: -1) }
                                     }
                                     if rank < closedIDs.count - 1 {
-                                        Button("닫힌 노치 순위 내리기") { moveClosed(device.id, by: 1) }
+                                        Button(L("닫힌 노치 순위 내리기", "Move down in closed notch")) { moveClosed(device.id, by: 1) }
                                     }
-                                    Button("닫힌 노치에서 빼기") { setClosedIDs(closedIDs.filter { $0 != device.id }) }
+                                    Button(L("닫힌 노치에서 빼기", "Remove from closed notch")) { setClosedIDs(closedIDs.filter { $0 != device.id }) }
                                 } else {
-                                    Button("닫힌 노치 경고에 추가 (\(closedIDs.count + 1)순위)") {
+                                    Button(L("닫힌 노치 경고에 추가 (\(closedIDs.count + 1)순위)", "Add to closed-notch warning (#\(closedIDs.count + 1))")) {
                                         setClosedIDs(closedIDs + [device.id])
                                     }
                                 }
@@ -55,12 +55,12 @@ struct BatteryView: View {
                 .font(.system(size: 11))
                 .foregroundColor(Color(red: 0.95, green: 0.35, blue: 0.35))
             VStack(alignment: .leading, spacing: 1) {
-                Text("닫힌 노치에 \(device.name) \(device.displayLevel)% 표시")
+                Text(L("닫힌 노치에 \(device.name) \(device.displayLevel)% 표시", "Showing \(device.name) \(device.displayLevel)% in the closed notch"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                 if snoozed {
-                    Text("20%를 넘으면 다시 켜집니다")
+                    Text(L("20%를 넘으면 다시 켜집니다", "Turns back on above 20%"))
                         .font(.system(size: 10))
                         .foregroundColor(.white.opacity(0.5))
                 }
@@ -112,7 +112,7 @@ struct BatteryView: View {
             Image(systemName: "battery.0")
                 .font(.system(size: 30, weight: .light))
                 .foregroundColor(.white.opacity(0.25))
-            Text("기기를 찾지 못했습니다")
+            Text(L("기기를 찾지 못했습니다", "No devices found"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
         }
@@ -146,10 +146,10 @@ private struct BatteryRow: View {
     private var staleLabel: String {
         let seconds = Int(Date().timeIntervalSince(device.seenAt))
         switch seconds {
-        case ..<60:    return "방금"
-        case ..<3600:  return "\(seconds / 60)분 전"
-        case ..<86400: return "\(seconds / 3600)시간 전"
-        default:       return "\(seconds / 86400)일 전"
+        case ..<60:    return L("방금", "now")
+        case ..<3600:  return L("\(seconds / 60)분 전", "\(seconds / 60)m ago")
+        case ..<86400: return L("\(seconds / 3600)시간 전", "\(seconds / 3600)h ago")
+        default:       return L("\(seconds / 86400)일 전", "\(seconds / 86400)d ago")
         }
     }
 
@@ -177,7 +177,7 @@ private struct BatteryRow: View {
                             .foregroundColor(.white.opacity(0.4))
                     }
                     if let closedRank {
-                        Text("\(closedRank + 1)순위")
+                        Text(L("\(closedRank + 1)순위", "#\(closedRank + 1)"))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.white.opacity(0.5))
                     }
@@ -192,7 +192,7 @@ private struct BatteryRow: View {
                 }
                 gauge
                 if !device.parts.isEmpty {
-                    Text(device.parts.map { "\($0.label) \($0.percent)%" }.joined(separator: "  "))
+                    Text(device.parts.map { "\($0.displayLabel) \($0.percent)%" }.joined(separator: "  "))
                         .font(.system(size: 10))
                         .foregroundColor(.white.opacity(0.5))
                 }

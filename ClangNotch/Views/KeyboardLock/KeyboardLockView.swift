@@ -30,11 +30,11 @@ struct KeyboardLockView: View {
             Image(systemName: "lock.shield")
                 .font(.system(size: 22))
                 .foregroundColor(.white.opacity(0.7))
-            Text("키보드 입력을 막으려면 손쉬운 사용 권한이 필요합니다.")
+            Text(L("키보드 입력을 막으려면 손쉬운 사용 권한이 필요합니다.", "Needs Accessibility access to block keyboard input."))
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
-            Button("권한 허용") {
+            Button(L("권한 허용", "Grant Access")) {
                 manager.requestPermission()
                 if !manager.hasAccessibilityPermission {
                     manager.openAccessibilitySettings()
@@ -55,7 +55,7 @@ struct KeyboardLockView: View {
                 VStack(spacing: 6) {
                     Image(systemName: manager.isLocked ? "lock.fill" : "lock.open.fill")
                         .font(.system(size: 26, weight: .semibold))
-                    Text(manager.isLocked ? "키보드 잠김" : "키보드 잠그기")
+                    Text(manager.isLocked ? L("키보드 잠김", "Keyboard Locked") : L("키보드 잠그기", "Lock Keyboard"))
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundColor(manager.isLocked ? .black : .white)
@@ -69,7 +69,7 @@ struct KeyboardLockView: View {
             .buttonStyle(.plain)
 
             if manager.isLocked {
-                Text("위 버튼이나 메뉴바 아이콘으로 잠금을 풉니다")
+                Text(L("위 버튼이나 메뉴바 아이콘으로 잠금을 풉니다", "Click above or use the menu bar icon to unlock"))
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.center)

@@ -21,10 +21,10 @@ enum MenuBarActivity: Equatable {
 
     var label: String {
         switch self {
-        case .idle: return "대기 중"
-        case .working(_, _, let count): return "작업 중 · \(count)"
-        case .needsPermission(let count): return "권한 승인 대기 · \(count)"
-        case .awaitingAnswer(let count): return "답변 대기 · \(count)"
+        case .idle: return L("대기 중", "Idle")
+        case .working(_, _, let count): return L("작업 중 · \(count)", "Working · \(count)")
+        case .needsPermission(let count): return L("권한 승인 대기 · \(count)", "Waiting for permission · \(count)")
+        case .awaitingAnswer(let count): return L("답변 대기 · \(count)", "Waiting for your answer · \(count)")
         }
     }
 
@@ -107,9 +107,9 @@ struct AgentMenuBarContentView: View {
                         .frame(width: 28, height: 28)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("키보드 잠금")
+                            Text(L("키보드 잠금", "Keyboard Lock"))
                                 .font(.system(size: 13, weight: .semibold))
-                            Text(keyboardLockManager.isLocked ? "모든 입력 차단 중" : "차단 안 함")
+                            Text(keyboardLockManager.isLocked ? L("모든 입력 차단 중", "Blocking all input") : L("차단 안 함", "Not blocking"))
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                         }
@@ -130,7 +130,7 @@ struct AgentMenuBarContentView: View {
                 if settings.enableClaudeUsage {
                     ClaudeUsageNotchSection()
                 } else {
-                    hint("Claude 사용량", "설정에서 사용량 조회를 켜면 5시간·7일 한도가 표시됩니다.")
+                    hint(L("Claude 사용량", "Claude usage"), L("설정에서 사용량 조회를 켜면 5시간·7일 한도가 표시됩니다.", "Turn on usage tracking in Settings to see the 5-hour and 7-day limits."))
                 }
             }
 
@@ -139,7 +139,7 @@ struct AgentMenuBarContentView: View {
                     if codexManager.rateLimits.hasData {
                         ClangNotchContentView.CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
                     } else {
-                        hint("Codex 사용량", "Codex 세션에서 한도 정보가 수신되면 표시됩니다.")
+                        hint(L("Codex 사용량", "Codex usage"), L("Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "Appears once a Codex session reports its limits."))
                     }
                 }
             }
@@ -155,7 +155,7 @@ struct AgentMenuBarContentView: View {
                     Button {
                         openSettings()
                     } label: {
-                        Label("설정…", systemImage: "gearshape")
+                        Label(L("설정…", "Settings…"), systemImage: "gearshape")
                             .font(.system(size: 12))
                     }
                     .buttonStyle(.plain)
@@ -165,7 +165,7 @@ struct AgentMenuBarContentView: View {
                     Button {
                         NSApp.terminate(nil)
                     } label: {
-                        Label("종료", systemImage: "power")
+                        Label(L("종료", "Quit"), systemImage: "power")
                             .font(.system(size: 12))
                     }
                     .buttonStyle(.plain)
@@ -174,6 +174,7 @@ struct AgentMenuBarContentView: View {
             }
         }
         .padding(12)
+        .id(settings.settingsLanguage)
         .frame(width: 300)
         // Solid, like the notch. NSPopover's own backing is light and its vibrancy fades
         // further when the popover loses key, which washed out the white-on-dark cards.

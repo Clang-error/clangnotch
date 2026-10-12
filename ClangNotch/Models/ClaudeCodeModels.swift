@@ -53,7 +53,7 @@ struct ClaudeSession: Identifiable, Codable, Equatable {
 
     /// Display name for UI (last folder component)
     var displayName: String {
-        guard let workspacePath else { return "알 수 없음" }
+        guard let workspacePath else { return L("알 수 없음", "Unknown") }
         return URL(fileURLWithPath: workspacePath).lastPathComponent
     }
 

@@ -63,12 +63,12 @@ enum TWorldError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .loginRequired: return "T world에 다시 로그인해 주세요."
-        case .rateLimited: return "조회 제한입니다. 잠시 후 다시 확인합니다."
-        case .serviceUnavailable: return "T world에 연결할 수 없습니다."
-        case .invalidResponse: return "잔여량 응답을 확인할 수 없습니다."
-        case .noSharingBalance: return "통합공유 데이터 항목을 확인해 주세요."
-        case .keychainUnavailable: return "로그인 세션을 키체인에 저장할 수 없습니다."
+        case .loginRequired: return L("T world에 다시 로그인해 주세요.", "Sign in to T world again.")
+        case .rateLimited: return L("조회 제한입니다. 잠시 후 다시 확인합니다.", "Rate limited. Will check again shortly.")
+        case .serviceUnavailable: return L("T world에 연결할 수 없습니다.", "Can't reach T world.")
+        case .invalidResponse: return L("잔여량 응답을 확인할 수 없습니다.", "Couldn't read the balance response.")
+        case .noSharingBalance: return L("통합공유 데이터 항목을 확인해 주세요.", "No shared-data (통합공유) entry found.")
+        case .keychainUnavailable: return L("로그인 세션을 키체인에 저장할 수 없습니다.", "Can't save the sign-in session to the Keychain.")
         }
     }
 }

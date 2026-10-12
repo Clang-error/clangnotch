@@ -31,9 +31,9 @@ struct ClaudeSessionListView: View {
                     Image(systemName: "terminal")
                         .font(.system(size: 24, weight: .light))
                         .foregroundStyle(NotchPalette.accent)
-                    Text("세션 없음")
+                    Text(L("세션 없음", "Ready when you are"))
                         .font(.system(size: 14, weight: .semibold))
-                    Text("작업 폴더에서 Claude Code나 Codex 세션을 시작하면 여기에 활동이 표시됩니다.")
+                    Text(L("작업 폴더에서 Claude Code나 Codex 세션을 시작하면 여기에 활동이 표시됩니다.", "Start a Claude Code or Codex session in your workspace. Its activity will appear here."))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -87,7 +87,7 @@ struct ClaudeSessionListView: View {
     }
 
     private func normalizedPath(_ path: String) -> String {
-        guard !path.isEmpty else { return "알 수 없음" }
+        guard !path.isEmpty else { return L("알 수 없음", "Unknown") }
         return URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
     }
 
@@ -138,8 +138,8 @@ private struct UnifiedWorkspaceSessionRow: View {
     }
 
     private var preview: String? {
-        if awaitingAnswer { return "Claude: 답변 대기" }
-        if needsPermission { return "Claude: 권한 승인 대기" }
+        if awaitingAnswer { return L("Claude: 답변 대기", "Claude: Waiting for your answer") }
+        if needsPermission { return L("Claude: 권한 승인 대기", "Claude: Waiting for permission") }
         if let tool = group.claude.compactMap({ manager.sessionStates[$0.id]?.currentToolName }).first {
             return "Claude: \(tool)"
         }
@@ -147,7 +147,7 @@ private struct UnifiedWorkspaceSessionRow: View {
             return "Codex: \(tool)"
         }
         if group.codex.contains(where: { codexManager.sessionStates[$0.id]?.isThinking == true }) {
-            return "Codex: 생각 중"
+            return L("Codex: 생각 중", "Codex: Thinking")
         }
         return nil
     }
@@ -236,15 +236,15 @@ private struct UnifiedWorkspaceSessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(destinationLabel + " 열기")
+        .help(L("\(destinationLabel) 열기", "Open \(destinationLabel)"))
         .contextMenu {
             ForEach(group.claude) { session in
                 if let id = manager.conversationId(for: session) {
-                    Button("Claude 세션 ID 복사 (\(id.prefix(8)))") { copyToPasteboard(id) }
+                    Button(L("Claude 세션 ID 복사 (\(id.prefix(8)))", "Copy Claude Session ID (\(id.prefix(8)))")) { copyToPasteboard(id) }
                 }
             }
             ForEach(group.codex) { session in
-                Button("Codex 세션 ID 복사 (\(session.id.prefix(8)))") { copyToPasteboard(session.id) }
+                Button(L("Codex 세션 ID 복사 (\(session.id.prefix(8)))", "Copy Codex Session ID (\(session.id.prefix(8)))")) { copyToPasteboard(session.id) }
             }
         }
     }

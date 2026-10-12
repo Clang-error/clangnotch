@@ -7,7 +7,7 @@ struct ClipboardHistoryView: View {
         VStack(spacing: 0) {
             if manager.items.isEmpty {
                 Spacer(minLength: 0)
-                Text("클립보드 기록 없음")
+                Text(L("클립보드 기록 없음", "No clipboard history yet"))
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.5))
                 Spacer(minLength: 0)
@@ -47,7 +47,7 @@ private struct ClipboardRowView: View {
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if copied {
-                    Label("복사됨", systemImage: "checkmark")
+                    Label(L("복사됨", "Copied"), systemImage: "checkmark")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(NotchPalette.accent)
                         .padding(.top, 1)
@@ -77,8 +77,8 @@ private struct ClipboardRowView: View {
 
     private func relativeTime(_ date: Date) -> String {
         let seconds = Int(-date.timeIntervalSinceNow)
-        if seconds < 60 { return "방금" }
-        if seconds < 3600 { return "\(seconds / 60)분 전" }
-        return "\(seconds / 3600)시간 전"
+        if seconds < 60 { return L("방금", "now") }
+        if seconds < 3600 { return L("\(seconds / 60)분 전", "\(seconds / 60)m ago") }
+        return L("\(seconds / 3600)시간 전", "\(seconds / 3600)h ago")
     }
 }

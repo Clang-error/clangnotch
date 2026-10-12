@@ -119,11 +119,11 @@ struct ClaudeUsageData: Equatable {
             if hours >= 24 {
                 let days = hours / 24
                 let remainingHours = hours % 24
-                return "\(days)일 \(remainingHours)시간"
+                return L("\(days)일 \(remainingHours)시간", "\(days)d \(remainingHours)h")
             } else if hours > 0 {
-                return "\(hours)시간 \(minutes)분"
+                return L("\(hours)시간 \(minutes)분", "\(hours)h \(minutes)m")
             } else {
-                return "\(minutes)분"
+                return L("\(minutes)분", "\(minutes)m")
             }
         }
 

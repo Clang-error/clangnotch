@@ -78,7 +78,7 @@ final class SpeedTestManager: ObservableObject {
         latencyMs = await measureLatency()
         guard !Task.isCancelled else { return }
         guard latencyMs != nil else {
-            fail("연결 없음")
+            fail(L("연결 없음", "No connection"))
             return
         }
 
@@ -93,7 +93,7 @@ final class SpeedTestManager: ObservableObject {
         liveMbps = 0
 
         if downloadMbps == nil && uploadMbps == nil {
-            fail("측정 실패")
+            fail(L("측정 실패", "Measurement failed"))
         } else {
             finishedAt = Date()
             phase = .finished

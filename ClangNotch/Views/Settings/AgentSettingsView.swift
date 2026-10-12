@@ -43,7 +43,7 @@ struct AppGeneralSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                Picker(L("설정 언어", "Settings language"), selection: $settings.settingsLanguage) {
+                Picker(L("표시 언어", "Display language"), selection: $settings.settingsLanguage) {
                     Text("한국어").tag("ko")
                     Text("English").tag("en")
                 }

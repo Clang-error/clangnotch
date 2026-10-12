@@ -64,8 +64,8 @@ final class SidecarManager: ObservableObject {
             do { try await Task.sleep(for: .seconds(operationTimeout)) } catch { return }
             guard let self, self.operationID == requestID else { return }
             self.errorMessage = target
-                ? "iPad에 연결하지 못했습니다. 전원과 Wi-Fi를 확인한 뒤 다시 시도해 주세요."
-                : "연결 해제를 확인하지 못했습니다. 다시 시도해 주세요."
+                ? L("iPad에 연결하지 못했습니다. 전원과 Wi-Fi를 확인한 뒤 다시 시도해 주세요.", "Couldn't connect to the iPad. Check its power and Wi-Fi, then try again.")
+                : L("연결 해제를 확인하지 못했습니다. 다시 시도해 주세요.", "Couldn't confirm the disconnect. Try again.")
             self.clearBusy()
         }
         client.setConnected(target, deviceID: current.id) { [weak self] error in
@@ -109,7 +109,7 @@ final class SidecarManager: ObservableObject {
                         if self.requestAccepted && (current?.isConnected == target || (!target && current == nil)) {
                             self.clearBusy()
                         } else if target && current == nil {
-                            self.errorMessage = "iPad를 더 이상 찾을 수 없습니다."
+                            self.errorMessage = L("iPad를 더 이상 찾을 수 없습니다.", "The iPad can no longer be found.")
                             self.clearBusy()
                         }
                     }

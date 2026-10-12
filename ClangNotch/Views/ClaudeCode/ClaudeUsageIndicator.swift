@@ -151,13 +151,13 @@ struct ClaudeUsageNotchSection: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header: title on the left, next-poll countdown on the right.
             HStack(spacing: 4) {
-                Text("Claude 사용량")
+                Text(L("Claude 사용량", "Claude usage"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.55))
                 if usageManager.usageData.limitReached {
                     // A window can sit well under 100% while a different one
                     // is what's actually blocking, so say so outright.
-                    Text("한도 도달")
+                    Text(L("한도 도달", "Limit reached"))
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.red)
                         .padding(.horizontal, 5)
@@ -194,7 +194,7 @@ struct ClaudeUsageNotchSection: View {
             Button(action: refreshNow) {
                 HStack(spacing: 3) {
                     Image(systemName: "lock.fill")
-                    Text("인증 필요 · 인증하기")
+                    Text(L("인증 필요 · 인증하기", "Sign-in needed · Sign in"))
                 }
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(.orange)
@@ -203,7 +203,7 @@ struct ClaudeUsageNotchSection: View {
         } else if usageManager.isLoading {
             HStack(spacing: 3) {
                 Image(systemName: "arrow.clockwise")
-                Text("갱신 중")
+                Text(L("갱신 중", "Refreshing"))
             }
             .font(.system(size: 10, weight: .medium))
             .foregroundColor(.white.opacity(0.5))
@@ -212,7 +212,7 @@ struct ClaudeUsageNotchSection: View {
                 let remaining = max(0, next.timeIntervalSince(context.date))
                 HStack(spacing: 3) {
                     Image(systemName: "timer")
-                    Text(remaining >= 1 ? Self.formatCountdown(remaining) : "곧")
+                    Text(remaining >= 1 ? Self.formatCountdown(remaining) : L("곧", "soon"))
                 }
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .foregroundColor(.white.opacity(0.5))
@@ -224,8 +224,8 @@ struct ClaudeUsageNotchSection: View {
     static func formatCountdown(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         // Polling pauses for days once the weekly window is spent; mm:ss reads as nonsense there.
-        if total >= 86_400 { return "\(total / 86_400)일 \(total % 86_400 / 3600)시간" }
-        if total >= 3_600 { return "\(total / 3_600)시간 \(total % 3_600 / 60)분" }
+        if total >= 86_400 { return L("\(total / 86_400)일 \(total % 86_400 / 3600)시간", "\(total / 86_400)d \(total % 86_400 / 3600)h") }
+        if total >= 3_600 { return L("\(total / 3_600)시간 \(total % 3_600 / 60)분", "\(total / 3_600)h \(total % 3_600 / 60)m") }
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 
@@ -234,10 +234,10 @@ struct ClaudeUsageNotchSection: View {
         VStack(alignment: .leading, spacing: 8) {
             if hasData {
                 if let fiveHour = usageManager.usageData.fiveHour {
-                    UsageBarRow(label: "5시간", data: fiveHour, icon: "clock")
+                    UsageBarRow(label: L("5시간", "5h"), data: fiveHour, icon: "clock")
                 }
                 if let sevenDay = usageManager.usageData.sevenDay {
-                    UsageBarRow(label: "7일", data: sevenDay, icon: "calendar")
+                    UsageBarRow(label: L("7일", "7d"), data: sevenDay, icon: "calendar")
                 }
                 // Per-model weekly caps block on their own: Opus can be spent
                 // while the overall 7-day window still reads low.
@@ -276,17 +276,17 @@ struct ClaudeUsageNotchSection: View {
     }
 
     private var statusText: String {
-        if needsReauth { return "눌러서 인증하기 (사용량 새로고침)" }
-        if !usageManager.isConfigured { return "Claude Code 로그인이 필요해요" }
+        if needsReauth { return L("눌러서 인증하기 (사용량 새로고침)", "Click to sign in (refreshes usage)") }
+        if !usageManager.isConfigured { return L("Claude Code 로그인이 필요해요", "Sign in to Claude Code first") }
         if let error = usageManager.lastError {
             switch error {
-            case .tokenExpired: return "토큰 만료 — Claude Code 실행 후 누르기"
-            case .unauthorized: return "인증이 거부됐어요 — 눌러서 재시도"
-            case .rateLimited: return "요청 한도 도달 — 잠시 후 재시도"
-            default: return "사용량을 불러오지 못했어요"
+            case .tokenExpired: return L("토큰 만료 — Claude Code 실행 후 누르기", "Token expired — run Claude Code, then click")
+            case .unauthorized: return L("인증이 거부됐어요 — 눌러서 재시도", "Sign-in rejected — click to retry")
+            case .rateLimited: return L("요청 한도 도달 — 잠시 후 재시도", "Rate limited — retrying shortly")
+            default: return L("사용량을 불러오지 못했어요", "Couldn't load usage")
             }
         }
-        return "사용량 불러오는 중…"
+        return L("사용량 불러오는 중…", "Loading usage…")
     }
 
     private var statusIcon: String {

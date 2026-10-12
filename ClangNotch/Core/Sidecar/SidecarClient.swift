@@ -23,8 +23,8 @@ enum SidecarError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: return "이 macOS에서 Sidecar 상태를 읽을 수 없습니다."
-        case .deviceDisappeared: return "iPad를 더 이상 찾을 수 없습니다. 전원과 Wi-Fi를 확인해 주세요."
+        case .unavailable: return L("이 macOS에서 Sidecar 상태를 읽을 수 없습니다.", "Can't read Sidecar status on this macOS.")
+        case .deviceDisappeared: return L("iPad를 더 이상 찾을 수 없습니다. 전원과 Wi-Fi를 확인해 주세요.", "The iPad can no longer be found. Check its power and Wi-Fi.")
         }
     }
 }

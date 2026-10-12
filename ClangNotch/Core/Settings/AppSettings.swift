@@ -88,14 +88,15 @@ public final class AppSettings: ObservableObject {
     @AppStorage("claudeUsageRefreshMode") public var claudeUsageRefreshMode: String = "smart"  // "smart" or "fixed"
     @AppStorage("claudeUsageRefreshInterval") public var claudeUsageRefreshInterval: Int = 180  // seconds
 
-    /// Language of the settings window's copy: "ko" (default) or "en". See `L(_:_:)`.
+    /// App copy language — settings window, notch and menu bar popover: "ko" (default) or "en".
+    /// The key keeps its old name so existing choices survive. See `L(_:_:)`.
     @AppStorage("settingsLanguage") public var settingsLanguage: String = "ko"
 
     public init() {}
 }
 
-/// Settings-window copy in the language picked under General. Reads UserDefaults directly
-/// so it also works off the main actor (status and error text built in background tasks).
+/// App copy in the language picked under General. Reads UserDefaults directly so it also
+/// works off the main actor (status and error text built in background tasks).
 func L(_ korean: String, _ english: String) -> String {
     UserDefaults.standard.string(forKey: "settingsLanguage") == "en" ? english : korean
 }

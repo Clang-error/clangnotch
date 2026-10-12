@@ -34,6 +34,7 @@ common = '''
 swift = '''import Foundation
 import Combine
 func debugLog(_ value: @autoclosure () -> String) {}
+func L(_ korean: String, _ english: String) -> String { korean }
 struct Selection { let id: String }
 final class ClaudeFixture {
 ''' + common + '''

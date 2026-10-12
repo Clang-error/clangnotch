@@ -33,10 +33,10 @@ struct SidecarView: View {
             Image(systemName: "ipad.and.arrow.forward")
                 .font(.system(size: 30, weight: .light))
                 .foregroundColor(.white.opacity(0.25))
-            Text("연결할 수 있는 iPad 없음")
+            Text(L("연결할 수 있는 iPad 없음", "No available iPad"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
-            Text("같은 Apple 계정과 Wi-Fi가 필요합니다")
+            Text(L("같은 Apple 계정과 Wi-Fi가 필요합니다", "Same Apple Account & Wi-Fi required"))
                 .font(.system(size: 10))
                 .foregroundColor(.white.opacity(0.5))
         }
@@ -64,15 +64,15 @@ private struct SidecarCard: View {
     private var tone: Color { busy ? pending : (connected ? accent : Color.white.opacity(0.25)) }
 
     private var statusText: String {
-        if connecting { return "연결 중…" }
-        if disconnecting { return "연결 해제 중…" }
-        return connected ? "연결됨" : "연결 안 됨"
+        if connecting { return L("연결 중…", "Connecting…") }
+        if disconnecting { return L("연결 해제 중…", "Disconnecting…") }
+        return connected ? L("연결됨", "Connected") : L("연결 안 됨", "Not connected")
     }
 
     private var buttonText: String {
-        if connecting { return "연결 중…" }
-        if disconnecting { return "연결 해제 중…" }
-        return connected ? "연결 해제" : "연결"
+        if connecting { return L("연결 중…", "Connecting…") }
+        if disconnecting { return L("연결 해제 중…", "Disconnecting…") }
+        return connected ? L("연결 해제", "Disconnect") : L("연결", "Connect")
     }
 
     var body: some View {

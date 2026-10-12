@@ -12,7 +12,7 @@ struct TetherPeekHeader: View {
                 Image(systemName: "personalhotspot")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(tetherAccent)
-                Text("테더링")
+                Text(L("테더링", "Tethering"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white.opacity(0.8))
                 Spacer(minLength: 0)
@@ -37,10 +37,10 @@ struct TetherPeekContent: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            Text("\(placeName)에서 아이폰 테더링 사용 중")
+            Text(L("\(placeName)에서 아이폰 테더링 사용 중", "Tethering to iPhone at \(placeName)"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.white)
-            Text("Wi-Fi로 바꾸면 데이터를 아낄 수 있어요")
+            Text(L("Wi-Fi로 바꾸면 데이터를 아낄 수 있어요", "Switch to Wi-Fi to save data"))
                 .font(.system(size: 11))
                 .foregroundColor(.white.opacity(0.55))
         }
@@ -57,7 +57,7 @@ struct TetherWarningLabel: View {
     @State private var bright = false
 
     var body: some View {
-        Text("테더링 연결중 - 해제 권장")
+        Text(L("테더링 연결중 - 해제 권장", "Tethering on - disconnect advised"))
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.red)
             .lineLimit(1)

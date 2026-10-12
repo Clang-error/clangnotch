@@ -48,7 +48,7 @@ struct PermissionNeededBadge: View {
                     .foregroundColor(.orange)
             }
 
-            Text("권한 승인 대기")
+            Text(L("권한 승인 대기", "waiting for permission"))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.orange.opacity(0.8))
         }

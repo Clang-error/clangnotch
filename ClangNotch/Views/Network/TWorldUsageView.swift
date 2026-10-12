@@ -10,11 +10,11 @@ struct TWorldUsageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Label("SKT 공유 데이터", systemImage: "personalhotspot")
+                Label(L("SKT 공유 데이터", "SKT shared data"), systemImage: "personalhotspot")
                     .font(.system(size: 11, weight: .medium))
                 Spacer()
                 if session.requiresLogin {
-                    Button("로그인") { session.showLogin() }
+                    Button(L("로그인", "Sign in")) { session.showLogin() }
                         .font(.system(size: 10, weight: .semibold))
                 } else {
                     Button(action: refresh) {
@@ -28,7 +28,7 @@ struct TWorldUsageView: View {
             }
             if let balance = session.balance {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("\(balance.remainingGB, specifier: "%.2f") GB 남음")
+                    Text(L(String(format: "%.2f GB 남음", balance.remainingGB), String(format: "%.2f GB left", balance.remainingGB)))
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .foregroundColor(remainingColor(balance.remainingFraction))
                     Spacer(minLength: 4)
@@ -48,27 +48,27 @@ struct TWorldUsageView: View {
                 }
                 .frame(height: 4)
                 HStack(spacing: 4) {
-                    Text("\(balance.usedGB, specifier: "%.2f") GB 사용")
+                    Text(L(String(format: "%.2f GB 사용", balance.usedGB), String(format: "%.2f GB used", balance.usedGB)))
                     Spacer()
                     Text(balance.fetchedAt, style: .time)
-                    Text("조회")
+                    Text(L("조회", "checked"))
                     if let next = session.nextAutoRefresh {
                         Text("·")
                         Text(next, style: .time)
-                        Text("갱신")
+                        Text(L("갱신", "next"))
                     }
                 }
                 .font(.system(size: 10))
                 .foregroundColor(.white.opacity(0.65))
             } else if session.isRefreshing {
-                Text("잔여량 확인 중…").font(.system(size: 10))
+                Text(L("잔여량 확인 중…", "Checking balance…")).font(.system(size: 10))
             } else if session.errorMessage == nil {
-                Text("T world에 연결하면 공유 잔여량이 표시됩니다.")
+                Text(L("T world에 연결하면 공유 잔여량이 표시됩니다.", "Connect T world to see the shared balance."))
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.7))
             }
             if let error = session.errorMessage {
-                Text((session.balance == nil ? "" : "이전 조회값 · ") + error)
+                Text((session.balance == nil ? "" : L("이전 조회값 · ", "Last reading · ")) + error)
                     .font(.system(size: 10))
                     .foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -98,8 +98,9 @@ struct TWorldUsageView: View {
     }
 
     private var refreshHelp: String {
-        guard !session.canRefresh, let last = session.lastAttempt else { return "지금 다시 조회 · 10분마다 자동 조회" }
-        return "수동 조회는 3분 간격 · \(max(0, Int(180 - now.timeIntervalSince(last))))초 남음"
+        guard !session.canRefresh, let last = session.lastAttempt else { return L("지금 다시 조회 · 10분마다 자동 조회", "Check now · auto-checks every 10 min") }
+        let wait = max(0, Int(180 - now.timeIntervalSince(last)))
+        return L("수동 조회는 3분 간격 · \(wait)초 남음", "Manual checks every 3 min · \(wait)s left")
     }
 
     private func refresh() {

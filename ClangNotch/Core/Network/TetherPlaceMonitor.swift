@@ -40,11 +40,11 @@ final class TetherPlaceMonitor: NSObject, ObservableObject {
 
     var connectedLabel: String {
         switch connectedMinutes {
-        case ..<1:  return "방금"
-        case ..<60: return "\(connectedMinutes)분"
+        case ..<1:  return L("방금", "just now")
+        case ..<60: return L("\(connectedMinutes)분", "\(connectedMinutes)m")
         default:
             let hours = connectedMinutes / 60, minutes = connectedMinutes % 60
-            return minutes == 0 ? "\(hours)시간" : "\(hours)시간 \(minutes)분"
+            return minutes == 0 ? L("\(hours)시간", "\(hours)h") : L("\(hours)시간 \(minutes)분", "\(hours)h \(minutes)m")
         }
     }
     @Published private(set) var isLocating = false
@@ -219,7 +219,7 @@ final class TetherPlaceMonitor: NSObject, ObservableObject {
     private func handleFailure() {
         stopLocating()
         if pendingPlaceName != nil {
-            lastError = "현재 위치를 받지 못했습니다. 잠시 후 다시 시도하세요."
+            lastError = L("현재 위치를 받지 못했습니다. 잠시 후 다시 시도하세요.", "Couldn't get the current location. Try again shortly.")
         }
         if awaitingCheck {
             // Unconfirmed is not "still at the place": drop the warning until the next check.
