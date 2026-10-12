@@ -14,7 +14,7 @@ final class NetworkInfoManager: NSObject, ObservableObject {
 
     /// The Wi-Fi SSID when Location Services allow it, otherwise the network
     /// service's name ("Wi-Fi", "Ethernet", "iPhone USB"…).
-    @Published private(set) var name: String = "Unknown"
+    @Published private(set) var name: String = "알 수 없음"
     /// Exact SSID only; never substitute a service name when identifying a hotspot.
     @Published private(set) var ssid: String?
     /// True while the SSID is hidden behind a permission the user hasn't granted.
@@ -102,7 +102,7 @@ final class NetworkInfoManager: NSObject, ObservableObject {
         ssid = (wanted && authorized) ? interface?.ssid() : nil
 
         ssidBlocked = wanted && !authorized && interface?.powerOn() == true
-        name = ssid ?? serviceName() ?? "Unknown"
+        name = ssid ?? serviceName() ?? "알 수 없음"
     }
 
     /// System Settings can update Location Services without invoking the delegate

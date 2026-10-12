@@ -61,8 +61,8 @@ struct BatteryView: View {
                     .lineLimit(1)
                 if snoozed {
                     Text("20%를 넘으면 다시 켜집니다")
-                        .font(.system(size: 9))
-                        .foregroundColor(.white.opacity(0.45))
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.5))
                 }
             }
             Spacer(minLength: 0)
@@ -112,9 +112,9 @@ struct BatteryView: View {
             Image(systemName: "battery.0")
                 .font(.system(size: 30, weight: .light))
                 .foregroundColor(.white.opacity(0.25))
-            Text("No devices found")
+            Text("기기를 찾지 못했습니다")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.45))
+                .foregroundColor(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
@@ -178,13 +178,13 @@ private struct BatteryRow: View {
                     }
                     if let closedRank {
                         Text("\(closedRank + 1)순위")
-                            .font(.system(size: 8, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.white.opacity(0.5))
                     }
                     if !device.live {
                         Text(staleLabel)
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(.white.opacity(0.4))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
                             .background(Color.white.opacity(0.08), in: Capsule())
@@ -193,8 +193,8 @@ private struct BatteryRow: View {
                 gauge
                 if !device.parts.isEmpty {
                     Text(device.parts.map { "\($0.label) \($0.percent)%" }.joined(separator: "  "))
-                        .font(.system(size: 9))
-                        .foregroundColor(.white.opacity(0.4))
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.5))
                 }
             }
 
@@ -257,8 +257,8 @@ struct HeaderBatteryStrip: View {
                         ForEach(earbuds, id: \.label) { part in
                             HStack(spacing: 2) {
                                 Text(part.label)
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.45))
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.5))
                                 level(part.percent)
                             }
                         }

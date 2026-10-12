@@ -53,6 +53,7 @@ struct TetherPeekContent: View {
 
 /// Open-notch header warning; breathes so it catches the eye while tethering lasts.
 struct TetherWarningLabel: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var bright = false
 
     var body: some View {
@@ -60,9 +61,11 @@ struct TetherWarningLabel: View {
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.red)
             .lineLimit(1)
-            .opacity(bright ? 1 : 0.35)
+            // Dims only to 0.6 so the text stays readable through the whole breath.
+            .opacity(bright ? 1 : 0.6)
             .shadow(color: .red.opacity(bright ? 0.9 : 0), radius: bright ? 6 : 0)
             .onAppear {
+                guard !reduceMotion else { bright = true; return }
                 withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
                     bright = true
                 }
@@ -74,6 +77,7 @@ struct TetherPlacesSettingsView: View {
     @ObservedObject private var monitor = TetherPlaceMonitor.shared
     @ObservedObject private var network = NetworkInfoManager.shared
     @State private var newName = ""
+    @State private var removalID: TetherPlace.ID?
 
     private let radiusOptions: [Double] = [100, 200, 500, 1000]
 
@@ -103,11 +107,26 @@ struct TetherPlacesSettingsView: View {
                     .labelsHidden()
                     .fixedSize()
                     Button {
-                        monitor.remove(place.id)
+                        removalID = place.id
                     } label: {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
+                    .help(L("장소 삭제", "Delete place"))
+                }
+                // Re-adding a place means standing there again, so deleting asks first.
+                .confirmationDialog(
+                    L("'\(place.name)' 장소를 삭제할까요?", "Delete \u{201C}\(place.name)\u{201D}?"),
+                    isPresented: Binding(
+                        get: { removalID == place.id },
+                        set: { if !$0 { removalID = nil } }
+                    )
+                ) {
+                    Button(L("삭제", "Delete"), role: .destructive) { monitor.remove(place.id) }
+                    Button(L("취소", "Cancel"), role: .cancel) {}
+                } message: {
+                    Text(L("다시 추가하려면 그 장소에서 '현재 위치 추가'를 눌러야 합니다.",
+                           "To add it back you have to be there and use Add current location."))
                 }
             }
             HStack {

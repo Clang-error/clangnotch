@@ -33,13 +33,39 @@ extension NotchMode {
 
     var subtitle: String {
         switch self {
-        case .ai: return "Live activity, open sessions, and decisions waiting for you."
-        case .clipboard: return "Your recent text. Click an item to copy it again."
-        case .volume: return "Find the right balance for each app."
-        case .sidecar: return "Connect your iPad as a second display."
-        case .keyboardLock: return "A moment to clean your keyboard."
-        case .battery: return "A quick check on the devices around you."
-        case .speed: return "Measure your connection, from download to latency."
+        case .ai: return "실시간 활동, 열린 세션, 응답을 기다리는 결정."
+        case .clipboard: return "최근 복사한 글. 누르면 다시 복사합니다."
+        case .volume: return "앱마다 볼륨을 맞춥니다."
+        case .sidecar: return "iPad를 보조 화면으로 연결합니다."
+        case .keyboardLock: return "키보드를 닦는 동안 입력을 막습니다."
+        case .battery: return "주변 기기의 배터리를 확인합니다."
+        case .speed: return "다운로드부터 지연 시간까지 연결 속도를 잽니다."
+        }
+    }
+}
+
+/// Plain button whose background brightens on hover and press, like the tab chips.
+/// `base` is the resting fill for rows that already have one.
+struct NotchHoverButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 8
+    var base: Double = 0
+
+    func makeBody(configuration: Configuration) -> some View {
+        HoverBody(configuration: configuration, cornerRadius: cornerRadius, base: base)
+    }
+
+    private struct HoverBody: View {
+        let configuration: ButtonStyleConfiguration
+        let cornerRadius: CGFloat
+        let base: Double
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .background(Color.white.opacity(base + (configuration.isPressed ? 0.07 : hovering ? 0.035 : 0)),
+                            in: RoundedRectangle(cornerRadius: cornerRadius))
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+                .onHover { hovering = $0 }
         }
     }
 }
@@ -83,7 +109,7 @@ struct NotchNavigationButton: View {
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .interactiveSpring(response: 0.3, dampingFraction: 0.86),
                    value: selected)
         .accessibilityLabel(mode.title)
-        .accessibilityValue(selected ? "Selected" : "")
+        .accessibilityValue(selected ? "선택됨" : "")
         .help(mode.subtitle)
     }
 }

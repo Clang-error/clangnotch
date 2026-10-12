@@ -18,9 +18,9 @@ struct TodoListView: View {
             }
 
             if todos.count > maxItems {
-                Text("+\(todos.count - maxItems) more...")
-                    .font(.system(size: 9))
-                    .foregroundColor(.white.opacity(0.4))
+                Text("+\(todos.count - maxItems)개 더")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.5))
                     .padding(.leading, 16)
             }
         }
@@ -76,7 +76,7 @@ struct TodoItemRow: View {
         case .inProgress:
             return .white.opacity(0.9)
         case .completed:
-            return .white.opacity(0.4)
+            return .white.opacity(0.5)
         }
     }
 

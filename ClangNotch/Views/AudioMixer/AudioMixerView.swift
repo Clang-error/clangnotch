@@ -10,9 +10,9 @@ struct AudioMixerView: View {
             VStack(spacing: 8) {
                 if let holder = manager.micHolder { micWarningBanner(holder) }
                 if manager.apps.isEmpty {
-                    Text("No apps playing audio")
+                    Text("소리를 내는 앱 없음")
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.white.opacity(0.5))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, 20)
                 } else {
@@ -39,7 +39,7 @@ struct AudioMixerView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white.opacity(0.9))
                 Text("블루투스로 볼륨 줄이면 통화가 끊길 수 있어요")
-                    .font(.system(size: 9))
+                    .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.5))
             }
             Spacer()

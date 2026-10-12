@@ -31,9 +31,9 @@ struct ClaudeSessionListView: View {
                     Image(systemName: "terminal")
                         .font(.system(size: 24, weight: .light))
                         .foregroundStyle(NotchPalette.accent)
-                    Text("Ready when you are")
+                    Text("세션 없음")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("Start a Claude Code or Codex session in your workspace. Its activity will appear here.")
+                    Text("작업 폴더에서 Claude Code나 Codex 세션을 시작하면 여기에 활동이 표시됩니다.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -87,7 +87,7 @@ struct ClaudeSessionListView: View {
     }
 
     private func normalizedPath(_ path: String) -> String {
-        guard !path.isEmpty else { return "Unknown" }
+        guard !path.isEmpty else { return "알 수 없음" }
         return URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
     }
 
@@ -119,6 +119,7 @@ private struct UnifiedWorkspaceSessionRow: View {
     let onOpen: () -> Void
     @ObservedObject var manager: ClaudeCodeManager
     @ObservedObject var codexManager: CodexManager
+    @State private var hovering = false
 
     private var claudeActive: Bool {
         group.claude.contains { manager.sessionStates[$0.id]?.isActive == true }
@@ -137,8 +138,8 @@ private struct UnifiedWorkspaceSessionRow: View {
     }
 
     private var preview: String? {
-        if awaitingAnswer { return "Claude: Waiting for your answer" }
-        if needsPermission { return "Claude: Waiting for permission" }
+        if awaitingAnswer { return "Claude: 답변 대기" }
+        if needsPermission { return "Claude: 권한 승인 대기" }
         if let tool = group.claude.compactMap({ manager.sessionStates[$0.id]?.currentToolName }).first {
             return "Claude: \(tool)"
         }
@@ -146,7 +147,7 @@ private struct UnifiedWorkspaceSessionRow: View {
             return "Codex: \(tool)"
         }
         if group.codex.contains(where: { codexManager.sessionStates[$0.id]?.isThinking == true }) {
-            return "Codex: Thinking"
+            return "Codex: 생각 중"
         }
         return nil
     }
@@ -206,7 +207,7 @@ private struct UnifiedWorkspaceSessionRow: View {
                                 .accessibilityHidden(true)
                             Text(destinationLabel)
                         }
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(.teal)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -224,7 +225,8 @@ private struct UnifiedWorkspaceSessionRow: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
-            .background(Color.white.opacity(isSelected ? 0.08 : 0.035), in: RoundedRectangle(cornerRadius: 9))
+            .background(Color.white.opacity(isSelected ? (hovering ? 0.11 : 0.08) : (hovering ? 0.07 : 0.035)),
+                        in: RoundedRectangle(cornerRadius: 9))
             .overlay {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 9).stroke(Color.orange.opacity(0.35), lineWidth: 1)
@@ -233,15 +235,16 @@ private struct UnifiedWorkspaceSessionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Open " + destinationLabel)
+        .onHover { hovering = $0 }
+        .help(destinationLabel + " 열기")
         .contextMenu {
             ForEach(group.claude) { session in
                 if let id = manager.conversationId(for: session) {
-                    Button("Copy Claude Session ID (\(id.prefix(8)))") { copyToPasteboard(id) }
+                    Button("Claude 세션 ID 복사 (\(id.prefix(8)))") { copyToPasteboard(id) }
                 }
             }
             ForEach(group.codex) { session in
-                Button("Copy Codex Session ID (\(session.id.prefix(8)))") { copyToPasteboard(session.id) }
+                Button("Codex 세션 ID 복사 (\(session.id.prefix(8)))") { copyToPasteboard(session.id) }
             }
         }
     }
@@ -292,7 +295,7 @@ private struct SourceBadge: View {
             Circle().fill(color).frame(width: 4, height: 4)
             Text(count > 1 ? "\(label) \(count)" : label)
         }
-        .font(.system(size: 9, weight: .medium))
+        .font(.system(size: 10, weight: .medium))
         .foregroundColor(color.opacity(active ? 1 : 0.75))
         .padding(.horizontal, 4)
         .padding(.vertical, 2)

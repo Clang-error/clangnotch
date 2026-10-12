@@ -44,6 +44,12 @@ public final class UICoordinator: ObservableObject {
         }
     }
 
+    /// Re-evaluates click pass-through right away. The 0.2 s poll doesn't fire while a
+    /// modal alert runs its own run loop, so callers that open one release the mouse first.
+    func refreshClickThrough() {
+        updateCursorState()
+    }
+
     private func updateCursorState() {
         guard let panel = notchPanel else { return }
         guard isVisible else { return }

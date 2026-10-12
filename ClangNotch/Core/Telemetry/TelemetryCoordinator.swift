@@ -19,13 +19,13 @@ public enum TelemetryState: Equatable {
     var displayText: String {
         switch self {
         case .stopped:
-            return "Stopped"
+            return "꺼짐"
         case .starting:
-            return "Starting"
+            return "시작 중"
         case .running:
-            return "Listening"
+            return "수신 중"
         case .error(let message):
-            return "Error: \(message)"
+            return "오류: \(message)"
         }
     }
 }
@@ -38,7 +38,7 @@ public enum TelemetrySource: String, Codable, Equatable {
 
     public var displayName: String {
         switch self {
-        case .unknown: return "Unknown"
+        case .unknown: return "알 수 없음"
         case .claudeCode: return "Claude Code"
         case .codex: return "Codex"
         }

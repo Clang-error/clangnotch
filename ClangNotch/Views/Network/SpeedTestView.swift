@@ -24,12 +24,12 @@ struct SpeedTestView: View {
 
     private var statusText: String {
         switch manager.phase {
-        case .idle:     return "Tap Test to measure"
-        case .ping:     return "Measuring latency…"
-        case .download: return "Downloading…"
-        case .upload:   return "Uploading…"
-        case .finished: return "Done"
-        case .failed:   return manager.errorMessage ?? "Failed"
+        case .idle:     return "측정을 눌러 시작"
+        case .ping:     return "지연 시간 측정 중…"
+        case .download: return "다운로드 중…"
+        case .upload:   return "업로드 중…"
+        case .finished: return "완료"
+        case .failed:   return manager.errorMessage ?? "실패"
         }
     }
 
@@ -77,13 +77,15 @@ struct SpeedTestView: View {
             if network.ssidBlocked {
                 // macOS only reveals the SSID with Location Services. Tapping here
                 // shows the prompt, or opens System Settings once it's been answered.
-                Text("Allow Location Services to see the network name")
-                    .font(.system(size: 9))
-                    .foregroundColor(.white.opacity(0.35))
-                    .lineLimit(1)
-                    .underline()
-                    .contentShape(Rectangle())
-                    .onTapGesture { network.requestAccess() }
+                Button { network.requestAccess() } label: {
+                    Text("네트워크 이름을 보려면 위치 서비스 허용")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.5))
+                        .lineLimit(1)
+                        .underline()
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
             Spacer(minLength: 0)
         }
@@ -95,9 +97,9 @@ struct SpeedTestView: View {
                 Text(verdict.headline)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(verdict.tone)
-                Text("— good for")
+                Text("— 가능한 용도")
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.white.opacity(0.5))
                 Spacer(minLength: 0)
             }
 
@@ -116,7 +118,7 @@ struct SpeedTestView: View {
                             .frame(width: 10)
                         Text(capability.name)
                             .font(.system(size: 11))
-                            .foregroundColor(capability.ok ? .white.opacity(0.85) : .white.opacity(0.3))
+                            .foregroundColor(capability.ok ? .white.opacity(0.85) : .white.opacity(0.5))
                             .lineLimit(1)
                     }
                 }
@@ -134,7 +136,7 @@ struct SpeedTestView: View {
                     .monospacedDigit()
                 Text("Mbps")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.45))
+                    .foregroundColor(.white.opacity(0.5))
             }
             Text(statusText)
                 .font(.system(size: 11))
@@ -146,7 +148,7 @@ struct SpeedTestView: View {
     private var metrics: some View {
         HStack(spacing: 8) {
             SpeedMetricCard(
-                title: "Ping",
+                title: "핑",
                 value: manager.latencyMs.map { String(format: "%.0f", $0) } ?? "—",
                 unit: "ms",
                 icon: "dot.radiowaves.left.and.right",
@@ -154,7 +156,7 @@ struct SpeedTestView: View {
                 accent: accent
             )
             SpeedMetricCard(
-                title: "Download",
+                title: "다운로드",
                 value: manager.downloadMbps.map(SpeedFormat.mbps) ?? "—",
                 unit: "Mbps",
                 icon: "arrow.down",
@@ -162,7 +164,7 @@ struct SpeedTestView: View {
                 accent: accent
             )
             SpeedMetricCard(
-                title: "Upload",
+                title: "업로드",
                 value: manager.uploadMbps.map(SpeedFormat.mbps) ?? "—",
                 unit: "Mbps",
                 icon: "arrow.up",
@@ -178,34 +180,36 @@ struct SpeedTestView: View {
         let seconds = Int(Date().timeIntervalSince(finishedAt))
         let ago: String = {
             switch seconds {
-            case ..<60:    return "just now"
-            case ..<3600:  return "\(seconds / 60)m ago"
-            case ..<86400: return "\(seconds / 3600)h ago"
-            default:       return "\(seconds / 86400)d ago"
+            case ..<60:    return "방금"
+            case ..<3600:  return "\(seconds / 60)분 전"
+            case ..<86400: return "\(seconds / 3600)시간 전"
+            default:       return "\(seconds / 86400)일 전"
             }
         }()
         return HStack(spacing: 4) {
             Image(systemName: "clock")
                 .font(.system(size: 8))
-            Text("Measured \(ago)")
-                .font(.system(size: 9))
+            Text("\(ago) 측정")
+                .font(.system(size: 10))
             Spacer(minLength: 0)
         }
-        .foregroundColor(.white.opacity(0.3))
+        .foregroundColor(.white.opacity(0.5))
     }
 
     private var actionButton: some View {
         let running = manager.isRunning
-        return Text(running ? "Cancel" : "Test")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(running ? .white.opacity(0.8) : .black)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background(running ? Color.white.opacity(0.12) : accent, in: Capsule())
-            .contentShape(Capsule())
-            .onTapGesture {
-                if running { manager.cancel() } else { manager.start() }
-            }
+        return Button {
+            if running { manager.cancel() } else { manager.start() }
+        } label: {
+            Text(running ? "취소" : "측정")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(running ? .white.opacity(0.8) : .black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(running ? Color.white.opacity(0.12) : accent, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -225,7 +229,7 @@ private struct SpeedMetricCard: View {
                 Text(title)
                     .font(.system(size: 10, weight: .medium))
             }
-            .foregroundColor(active ? accent : .white.opacity(0.45))
+            .foregroundColor(active ? accent : .white.opacity(0.5))
 
             Text(value)
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
@@ -235,8 +239,8 @@ private struct SpeedMetricCard: View {
                 .minimumScaleFactor(0.7)
 
             Text(unit)
-                .font(.system(size: 9))
-                .foregroundColor(.white.opacity(0.35))
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
@@ -266,12 +270,12 @@ struct SpeedPeekHeader: View {
     /// which step is running (or how the link rated) and which network it was.
     private var label: String {
         switch manager.phase {
-        case .idle:     return "Speed"
-        case .ping:     return "Ping"
-        case .download: return "Download"
-        case .upload:   return "Upload"
-        case .finished: return verdict?.headline ?? "Done"
-        case .failed:   return "Failed"
+        case .idle:     return "속도"
+        case .ping:     return "핑"
+        case .download: return "다운로드"
+        case .upload:   return "업로드"
+        case .finished: return verdict?.headline ?? "완료"
+        case .failed:   return "실패"
         }
     }
 
@@ -324,17 +328,17 @@ struct SpeedPeekContent: View {
         let live = manager.liveMbps > 0 ? SpeedFormat.mbps(manager.liveMbps) : nil
         HStack(spacing: 0) {
             peekMetric(
-                "Ping", "ms",
+                "핑", "ms",
                 value: manager.latencyMs.map { String(format: "%.0f", $0) } ?? (manager.phase == .ping ? "…" : nil),
                 active: manager.phase == .ping
             )
             peekMetric(
-                "Down", "Mbps",
+                "다운로드", "Mbps",
                 value: manager.phase == .download ? live : manager.downloadMbps.map(SpeedFormat.mbps),
                 active: manager.phase == .download
             )
             peekMetric(
-                "Up", "Mbps",
+                "업로드", "Mbps",
                 value: manager.phase == .upload ? live : manager.uploadMbps.map(SpeedFormat.mbps),
                 active: manager.phase == .upload
             )
@@ -346,16 +350,16 @@ struct SpeedPeekContent: View {
     private func peekMetric(_ title: String, _ unit: String, value: String?, active: Bool) -> some View {
         VStack(spacing: 2) {
             Text(title)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(active ? accent : .white.opacity(0.4))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(active ? accent : .white.opacity(0.5))
             HStack(alignment: .lastTextBaseline, spacing: 3) {
                 Text(value ?? "—")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundColor(.white)
                     .monospacedDigit()
                 Text(unit)
-                    .font(.system(size: 8))
-                    .foregroundColor(.white.opacity(0.35))
+                    .font(.system(size: 10))
+                    .foregroundColor(.white.opacity(0.5))
             }
         }
         .frame(maxWidth: .infinity)
@@ -385,29 +389,29 @@ struct SpeedVerdict {
 
         switch download {
         case 100...:
-            headline = "Excellent"
+            headline = "매우 빠름"
             tone = Color(red: 0.3, green: 0.85, blue: 0.55)
         case 50..<100:
-            headline = "Great"
+            headline = "빠름"
             tone = Color(red: 0.3, green: 0.85, blue: 0.55)
         case 25..<50:
-            headline = "Good"
+            headline = "양호"
             tone = Color(red: 0.6, green: 0.85, blue: 0.4)
         case 10..<25:
-            headline = "Fair"
+            headline = "보통"
             tone = Color(red: 1.0, green: 0.78, blue: 0.3)
         default:
-            headline = "Slow"
+            headline = "느림"
             tone = Color(red: 0.95, green: 0.35, blue: 0.35)
         }
 
         capabilities = [
-            Capability(name: "Web & email", ok: download >= 1),
-            Capability(name: "Music streaming", ok: download >= 2),
-            Capability(name: "Video calls", ok: download >= 4 && up >= 3 && latency <= 200),
-            Capability(name: "HD streaming", ok: download >= 8),
-            Capability(name: "4K streaming", ok: download >= 25),
-            Capability(name: "Online gaming", ok: download >= 5 && latency <= 80),
+            Capability(name: "웹·이메일", ok: download >= 1),
+            Capability(name: "음악 스트리밍", ok: download >= 2),
+            Capability(name: "영상 통화", ok: download >= 4 && up >= 3 && latency <= 200),
+            Capability(name: "HD 스트리밍", ok: download >= 8),
+            Capability(name: "4K 스트리밍", ok: download >= 25),
+            Capability(name: "온라인 게임", ok: download >= 5 && latency <= 80),
         ]
     }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 /// Compact pulsing dot for minimal views
 struct PermissionNeededIndicatorCompact: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPulsing = false
 
     var body: some View {
@@ -18,6 +19,8 @@ struct PermissionNeededIndicatorCompact: View {
             .scaleEffect(isPulsing ? 1.2 : 0.9)
             .opacity(isPulsing ? 1.0 : 0.6)
             .onAppear {
+                // Reduce Motion: hold the bright frame instead of pulsing.
+                guard !reduceMotion else { isPulsing = true; return }
                 withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                     isPulsing = true
                 }
@@ -28,6 +31,7 @@ struct PermissionNeededIndicatorCompact: View {
 /// Inline permission indicator with tool name
 struct PermissionNeededBadge: View {
     let toolName: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPulsing = false
 
     var body: some View {
@@ -40,12 +44,12 @@ struct PermissionNeededBadge: View {
 
             if let tool = toolName {
                 Text(tool)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.orange)
             }
 
-            Text("needs permission")
-                .font(.system(size: 9, weight: .medium))
+            Text("권한 승인 대기")
+                .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.orange.opacity(0.8))
         }
         .padding(.horizontal, 8)
@@ -53,6 +57,7 @@ struct PermissionNeededBadge: View {
         .background(Color.orange.opacity(0.15))
         .cornerRadius(6)
         .onAppear {
+            guard !reduceMotion else { isPulsing = true; return }
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 isPulsing = true
             }

@@ -58,7 +58,7 @@ struct TWorldUsageView: View {
                         Text("갱신")
                     }
                 }
-                .font(.system(size: 9))
+                .font(.system(size: 10))
                 .foregroundColor(.white.opacity(0.65))
             } else if session.isRefreshing {
                 Text("잔여량 확인 중…").font(.system(size: 10))
@@ -69,7 +69,7 @@ struct TWorldUsageView: View {
             }
             if let error = session.errorMessage {
                 Text((session.balance == nil ? "" : "이전 조회값 · ") + error)
-                    .font(.system(size: 9))
+                    .font(.system(size: 10))
                     .foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -33,12 +33,12 @@ struct SidecarView: View {
             Image(systemName: "ipad.and.arrow.forward")
                 .font(.system(size: 30, weight: .light))
                 .foregroundColor(.white.opacity(0.25))
-            Text("No available iPad")
+            Text("연결할 수 있는 iPad 없음")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.45))
-            Text("Same Apple Account & Wi-Fi required")
+                .foregroundColor(.white.opacity(0.5))
+            Text("같은 Apple 계정과 Wi-Fi가 필요합니다")
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
@@ -49,6 +49,7 @@ private struct SidecarCard: View {
     let device: SidecarDeviceInfo
     @ObservedObject var manager: SidecarManager
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
     private let accent = Color(red: 0.3, green: 0.85, blue: 0.55)   // connected (green)
@@ -63,15 +64,15 @@ private struct SidecarCard: View {
     private var tone: Color { busy ? pending : (connected ? accent : Color.white.opacity(0.25)) }
 
     private var statusText: String {
-        if connecting { return "Connecting…" }
-        if disconnecting { return "Disconnecting…" }
-        return connected ? "Connected" : "Not connected"
+        if connecting { return "연결 중…" }
+        if disconnecting { return "연결 해제 중…" }
+        return connected ? "연결됨" : "연결 안 됨"
     }
 
     private var buttonText: String {
-        if connecting { return "Connecting…" }
-        if disconnecting { return "Disconnecting…" }
-        return connected ? "Disconnect" : "Connect"
+        if connecting { return "연결 중…" }
+        if disconnecting { return "연결 해제 중…" }
+        return connected ? "연결 해제" : "연결"
     }
 
     var body: some View {
@@ -125,6 +126,8 @@ private struct SidecarCard: View {
         }
         .frame(height: 96)
         .onAppear {
+            // Reduce Motion: the halo stays at rest instead of breathing.
+            guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) { pulse = true }
         }
     }

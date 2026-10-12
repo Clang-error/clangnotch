@@ -107,9 +107,9 @@ struct AgentMenuBarContentView: View {
                         .frame(width: 28, height: 28)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Keyboard Lock")
+                            Text("키보드 잠금")
                                 .font(.system(size: 13, weight: .semibold))
-                            Text(keyboardLockManager.isLocked ? "Blocking all input" : "Not blocking")
+                            Text(keyboardLockManager.isLocked ? "모든 입력 차단 중" : "차단 안 함")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                         }
@@ -155,7 +155,7 @@ struct AgentMenuBarContentView: View {
                     Button {
                         openSettings()
                     } label: {
-                        Label("Settings…", systemImage: "gearshape")
+                        Label("설정…", systemImage: "gearshape")
                             .font(.system(size: 12))
                     }
                     .buttonStyle(.plain)
@@ -165,7 +165,7 @@ struct AgentMenuBarContentView: View {
                     Button {
                         NSApp.terminate(nil)
                     } label: {
-                        Label("Quit", systemImage: "power")
+                        Label("종료", systemImage: "power")
                             .font(.system(size: 12))
                     }
                     .buttonStyle(.plain)

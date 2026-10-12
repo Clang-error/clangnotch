@@ -33,7 +33,7 @@ struct UsageBarRow: View {
                 if let resetsAt = data.resetsAt {
                     Text("• \(data.formattedRemaining) · \(resetsAt, format: .dateTime.hour().minute())")
                         .font(.caption2)
-                        .foregroundColor(.secondary.opacity(0.7))
+                        .foregroundColor(.secondary)
                 }
             }
 
@@ -96,7 +96,7 @@ struct MiniUsageRing: View {
 
             // Label + percentage
             Text("\(label) \(Int(percentage.rounded()))%")
-                .font(.system(size: 8, weight: .medium).monospacedDigit())
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .foregroundColor(ringColor)
         }
     }
@@ -158,7 +158,7 @@ struct ClaudeUsageNotchSection: View {
                     // A window can sit well under 100% while a different one
                     // is what's actually blocking, so say so outright.
                     Text("한도 도달")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.red)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -175,6 +175,8 @@ struct ClaudeUsageNotchSection: View {
                         .foregroundColor(.white.opacity(0.55))
                         .rotationEffect(.degrees(usageManager.isLoading ? 360 : 0))
                         .animation(usageManager.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: usageManager.isLoading)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(usageManager.isLoading)
@@ -192,9 +194,9 @@ struct ClaudeUsageNotchSection: View {
             Button(action: refreshNow) {
                 HStack(spacing: 3) {
                     Image(systemName: "lock.fill")
-                    Text("인증 필요 · 탭")
+                    Text("인증 필요 · 인증하기")
                 }
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(.orange)
             }
             .buttonStyle(.plain)
@@ -203,8 +205,8 @@ struct ClaudeUsageNotchSection: View {
                 Image(systemName: "arrow.clockwise")
                 Text("갱신 중")
             }
-            .font(.system(size: 9, weight: .medium))
-            .foregroundColor(.white.opacity(0.45))
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.white.opacity(0.5))
         } else if let next = usageManager.nextRefreshAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let remaining = max(0, next.timeIntervalSince(context.date))
@@ -212,8 +214,8 @@ struct ClaudeUsageNotchSection: View {
                     Image(systemName: "timer")
                     Text(remaining >= 1 ? Self.formatCountdown(remaining) : "곧")
                 }
-                .font(.system(size: 9, weight: .medium).monospacedDigit())
-                .foregroundColor(.white.opacity(0.45))
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .foregroundColor(.white.opacity(0.5))
             }
         }
     }
@@ -274,12 +276,12 @@ struct ClaudeUsageNotchSection: View {
     }
 
     private var statusText: String {
-        if needsReauth { return "탭하여 인증하기 (사용량 새로고침)" }
+        if needsReauth { return "눌러서 인증하기 (사용량 새로고침)" }
         if !usageManager.isConfigured { return "Claude Code 로그인이 필요해요" }
         if let error = usageManager.lastError {
             switch error {
-            case .tokenExpired: return "토큰 만료 — Claude Code 실행 후 탭"
-            case .unauthorized: return "인증이 거부됐어요 — 탭하여 재시도"
+            case .tokenExpired: return "토큰 만료 — Claude Code 실행 후 누르기"
+            case .unauthorized: return "인증이 거부됐어요 — 눌러서 재시도"
             case .rateLimited: return "요청 한도 도달 — 잠시 후 재시도"
             default: return "사용량을 불러오지 못했어요"
             }

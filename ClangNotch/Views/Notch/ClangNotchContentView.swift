@@ -517,7 +517,7 @@ struct ClangNotchContentView: View {
                 .onChange(of: settings.enableCodexJSONL) { _, enabled in
                     codexManager.setTrackingEnabled(enabled && !isTrackingPaused)
                 }
-                // "Stopped" in the header has to mean nothing is tracked — the OTLP receiver
+                // "꺼짐" in the header has to mean nothing is tracked — the OTLP receiver
                 // alone stopping left the JSONL watchers lighting the notch up as Working.
                 .onChange(of: isTrackingPaused, initial: true) { _, paused in
                     claudeCodeManager.setTrackingEnabled(!paused)
@@ -1176,16 +1176,16 @@ struct ClangNotchContentView: View {
                 if telemetryCoordinator.state == .running {
                     NotchControlButton(systemName: "stop.fill", tint: .orange) {
                         Task { await telemetryCoordinator.stop() }
-                    }.help("Stop telemetry")
+                    }.help("텔레메트리 중지")
                 } else if telemetryCoordinator.state == .stopped {
                     NotchControlButton(systemName: "play.fill", tint: chipAccent) {
                         Task { await telemetryCoordinator.start() }
-                    }.help("Start telemetry")
+                    }.help("텔레메트리 시작")
                 }
                 NotchControlButton(systemName: "gearshape") { openSettings() }
-                    .help("Settings")
-                NotchControlButton(systemName: "power", tint: .white.opacity(0.5)) { NSApp.terminate(nil) }
-                    .help("Quit ClangNotch")
+                    .help("설정")
+                NotchControlButton(systemName: "power", tint: .white.opacity(0.5)) { confirmQuit() }
+                    .help("ClangNotch 종료")
             }
             .frame(height: openHeaderHeight)
             // Centred on the whole header, not squeezed between the title and the controls.
@@ -1267,13 +1267,13 @@ struct ClangNotchContentView: View {
 
     private var agentOverview: some View {
         HStack(spacing: 12) {
-            Text(overviewHasActivity ? "Working" : "Quiet")
+            Text(overviewHasActivity ? "작업 중" : "대기 중")
                 .foregroundStyle(overviewHasActivity ? chipAccent : .secondary)
             Spacer(minLength: 0)
-            Text("Sessions \((settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0) + (settings.showSourceCodex ? codexManager.availableSessions.count : 0))")
+            Text("세션 \((settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0) + (settings.showSourceCodex ? codexManager.availableSessions.count : 0))")
             Label("\(attentionCount)", systemImage: "bubble.left.and.exclamationmark.bubble.right")
                 .foregroundStyle(attentionCount > 0 ? .orange : .secondary)
-                .help("Waiting for your response")
+                .help("답변·승인 대기")
         }
         .font(.system(size: 11, weight: .medium))
         .monospacedDigit()
@@ -1342,11 +1342,14 @@ struct ClangNotchContentView: View {
                                 claudeCodeManager.focusIDE(for: session)
                             }
                         } label: {
-                            Label("Review permission in your editor", systemImage: "arrow.up.forward.app")
+                            Label("에디터에서 권한 확인", systemImage: "arrow.up.forward.app")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.orange)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(NotchHoverButtonStyle())
                     }
                 }
                 if settings.showSourceClaudeCode, let request = claudeCodeManager.pendingInputRequests.first {
@@ -1361,14 +1364,14 @@ struct ClangNotchContentView: View {
                             notchVM.close()
                             SessionAppLauncher.open(.antigravity)
                         } label: {
-                            Label(antigravityManager.state.currentAction ?? "Waiting for activity", systemImage: "sparkles")
+                            Label(antigravityManager.state.currentAction ?? "활동 대기 중", systemImage: "sparkles")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.purple)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("Open Antigravity")
+                        .help("Antigravity 열기")
                     }
                 }
 
@@ -1393,10 +1396,14 @@ struct ClangNotchContentView: View {
 
             // Permission badge above footer
                 if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsNeedingPermission.isEmpty && claudeCodeManager.sessionsConfirmedNeedingPermission.isEmpty {
-                    PermissionNeededBadge(toolName: claudeCodeManager.state.pendingPermissionTool)
-                        .onTapGesture {
-                            claudeCodeManager.focusIDE()
-                        }
+                    Button {
+                        claudeCodeManager.focusIDE()
+                    } label: {
+                        PermissionNeededBadge(toolName: claudeCodeManager.state.pendingPermissionTool)
+                            .padding(3)
+                    }
+                    .buttonStyle(NotchHoverButtonStyle(cornerRadius: 6))
+                    .help("에디터에서 권한 확인")
                 }
 
             // Context progress bar (with integrated API usage badges)
@@ -1505,7 +1512,7 @@ struct ClangNotchContentView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
 
-                Text(codexInputRequest == nil ? "Claude asked a question" : "Codex asked a question")
+                Text(codexInputRequest == nil ? "Claude가 질문했습니다" : "Codex가 질문했습니다")
                     .font(.system(size: 11))
                     .foregroundColor(.white.opacity(0.7))
             }
@@ -1517,6 +1524,8 @@ struct ClangNotchContentView: View {
             } label: {
                 Label("이동", systemImage: "arrow.up.forward.app")
                     .font(.system(size: 10, weight: .medium))
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundColor(questionNoticeColor)
@@ -1524,6 +1533,8 @@ struct ClangNotchContentView: View {
 
             Button { dismissQuestionNotice() } label: {
                 Image(systemName: "xmark").font(.system(size: 10))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("알림 접기 — 질문 대기는 유지됩니다")
@@ -1564,7 +1575,7 @@ struct ClangNotchContentView: View {
                         // A window can sit well under 100% while a different one
                         // is what's actually blocking, so say so outright.
                         Text("한도 도달")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.red)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
@@ -1576,8 +1587,8 @@ struct ClangNotchContentView: View {
                             Image(systemName: "arrow.clockwise")
                             Text("갱신 중")
                         }
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
                     } else if let nextRefreshAt = codexManager.nextRateLimitRefreshAt {
                         // A spent weekly window pauses polling for days; "138:54:03" reads as
                         // nonsense, so use the same day/hour wording as the Claude card.
@@ -1587,8 +1598,8 @@ struct ClangNotchContentView: View {
                                 Image(systemName: "timer")
                                 Text(remaining >= 1 ? ClaudeUsageNotchSection.formatCountdown(remaining) : "곧")
                             }
-                            .font(.system(size: 9, weight: .medium).monospacedDigit())
-                            .foregroundColor(.white.opacity(0.45))
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
+                            .foregroundColor(.white.opacity(0.5))
                         }
                     }
                     Button(action: codexManager.refresh) {
@@ -1598,6 +1609,8 @@ struct ClangNotchContentView: View {
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.55))
                             .rotationEffect(.degrees(codexManager.isRefreshingRateLimits ? 360 : 0))
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
                             .animation(
                                 codexManager.isRefreshingRateLimits
                                     ? .linear(duration: 1).repeatForever(autoreverses: false)
@@ -1633,7 +1646,7 @@ struct ClangNotchContentView: View {
                     if let resetsAt = window.resetsAt {
                         Text("• \(relativeResetText(resetsAt)) · \(resetsAt, format: .dateTime.hour().minute())")
                             .font(.caption2)
-                            .foregroundColor(.secondary.opacity(0.7))
+                            .foregroundColor(.secondary)
                     }
                 }
                 GeometryReader { geometry in
@@ -1654,7 +1667,10 @@ struct ClangNotchContentView: View {
             formatter.allowedUnits = [.day, .hour, .minute]
             formatter.unitsStyle = .abbreviated
             formatter.maximumUnitCount = 2
-            return formatter.string(from: max(0, date.timeIntervalSinceNow)) ?? "0m"
+            var calendar = Calendar.current
+            calendar.locale = Locale(identifier: "ko_KR")
+            formatter.calendar = calendar
+            return formatter.string(from: max(0, date.timeIntervalSinceNow)) ?? "0분"
         }
 
         private func windowLabel(_ minutes: Int) -> String {
@@ -1680,7 +1696,7 @@ struct ClangNotchContentView: View {
                 ForEach(Array(questions.enumerated()), id: \.offset) { _, question in
                     VStack(alignment: .leading, spacing: 5) {
                         Text(question.multiSelect ? "\(question.header) · 복수 선택" : question.header)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(accentColor)
                         Text(question.question)
                             .font(.system(size: 11, weight: .medium))
@@ -1697,7 +1713,7 @@ struct ClangNotchContentView: View {
                                         .foregroundColor(.white.opacity(0.9))
                                     if !option.description.isEmpty {
                                         Text(option.description)
-                                            .font(.system(size: 9))
+                                            .font(.system(size: 10))
                                             .foregroundColor(.white.opacity(0.6))
                                     }
                                 }
@@ -1712,7 +1728,7 @@ struct ClangNotchContentView: View {
                         .foregroundColor(.white.opacity(0.7))
                 }
                 Label("\(sourceName)에서 응답", systemImage: "arrow.up.right.square")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundColor(accentColor.opacity(0.8))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1752,19 +1768,20 @@ struct ClangNotchContentView: View {
         let systemName: String
         var tint: Color? = nil
         let action: () -> Void
+        @State private var hovering = false
 
         var body: some View {
+            // Padding and circle live inside the label so the whole circle is clickable.
             Button(action: action) {
                 Image(systemName: systemName)
                     .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(tint ?? .white.opacity(0.75))
+                    .padding(6)
+                    .background(Circle().fill(Color.white.opacity(hovering ? 0.16 : 0.08)))
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .foregroundColor(tint ?? .white.opacity(0.75))
-            .padding(6)
-            .background(
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-            )
+            .onHover { hovering = $0 }
         }
     }
 
@@ -1774,7 +1791,7 @@ struct ClangNotchContentView: View {
 
         var body: some View {
             Text(text)
-                .font(.system(size: 9, weight: .medium, design: mono ? .monospaced : .default))
+                .font(.system(size: 10, weight: .medium, design: mono ? .monospaced : .default))
                 .foregroundColor(.white.opacity(0.7))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
@@ -1808,7 +1825,7 @@ struct ClangNotchContentView: View {
                                 .font(.system(size: 8, weight: .semibold))
                                 .foregroundColor(.purple.opacity(0.8))
                             Text(branch)
-                                .font(.system(size: 9, weight: .medium))
+                                .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(.purple.opacity(0.9))
                                 .lineLimit(1)
                         }
@@ -1836,7 +1853,7 @@ struct ClangNotchContentView: View {
                                     .font(.system(size: 8, weight: .semibold))
                                     .foregroundColor(.green.opacity(0.8))
                                 Text(formatTokens(cacheReadTokens))
-                                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
                                     .foregroundColor(.green.opacity(0.9))
                             }
                         }
@@ -1848,7 +1865,7 @@ struct ClangNotchContentView: View {
                                     .font(.system(size: 8, weight: .semibold))
                                     .foregroundColor(.yellow.opacity(0.8))
                                 Text(formatTokens(cacheWriteTokens))
-                                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
                                     .foregroundColor(.yellow.opacity(0.9))
                             }
                         }
@@ -1911,11 +1928,11 @@ struct ClangNotchContentView: View {
             VStack(spacing: 4) {
                 HStack {
                     Text("Context")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
 
                     Text("\(formatTokens(totalTokens)) / \(formatTokens(contextLimit))")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundColor(.white.opacity(0.7))
 
                     Spacer()
@@ -2268,7 +2285,7 @@ struct ClangNotchContentView: View {
                 Text(isSuccess ? "Task Complete" : "Task Failed")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
-                Text("Source: \(toolCall.source.displayName)")
+                Text("출처: \(toolCall.source.displayName)")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(sourceTint(for: toolCall.source))
             }
@@ -2333,9 +2350,9 @@ struct ClangNotchContentView: View {
             }
         }
         if isCompletionToolCall(toolCall) {
-            return "Model finished response"
+            return "응답 완료"
         }
-        return "Finished \(toolCall.toolName)"
+        return "\(toolCall.toolName) 완료"
     }
 
     private func stopActivityGlowForCompletion() {
@@ -2557,6 +2574,29 @@ struct ClangNotchContentView: View {
 
     private func openSettings() {
         NSApp.sendAction(Selector(("showSettingsWindow")), to: NSApp.delegate, from: nil)
+    }
+
+    /// The power button sits right next to Settings, so a stray click must not quit outright.
+    private func confirmQuit() {
+        // The notch panel floats above alert level and its click-through poll pauses while
+        // runModal spins, so collapse it and release the mouse before the alert appears.
+        notchVM.close()
+        updateInteractiveRegion()
+        UICoordinator.shared.refreshClickThrough()
+        let previousApp = NSWorkspace.shared.frontmostApplication
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(notchCloseDuration))
+            let alert = NSAlert()
+            alert.messageText = "ClangNotch를 종료할까요?"
+            alert.addButton(withTitle: "종료")
+            alert.addButton(withTitle: "취소")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn {
+                NSApp.terminate(nil)
+            } else {
+                previousApp?.activate(options: [])
+            }
+        }
     }
 
     private func isSourceVisible(_ source: TelemetrySource) -> Bool {
