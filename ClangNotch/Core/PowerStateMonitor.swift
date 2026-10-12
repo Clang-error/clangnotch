@@ -45,10 +45,4 @@ public final class PowerStateMonitor: ObservableObject {
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
         }
     }
-
-    private func stopMonitoring() {
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
-        }
-    }
 }

@@ -51,25 +51,16 @@ final class MenuBarController: NSObject {
 
         // The icon follows what the agents are doing, not whether the OTLP server is up.
         // objectWillChange fires before the mutation, so settle briefly before reading.
-        if AppModeConfig.current == .agentNotch {
-            Publishers.MergeMany(
-                ClaudeCodeManager.shared.objectWillChange.eraseToAnyPublisher(),
-                CodexManager.shared.objectWillChange.eraseToAnyPublisher(),
-                AntigravityManager.shared.objectWillChange.eraseToAnyPublisher()
-            )
-            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateIconForCurrentState()
-            }
-            .store(in: &cancellables)
-        } else {
-            MCPCoordinator.shared.$state
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] state in
-                    self?.updateIcon(for: state)
-                }
-                .store(in: &cancellables)
+        Publishers.MergeMany(
+            ClaudeCodeManager.shared.objectWillChange.eraseToAnyPublisher(),
+            CodexManager.shared.objectWillChange.eraseToAnyPublisher(),
+            AntigravityManager.shared.objectWillChange.eraseToAnyPublisher()
+        )
+        .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+        .sink { [weak self] _ in
+            self?.updateIconForCurrentState()
         }
+        .store(in: &cancellables)
     }
 
     private func updateMenuBarVisibility() {
@@ -100,11 +91,7 @@ final class MenuBarController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem?.button {
-            if AppModeConfig.current == .agentNotch {
-                button.image = Self.notchGlyph(colors: [Self.idleGray])
-            } else {
-                button.image = NSImage(systemSymbolName: "hammer.fill", accessibilityDescription: "ClangNotch")
-            }
+            button.image = Self.notchGlyph(colors: [Self.idleGray])
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -115,17 +102,7 @@ final class MenuBarController: NSObject {
         popover.animates = true
         // The usage cards are shared with the notch and drawn for a dark surface.
         popover.appearance = NSAppearance(named: .darkAqua)
-        let rootView: AnyView = {
-            if AppModeConfig.current == .agentNotch {
-                return AnyView(AgentMenuBarContentView())
-            }
-            return AnyView(
-                MenuBarContentView()
-                    .environmentObject(MCPCoordinator.shared)
-                    .environmentObject(UICoordinator.shared)
-            )
-        }()
-        popover.contentViewController = NSHostingController(rootView: rootView)
+        popover.contentViewController = NSHostingController(rootView: AgentMenuBarContentView())
         self.popover = popover
 
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
@@ -134,11 +111,7 @@ final class MenuBarController: NSObject {
     }
 
     private func updateIconForCurrentState() {
-        if AppModeConfig.current == .agentNotch {
-            updateIcon(for: MenuBarActivity.current)
-        } else {
-            updateIcon(for: MCPCoordinator.shared.state)
-        }
+        updateIcon(for: MenuBarActivity.current)
     }
 
     private func updateIcon(for activity: MenuBarActivity) {
@@ -270,33 +243,6 @@ final class MenuBarController: NSObject {
         }
         image.accessibilityDescription = "ClangNotch"
         return image
-    }
-
-    private func updateIcon(for state: MCPServerState) {
-        guard let button = statusItem?.button else { return }
-
-        let symbolName: String
-        let color: NSColor
-
-        switch state {
-        case .stopped:
-            symbolName = "hammer"
-            color = .secondaryLabelColor
-        case .starting, .stopping:
-            symbolName = "hammer.fill"
-            color = .systemYellow
-        case .running:
-            symbolName = "hammer.fill"
-            color = .systemGreen
-        case .crashed, .error:
-            symbolName = "hammer.fill"
-            color = .systemRed
-        }
-
-        var config = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        config = config.applying(.init(paletteColors: [color]))
-        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "ClangNotch")?
-            .withSymbolConfiguration(config)
     }
 
     @objc private func togglePopover() {

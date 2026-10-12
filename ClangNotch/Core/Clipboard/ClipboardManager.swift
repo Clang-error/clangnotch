@@ -7,8 +7,6 @@ final class ClipboardManager: ObservableObject {
 
     @Published private(set) var items: [ClipboardItem] = []
 
-    var hasItems: Bool { !items.isEmpty }
-
     private let pasteboard = NSPasteboard.general
     private var lastChangeCount: Int = -1
     private var timer: Timer?

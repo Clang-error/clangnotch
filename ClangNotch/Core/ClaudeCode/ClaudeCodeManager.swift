@@ -23,19 +23,11 @@ func debugLog(_ message: @autoclosure () -> String) {
 final class ClaudeCodeManager: ObservableObject {
     static let shared = ClaudeCodeManager()
 
-    // MARK: - Cached Formatters
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-
     // MARK: - Published Properties
 
     @Published private(set) var availableSessions: [ClaudeSession] = []
     @Published var selectedSession: ClaudeSession?
     @Published private(set) var state: ClaudeCodeState = ClaudeCodeState()
-    @Published private(set) var dailyStats: ClaudeDailyStats = ClaudeDailyStats()
 
     // MARK: - Multi-Session Permission Tracking
 
@@ -192,7 +184,6 @@ final class ClaudeCodeManager: ObservableObject {
         debugLog("[ClaudeCode] Projects dir: \(projectsDir.path)")
         debugLog("[ClaudeCode] ========================================")
         startSessionScanning()
-        loadDailyStats()
     }
 
     // MARK: - Public Methods
@@ -459,7 +450,6 @@ final class ClaudeCodeManager: ObservableObject {
         sessionScanTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.scanForSessions()
-                self?.loadDailyStats()
             }
         }
     }
@@ -1535,56 +1525,5 @@ final class ClaudeCodeManager: ObservableObject {
         if let prompt = input["prompt"] as? String { return String(prompt.prefix(50)) }
 
         return nil
-    }
-
-    // MARK: - Daily Stats
-
-    func loadDailyStats() {
-        let statsFile = claudeDir.appendingPathComponent("stats-cache.json")
-
-        guard FileManager.default.fileExists(atPath: statsFile.path),
-              let data = FileManager.default.contents(atPath: statsFile.path) else {
-            return
-        }
-
-        do {
-            let cache = try JSONDecoder().decode(ClaudeStatsCache.self, from: data)
-            let today = Self.dateFormatter.string(from: Date())
-
-            var stats = ClaudeDailyStats()
-
-            let sortedActivity = cache.dailyActivity?.sorted { $0.date > $1.date }
-            if let todayActivity = sortedActivity?.first(where: { $0.date == today }) {
-                stats.date = today
-                stats.messageCount = todayActivity.messageCount ?? 0
-                stats.toolCallCount = todayActivity.toolCallCount ?? 0
-                stats.sessionCount = todayActivity.sessionCount ?? 0
-            } else if let latestActivity = sortedActivity?.first {
-                stats.date = latestActivity.date
-                stats.messageCount = latestActivity.messageCount ?? 0
-                stats.toolCallCount = latestActivity.toolCallCount ?? 0
-                stats.sessionCount = latestActivity.sessionCount ?? 0
-            }
-
-            let sortedTokens = cache.dailyModelTokens?.sorted { $0.date > $1.date }
-            let targetDate = stats.date.isEmpty ? today : stats.date
-            if let dayTokens = sortedTokens?.first(where: { $0.date == targetDate }),
-               let tokensByModel = dayTokens.tokensByModel {
-                stats.tokensUsed = tokensByModel.values.reduce(0, +)
-            } else if let latestTokens = sortedTokens?.first,
-                      let tokensByModel = latestTokens.tokensByModel {
-                stats.tokensUsed = tokensByModel.values.reduce(0, +)
-                if stats.date.isEmpty {
-                    stats.date = latestTokens.date
-                }
-            }
-
-            if stats != dailyStats {
-                dailyStats = stats
-            }
-
-        } catch {
-            debugLog("[ClaudeCode] Error parsing stats-cache.json: \(error)")
-        }
     }
 }

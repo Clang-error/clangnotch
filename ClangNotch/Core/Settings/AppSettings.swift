@@ -5,21 +5,12 @@ import SwiftUI
 public final class AppSettings: ObservableObject {
     public static let shared = AppSettings()
 
-    @AppStorage("mcpBinaryPath") public var mcpBinaryPath: String = "/usr/local/bin/bridge4simulator-xcauto"
-    @AppStorage("mcpHttpPort") public var mcpHttpPort: Int = 8765
-    @AppStorage("mcpUseHTTP") public var mcpUseHTTP: Bool = true
-    @AppStorage("autoStartMCP") public var autoStartMCP: Bool = true
-    @AppStorage("autoRestartOnCrash") public var autoRestartOnCrash: Bool = true
-    @AppStorage("maxRestartAttempts") public var maxRestartAttempts: Int = 5
-    @AppStorage("showBuildNotifications") public var showBuildNotifications: Bool = true
     @AppStorage("recentToolCallsLimit") public var recentToolCallsLimit: Int = 10
     @AppStorage("forceNotchMode") public var forceNotchMode: Bool = true  // Force notch UI for testing
     @AppStorage("telemetryOtlpPort") public var telemetryOtlpPort: Int = 4318
     @AppStorage("telemetryAutoStart") public var telemetryAutoStart: Bool = true
     @AppStorage("showMenuBarItem") public var showMenuBarItem: Bool = false
     @AppStorage("showNotchTokenCount") public var showNotchTokenCount: Bool = true
-    @AppStorage("showNotchTokenBreakdown") public var showNotchTokenBreakdown: Bool = true
-    @AppStorage("showNotchCost") public var showNotchCost: Bool = true
     @AppStorage("showSourceCodex") public var showSourceCodex: Bool = true
     @AppStorage("showSourceClaudeCode") public var showSourceClaudeCode: Bool = true
     @AppStorage("showSourceUnknown") public var showSourceUnknown: Bool = false
@@ -79,10 +70,8 @@ public final class AppSettings: ObservableObject {
 
     // Claude Code JSONL Session Tracking
     @AppStorage("enableClaudeCodeJSONL") public var enableClaudeCodeJSONL: Bool = true
-    @AppStorage("showSessionDots") public var showSessionDots: Bool = true
     @AppStorage("showPermissionIndicator") public var showPermissionIndicator: Bool = true
     @AppStorage("showTodoList") public var showTodoList: Bool = true
-    @AppStorage("showThinkingState") public var showThinkingState: Bool = true
     /// Comma-separated `~/.ssh/config` host aliases whose Claude Code sessions are mirrored
     /// into the notch over an app-owned SSH reverse tunnel (see RemoteClaudeManager).
     @AppStorage("remoteClaudeHosts") public var remoteClaudeHosts: String = ""
@@ -93,25 +82,14 @@ public final class AppSettings: ObservableObject {
     // Context and Display Settings
     @AppStorage("contextTokenLimit") public var contextTokenLimit: Int = 200_000
     @AppStorage("showContextProgress") public var showContextProgress: Bool = true
-    /// Display mode: "list" for recent events list, "singular" for single detailed event
-    @AppStorage("toolDisplayMode") public var toolDisplayMode: String = "list"
 
     // Claude Usage Quota Tracking
     @AppStorage("enableClaudeUsage") public var enableClaudeUsage: Bool = false
     @AppStorage("claudeUsageRefreshMode") public var claudeUsageRefreshMode: String = "smart"  // "smart" or "fixed"
     @AppStorage("claudeUsageRefreshInterval") public var claudeUsageRefreshInterval: Int = 180  // seconds
-    @AppStorage("showClaudeUsageInClosedNotch") public var showClaudeUsageInClosedNotch: Bool = true
 
     /// Language of the settings window's copy: "ko" (default) or "en". See `L(_:_:)`.
     @AppStorage("settingsLanguage") public var settingsLanguage: String = "ko"
-
-    public var mcpConfiguration: MCPConfiguration {
-        MCPConfiguration(
-            binaryPath: mcpBinaryPath,
-            httpPort: mcpHttpPort,
-            transport: mcpUseHTTP ? .http : .stdio
-        )
-    }
 
     public init() {}
 }

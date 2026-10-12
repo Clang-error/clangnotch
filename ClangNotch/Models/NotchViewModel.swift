@@ -23,7 +23,6 @@ final class NotchViewModel: ObservableObject {
 
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
     private var peekTask: Task<Void, Never>?
-    private var openSize = openNotchSize
     private var closedPresentationWidth: CGFloat
     private var hasMeasuredClosedPresentation = false
 
@@ -87,7 +86,6 @@ final class NotchViewModel: ObservableObject {
     func open(size: CGSize = openNotchSize) {
         peekTask?.cancel()
         endSettling()
-        openSize = size
         // State change inside the animated transaction so header/content swaps
         // crossfade with the resize instead of popping.
         withAnimation(animationSpring) {
@@ -97,7 +95,6 @@ final class NotchViewModel: ObservableObject {
     }
 
     func resizeOpen(to size: CGSize) {
-        openSize = size
         guard notchState == .open else { return }
         withAnimation(animationSpring) { notchSize = size }
     }
@@ -131,14 +128,6 @@ final class NotchViewModel: ObservableObject {
     private func endSettling() {
         settleTask?.cancel()
         isSettlingClosed = false
-    }
-
-    func toggle() {
-        if notchState == .open {
-            close()
-        } else {
-            open(size: openSize)
-        }
     }
 
     /// Briefly expand the notch to show a notification, then return to closed state

@@ -70,7 +70,6 @@ struct ClangNotchContentView: View {
     @State private var completionDebounceTask: Task<Void, Never>?
     @State private var lastCompletionId: UUID?
     @State private var completionToolCall: ToolCall?
-    @State private var hadActiveToolCalls = false
     @State private var toolCallUpdateTask: Task<Void, Never>?
     @State private var showSpeedNotice = false
     @State private var speedPeekTask: Task<Void, Never>?
@@ -122,13 +121,6 @@ struct ClangNotchContentView: View {
     private let antigravityGlowColor = Color(red: 0.6, green: 0.3, blue: 0.85)
     private let antigravityBrightColor = Color(red: 0.75, green: 0.45, blue: 1.0)
 
-    /// Show glow when there's recent activity (event within last 2 seconds)
-    private var hasRecentActivity: Bool {
-        guard let lastCall = visibleToolCalls.first else { return false }
-        let elapsed = Date().timeIntervalSince(lastCall.endTime ?? lastCall.startTime)
-        return elapsed < 2.0 || lastCall.isActive
-    }
-
     private var isExpanded: Bool {
         notchVM.notchState == .open || notchVM.notchState == .peeking
     }
@@ -146,11 +138,6 @@ struct ClangNotchContentView: View {
 
     private var bottomCornerRadius: CGFloat {
         isExpanded ? cornerRadiusInsets.opened.bottom : cornerRadiusInsets.closed.bottom
-    }
-
-    /// Calculate the content width (includes wings + center notch area)
-    private var closedContentWidth: CGFloat {
-        notchVM.closedNotchSize.width + 160  // wings extend 80px on each side
     }
 
     private var activityGlowSource: TelemetrySource {
@@ -741,8 +728,6 @@ struct ClangNotchContentView: View {
         let isCodexActive = settings.showSourceCodex && codexManager.hasAnySessionActivity
         let isSimultaneousClaudeCodex = claudeHasRealActivity && codexHasRealActivity
 
-        // Determine which source is active (prefer Codex if both, since it's newer)
-        let activeSource: TelemetrySource = isCodexActive ? .codex : (isClaudeActive ? .claudeCode : .unknown)
         // Claude's end_turn lingers in lastStopReason until the next Claude activity, so
         // exclude the other live sources — otherwise a stale "Done" hides an active
         // Codex/Antigravity tool in the left wing.
@@ -1968,218 +1953,6 @@ struct ClangNotchContentView: View {
         }
     }
 
-    // MARK: - Singular Tool Detail View (for Claude Code tools)
-
-    private struct SingularToolDetailView: View {
-        let tool: ClaudeToolExecution
-        let tokenUsage: ClaudeTokenUsage
-
-        private let claudeColor = Color(red: 1.0, green: 0.55, blue: 0.2)
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 8) {
-                // Tool name and status
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(claudeColor)
-                        .frame(width: 10, height: 10)
-                        .shadow(color: claudeColor.opacity(tool.isRunning ? 0.6 : 0.3), radius: tool.isRunning ? 4 : 2)
-
-                    Text(tool.toolName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-
-                    Spacer()
-
-                    if tool.isRunning {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: 16, height: 16)
-                    } else {
-                        Text(tool.formattedDuration)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                // Description
-                if let desc = tool.description, !desc.isEmpty {
-                    Text(desc)
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                }
-
-                // Argument/filename
-                if let arg = tool.argument, !arg.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                        Text(arg)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.8))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
-
-                Divider()
-                    .background(Color.white.opacity(0.1))
-
-                // Token details
-                HStack(spacing: 12) {
-                    // Input tokens
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Input")
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 2) {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.green.opacity(0.8))
-                            Text(formatTokens(tool.inputTokens ?? tokenUsage.inputTokens))
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(.primary)
-                        }
-                    }
-
-                    // Output tokens
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Output")
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 2) {
-                            Image(systemName: "arrow.down")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.blue.opacity(0.8))
-                            Text(formatTokens(tool.outputTokens ?? tokenUsage.outputTokens))
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(.primary)
-                        }
-                    }
-
-                    // Cache read
-                    if (tool.cacheReadTokens ?? tokenUsage.cacheReadInputTokens) > 0 {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Cache")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundColor(.secondary)
-                            HStack(spacing: 2) {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(.green.opacity(0.8))
-                                Text(formatTokens(tool.cacheReadTokens ?? tokenUsage.cacheReadInputTokens))
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.green)
-                            }
-                        }
-                    }
-
-                    Spacer()
-
-                    // Timeout if present
-                    if let timeout = tool.timeout {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Timeout")
-                                .font(.system(size: 8, weight: .medium))
-                                .foregroundColor(.secondary)
-                            Text("\(timeout / 1000)s")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-
-        private func formatTokens(_ count: Int) -> String {
-            if count >= 1000 {
-                return String(format: "%.1fk", Double(count) / 1000.0)
-            }
-            return "\(count)"
-        }
-    }
-
-    // MARK: - Singular Telemetry Tool View (fallback for non-Claude tools)
-
-    private struct SingularTelemetryToolView: View {
-        let toolCall: ToolCall
-
-        private var sourceColor: Color {
-            switch toolCall.source {
-            case .codex:
-                return Color(red: 0.2, green: 0.45, blue: 0.9)
-            case .claudeCode:
-                return Color(red: 1.0, green: 0.55, blue: 0.2)
-            case .unknown:
-                return Color.gray
-            }
-        }
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 8) {
-                // Tool name and status
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(sourceColor)
-                        .frame(width: 10, height: 10)
-
-                    Text(toolCall.toolName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-
-                    Spacer()
-
-                    if toolCall.isActive {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: 16, height: 16)
-                    } else {
-                        Text(toolCall.formattedDuration)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                // Result or status
-                if !toolCall.isActive {
-                    HStack(spacing: 4) {
-                        Image(systemName: toolCall.isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(toolCall.isSuccess ? .green : .red)
-                        Text(toolCall.isSuccess ? "Completed" : "Failed")
-                            .font(.system(size: 11))
-                            .foregroundColor(toolCall.isSuccess ? .green : .red)
-                    }
-                }
-
-                // Tokens if available
-                if let tokens = toolCall.tokenCount, tokens > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                        Text("\(tokens) tokens")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                // Source badge
-                HStack {
-                    Spacer()
-                    Text(toolCall.source.displayName)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(sourceColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(sourceColor.opacity(0.15), in: Capsule())
-                }
-            }
-        }
-    }
-
     private func handleHover(_ hovering: Bool) {
         hoverTask?.cancel()
 
@@ -2474,7 +2247,6 @@ struct ClangNotchContentView: View {
             }
         }
 
-        hadActiveToolCalls = hasActiveNow
     }
 
     private func isCompletionToolCall(_ toolCall: ToolCall) -> Bool {

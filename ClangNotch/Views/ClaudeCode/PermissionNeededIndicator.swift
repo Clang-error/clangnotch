@@ -7,39 +7,6 @@
 
 import SwiftUI
 
-/// Full-size pulsing indicator with exclamation mark
-struct PermissionNeededIndicator: View {
-    let toolName: String?
-    @State private var isPulsing = false
-
-    var body: some View {
-        ZStack {
-            // Outer pulsing ring
-            Circle()
-                .stroke(Color.orange.opacity(0.5), lineWidth: 2)
-                .frame(width: 16, height: 16)
-                .scaleEffect(isPulsing ? 1.3 : 1.0)
-                .opacity(isPulsing ? 0 : 0.8)
-
-            // Inner solid circle
-            Circle()
-                .fill(Color.orange)
-                .frame(width: 10, height: 10)
-
-            // Exclamation mark
-            Image(systemName: "exclamationmark")
-                .font(.system(size: 6, weight: .bold))
-                .foregroundColor(.white)
-        }
-        .frame(width: 20, height: 20)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: false)) {
-                isPulsing = true
-            }
-        }
-    }
-}
-
 /// Compact pulsing dot for minimal views
 struct PermissionNeededIndicatorCompact: View {
     @State private var isPulsing = false
@@ -95,7 +62,6 @@ struct PermissionNeededBadge: View {
 
 #Preview {
     VStack(spacing: 20) {
-        PermissionNeededIndicator(toolName: "Bash")
         PermissionNeededIndicatorCompact()
         PermissionNeededBadge(toolName: "Bash")
     }

@@ -234,7 +234,6 @@ final class ClaudeUsageManager: ObservableObject {
                 opus: parseLimitDataOptional(usage.sevenDayOpus),
                 sonnet: parseLimitDataOptional(usage.sevenDaySonnet),
                 fable: parseLimitEntry(usage.fable),
-                extraUsage: nil,
                 fetchedAt: Date()
             )
             rateLimitedUntil = nil

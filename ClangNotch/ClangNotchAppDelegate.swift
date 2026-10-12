@@ -1,11 +1,10 @@
 import AppKit
 import SwiftUI
 
-final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate, SettingsWindowProvider {
+final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        AppModeConfig.current = .agentNotch
         NSApp.setActivationPolicy(.accessory)
 
         if TWorldCommand.runIfRequested() { return }

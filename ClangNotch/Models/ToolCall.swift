@@ -45,10 +45,6 @@ struct ToolCall: Identifiable, Codable, Equatable {
         }
     }
 
-    var isBuildTool: Bool {
-        toolName == "xcode_build" || toolName == "xcode_run"
-    }
-
     init(
         id: UUID = UUID(),
         toolName: String,

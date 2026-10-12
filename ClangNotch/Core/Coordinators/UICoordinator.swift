@@ -6,7 +6,6 @@ import Combine
 public final class UICoordinator: ObservableObject {
     public static let shared = UICoordinator()
 
-    @Published var isExpanded: Bool = false
     @Published private(set) var hasNotch: Bool = false
     @Published private(set) var isVisible: Bool = true
 
@@ -164,13 +163,8 @@ public final class UICoordinator: ObservableObject {
 
         let panel = NotchPanel(contentRect: frame)
         panel.setContent {
-            if AppModeConfig.current == .agentNotch {
-                ClangNotchContentView()
-                    .environmentObject(TelemetryCoordinator.shared)
-            } else {
-                NotchContentView()
-                    .environmentObject(MCPCoordinator.shared)
-            }
+            ClangNotchContentView()
+                .environmentObject(TelemetryCoordinator.shared)
         }
 
         // Add to the notch space for proper layering
@@ -205,12 +199,6 @@ public final class UICoordinator: ObservableObject {
         isVisible = false
         notchPanel?.alphaValue = 0
         notchPanel?.ignoresMouseEvents = true
-    }
-
-    public func cleanup() {
-        notchPanel?.removeFromNotchSpace()
-        notchPanel?.close()
-        notchPanel = nil
     }
 }
 

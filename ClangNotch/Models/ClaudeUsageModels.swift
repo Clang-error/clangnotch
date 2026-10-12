@@ -81,7 +81,6 @@ struct ClaudeUsageData: Equatable {
     let opus: LimitData?
     let sonnet: LimitData?
     let fable: LimitData?
-    let extraUsage: ExtraUsageData?
     let fetchedAt: Date
 
     /// True when any window is spent. The endpoint carries no explicit "blocked"
@@ -97,7 +96,6 @@ struct ClaudeUsageData: Equatable {
         opus: nil,
         sonnet: nil,
         fable: nil,
-        extraUsage: nil,
         fetchedAt: Date()
     )
 
@@ -143,30 +141,6 @@ struct ClaudeUsageData: Equatable {
             }
         }
     }
-
-    struct ExtraUsageData: Equatable {
-        let enabled: Bool
-        let usedDollars: Double?
-        let limitDollars: Double?
-        let currency: String
-
-        var percentage: Double? {
-            guard let used = usedDollars, let limit = limitDollars, limit > 0 else {
-                return nil
-            }
-            return (used / limit) * 100
-        }
-
-        var formattedUsed: String {
-            guard let used = usedDollars else { return "—" }
-            return String(format: "$%.2f", used)
-        }
-
-        var formattedLimit: String {
-            guard let limit = limitDollars else { return "—" }
-            return String(format: "$%.2f", limit)
-        }
-    }
 }
 
 // MARK: - Usage Level
@@ -178,31 +152,6 @@ enum UsageLevel {
 }
 
 // MARK: - Refresh Mode
-
-enum UsageRefreshMode: String, CaseIterable, Identifiable {
-    case smart = "Smart"
-    case fixed = "Fixed"
-
-    var id: String { rawValue }
-}
-
-enum UsageRefreshInterval: Int, CaseIterable, Identifiable {
-    case oneMinute = 60
-    case threeMinutes = 180
-    case fiveMinutes = 300
-    case tenMinutes = 600
-
-    var id: Int { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .oneMinute: return "1 minute"
-        case .threeMinutes: return "3 minutes"
-        case .fiveMinutes: return "5 minutes"
-        case .tenMinutes: return "10 minutes"
-        }
-    }
-}
 
 /// Smart monitoring modes (adaptive based on activity)
 enum UsageMonitoringMode: String {

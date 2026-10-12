@@ -202,13 +202,9 @@ struct AgentsSettingsTab: View {
 
             Section {
                 Toggle(L("JSONL 세션 추적", "Enable JSONL session tracking"), isOn: $settings.enableClaudeCodeJSONL)
-                Toggle(L("세션 점 표시", "Show session dots"), isOn: $settings.showSessionDots)
-                    .disabled(!settings.enableClaudeCodeJSONL)
                 Toggle(L("권한 대기 표시", "Show permission indicator"), isOn: $settings.showPermissionIndicator)
                     .disabled(!settings.enableClaudeCodeJSONL)
                 Toggle(L("할 일 목록 표시", "Show todo list"), isOn: $settings.showTodoList)
-                    .disabled(!settings.enableClaudeCodeJSONL)
-                Toggle(L("생각 중 상태 표시", "Show thinking state"), isOn: $settings.showThinkingState)
                     .disabled(!settings.enableClaudeCodeJSONL)
             } header: {
                 Text("Claude Code")
@@ -237,8 +233,6 @@ struct AgentsSettingsTab: View {
 
             Section {
                 Toggle(L("사용량 한도 추적", "Enable usage quota tracking"), isOn: $settings.enableClaudeUsage)
-                Toggle(L("닫힌 노치에 표시", "Show in closed notch"), isOn: $settings.showClaudeUsageInClosedNotch)
-                    .disabled(!settings.enableClaudeUsage)
 
                 ClaudeUsageSettingsView()
                     .disabled(!settings.enableClaudeUsage)
@@ -256,8 +250,6 @@ struct AgentsSettingsTab: View {
 
             Section {
                 Toggle(L("토큰 수 표시", "Show token count"), isOn: $settings.showNotchTokenCount)
-                Toggle(L("입력/출력 토큰 표시", "Show input/output tokens"), isOn: $settings.showNotchTokenBreakdown)
-                Toggle(L("비용 표시", "Show price"), isOn: $settings.showNotchCost)
                 Toggle(L("컨텍스트 진행 막대 표시", "Show context progress bar"), isOn: $settings.showContextProgress)
 
                 Stepper(value: $settings.contextTokenLimit, in: 50_000...1_000_000, step: 50_000) {
@@ -277,12 +269,6 @@ struct AgentsSettingsTab: View {
                             .foregroundColor(.secondary)
                     }
                 }
-
-                Picker(L("툴 표시 방식", "Tool display mode"), selection: $settings.toolDisplayMode) {
-                    Text(L("최근 이벤트 목록", "Recent events list")).tag("list")
-                    Text(L("단일 상세 이벤트", "Single detailed event")).tag("singular")
-                }
-                .pickerStyle(.segmented)
             } header: {
                 Text(L("노치 표시", "Display in Notch"))
             }

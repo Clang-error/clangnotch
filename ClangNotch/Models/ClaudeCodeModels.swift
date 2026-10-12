@@ -57,21 +57,6 @@ struct ClaudeSession: Identifiable, Codable, Equatable {
         return URL(fileURLWithPath: workspacePath).lastPathComponent
     }
 
-    /// SF Symbol inferred from the IDE lock's `ideName`. Used as a fallback for the
-    /// environment icon when there's no JSONL entrypoint to read (e.g. an IDE lock
-    /// session with no Claude Code history). VS Code forks (Antigravity, Cursor,
-    /// Windsurf, VS Code, Zed) all get the code "</>" symbol. Terminal synthetic
-    /// sessions return nil — their real entrypoint comes from the JSONL instead.
-    var ideIcon: String? {
-        let name = ideName.lowercased()
-        if name == "terminal" { return nil }
-        if name.contains("code") || name.contains("cursor") || name.contains("antigravity")
-            || name.contains("windsurf") || name.contains("zed") || name.contains("vscode") {
-            return "chevron.left.forwardslash.chevron.right"
-        }
-        return "macwindow"
-    }
-
     /// Terminal session ID extracted from workspace fragment (nil for IDE sessions)
     var terminalSessionId: String? {
         guard let workspace = workspaceFolders.first else { return nil }
@@ -296,9 +281,6 @@ struct ClaudeCodeState: Equatable {
 
     var tokenUsage: ClaudeTokenUsage = ClaudeTokenUsage()
 
-    var lastMessage: String = ""
-    var lastMessageTime: Date?
-
     var activeTools: [ClaudeToolExecution] = []
     var recentTools: [ClaudeToolExecution] = []
 
@@ -347,45 +329,4 @@ struct ClaudeCodeState: Equatable {
 
     /// True when the session is actively processing (thinking or running tools)
     var isActive: Bool { turnStartTime != nil || isThinking || hasActiveTools }
-}
-
-// MARK: - Daily Stats (from stats-cache.json)
-
-/// Daily activity stats from ~/.claude/stats-cache.json
-struct ClaudeDailyStats: Equatable {
-    var messageCount: Int = 0
-    var toolCallCount: Int = 0
-    var sessionCount: Int = 0
-    var tokensUsed: Int = 0
-    var date: String = ""
-
-    var isEmpty: Bool { date.isEmpty }
-}
-
-/// Stats cache structure matching ~/.claude/stats-cache.json
-struct ClaudeStatsCache: Codable {
-    let dailyActivity: [DailyActivity]?
-    let dailyModelTokens: [DailyModelTokens]?
-    let modelUsage: [String: ModelUsageStats]?
-    let totalSessions: Int?
-    let totalMessages: Int?
-
-    struct DailyActivity: Codable {
-        let date: String
-        let messageCount: Int?
-        let sessionCount: Int?
-        let toolCallCount: Int?
-    }
-
-    struct DailyModelTokens: Codable {
-        let date: String
-        let tokensByModel: [String: Int]?
-    }
-
-    struct ModelUsageStats: Codable {
-        let inputTokens: Int?
-        let outputTokens: Int?
-        let cacheReadInputTokens: Int?
-        let cacheCreationInputTokens: Int?
-    }
 }

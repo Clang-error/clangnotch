@@ -69,10 +69,3 @@ func getClosedNotchSize(screen: NSScreen? = nil) -> CGSize {
 
     return CGSize(width: notchWidth, height: notchHeight + 2)
 }
-
-/// Get the screen frame
-@MainActor
-func getScreenFrame(_ screen: NSScreen? = nil) -> CGRect? {
-    let selectedScreen = screen ?? NotchDetector.notchScreen
-    return selectedScreen?.frame
-}

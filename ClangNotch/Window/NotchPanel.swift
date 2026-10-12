@@ -53,11 +53,6 @@ final class NotchPanel: NSPanel {
         NotchSpaceManager.shared.notchSpace.windows.insert(self)
     }
 
-    /// Remove this window from the notch space
-    func removeFromNotchSpace() {
-        NotchSpaceManager.shared.notchSpace.windows.remove(self)
-    }
-
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 }

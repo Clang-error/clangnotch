@@ -79,9 +79,6 @@ public final class TelemetryCoordinator: ObservableObject {
     @Published private(set) var recentToolCalls: [ToolCall] = []
     @Published private(set) var sessionTokenTotal: Int = 0
     @Published private(set) var sessionCacheTokens: Int = 0
-    @Published private(set) var errorOutput: String = ""
-    @Published private(set) var currentConversationId: String?
-    @Published private(set) var currentModel: String?
     @Published private(set) var telemetrySource: TelemetrySource = .unknown
     @Published private(set) var isAgentActive: Bool = false
     @Published private(set) var lastActivityTime: Date?
@@ -129,10 +126,8 @@ public final class TelemetryCoordinator: ObservableObject {
                 self?.handle(request)
             }
         }
-        server.onError = { [weak self] message in
-            Task { @MainActor in
-                self?.errorOutput.append(contentsOf: message + "\n")
-            }
+        server.onError = { message in
+            debugLog("[Telemetry] OTLP server error: \(message)")
         }
     }
 
@@ -145,7 +140,6 @@ public final class TelemetryCoordinator: ObservableObject {
     public func start() async {
         guard state == .stopped else { return }
         state = .starting
-        errorOutput = ""
 
         do {
             guard let port = UInt16(exactly: AppSettings.shared.telemetryOtlpPort) else {
@@ -292,7 +286,6 @@ public final class TelemetryCoordinator: ObservableObject {
             }
         } catch {
             // print("[Telemetry] OTLP log decode error: \(error)")
-            errorOutput.append("OTLP log decode error: \(error.localizedDescription)\n")
         }
     }
 
@@ -307,7 +300,6 @@ public final class TelemetryCoordinator: ObservableObject {
             }
         } catch {
             // print("[Telemetry] OTLP metric decode error: \(error)")
-            errorOutput.append("OTLP metric decode error: \(error.localizedDescription)\n")
         }
     }
 
@@ -363,12 +355,6 @@ public final class TelemetryCoordinator: ObservableObject {
     private func handleClaudeCodeMetric(_ point: TelemetryMetricPoint) {
         let nameKey = point.name.lowercased()
         let typeAttr = point.attributes["type"]?.stringValue?.lowercased() ?? ""
-        let modelAttr = point.attributes["model"]?.stringValue
-
-        // Update model if available
-        if let model = modelAttr {
-            currentModel = model
-        }
 
         // Token usage: claude_code.token.usage with type attribute
         if nameKey.contains("token") {
@@ -388,7 +374,7 @@ public final class TelemetryCoordinator: ObservableObject {
 
         // Cost usage: claude_code.cost.usage
         if nameKey.contains("cost") {
-            // print("[Telemetry] Claude cost: $\(String(format: "%.4f", point.value)) model=\(modelAttr ?? "?")")
+            // print("[Telemetry] Claude cost: $\(String(format: "%.4f", point.value)) ")
             return
         }
 
@@ -449,14 +435,6 @@ public final class TelemetryCoordinator: ObservableObject {
         guard let eventName else { return }
 
         // print("[Telemetry] Event: '\(eventName)'")
-
-        // Extract common metadata
-        if let conversationId = attributes.stringValue(for: ["conversation.id", "conversation_id"]) {
-            currentConversationId = conversationId
-        }
-        if let model = attributes.stringValue(for: ["model"]) {
-            currentModel = model
-        }
 
         // Extract Claude Code specific metadata
         if let sessionId = attributes.stringValue(for: ["session.id", "session_id"]) {
@@ -664,7 +642,7 @@ public final class TelemetryCoordinator: ObservableObject {
             } else if kind.contains(".done") || kind.contains("_done") {
                 // Tool call completed
                 if let active = activeCodexToolCalls.removeValue(forKey: callId) {
-                    toolCallTracker.recordToolEnd(id: callId, success: true, durationMs: nil, tokens: nil, endTime: endTime)
+                    toolCallTracker.recordToolEnd(id: callId, success: true, tokens: nil, endTime: endTime)
                     return active.name
                 }
                 return name
@@ -810,7 +788,6 @@ public final class TelemetryCoordinator: ObservableObject {
         toolCallTracker.recordToolEnd(
             id: callId,
             success: success,
-            durationMs: durationMs.map { Int64($0) },
             tokens: nil,
             endTime: endTime
         )
@@ -849,7 +826,6 @@ public final class TelemetryCoordinator: ObservableObject {
         let outputTokens = attributes.intValue(for: ["output_tokens", "gen_ai.usage.output_tokens"])
         let cacheReadTokens = attributes.intValue(for: ["cache_read_input_tokens", "cache_read_tokens"])
         let cacheCreationTokens = attributes.intValue(for: ["cache_creation_input_tokens", "cache_creation_tokens"])
-        let model = attributes.stringValue(for: ["model", "gen_ai.request.model"])
         let statusCode = attributes.intValue(for: ["http.response.status_code", "status_code"])
         let costUsd = attributes.doubleValue(for: ["cost_usd", "cost", "price"])
 
@@ -858,11 +834,6 @@ public final class TelemetryCoordinator: ObservableObject {
             startTime = endTime.addingTimeInterval(-TimeInterval(durationMs) / 1000.0)
         } else {
             startTime = endTime
-        }
-
-        // Update model if available
-        if let model {
-            currentModel = model
         }
 
         // Update token totals
@@ -897,7 +868,7 @@ public final class TelemetryCoordinator: ObservableObject {
             source: source
         )
 
-        // print("[Telemetry] Claude API: model=\(model ?? "?") in=\(inputTokens ?? 0) out=\(outputTokens ?? 0) cost=$\(String(format: "%.4f", costUsd ?? 0))")
+        // print("[Telemetry] Claude API: in=\(inputTokens ?? 0) out=\(outputTokens ?? 0) cost=$\(String(format: "%.4f", costUsd ?? 0))")
     }
 
     private func handleClaudeApiError(attributes: [String: TelemetryAttributeValue], endTime: Date, source: TelemetrySource) {
@@ -964,7 +935,6 @@ public final class TelemetryCoordinator: ObservableObject {
         recordActivity()
         let toolName = attributes.stringValue(for: ["tool_name", "tool.name", "name"]) ?? "unknown"
         let callId = attributes.stringValue(for: ["call_id", "tool_call_id", "id"]) ?? UUID().uuidString
-        let durationMs = attributes.intValue(for: ["duration_ms", "execution_time_ms"])
         let success = attributes.boolValue(for: ["success", "is_success"]) ?? true
         let tokens = attributes.intValue(for: ["token_count", "tokens"])
 
@@ -974,12 +944,11 @@ public final class TelemetryCoordinator: ObservableObject {
         toolCallTracker.recordToolEnd(
             id: callId,
             success: success,
-            durationMs: durationMs.map { Int64($0) },
             tokens: tokens,
             endTime: endTime
         )
 
-        // print("[Telemetry] Claude tool result: \(toolName) success=\(success) duration=\(durationMs ?? 0)ms")
+        // print("[Telemetry] Claude tool result: \(toolName) success=\(success)")
     }
 
     /// Handle generic Claude Code events that don't match specific types
@@ -1105,7 +1074,6 @@ public final class TelemetryCoordinator: ObservableObject {
                 toolCallTracker.recordToolEnd(
                     id: id,
                     success: success,
-                    durationMs: durationMs,
                     tokens: tokens,
                     endTime: endTime
                 )
