@@ -27,15 +27,22 @@ struct AudioApp: Identifiable {
 /// a gain-adjusted copy to the default output. Only alive while gain < 1.0.
 final class TapSession {
     let gainBox: GainBox
+    /// The output the copy plays to; it doesn't follow a switch to another device.
+    let outputUID: String
     private var tapID = AudioObjectID(0)
     private var aggID = AudioObjectID(0)
     private var procID: AudioDeviceIOProcID?
 
-    init?(processObjectID: AudioObjectID, gain: Float, outputUID: String) {
-        gainBox = GainBox(gain)
-
+    convenience init?(processObjectID: AudioObjectID, gain: Float, outputUID: String) {
         let desc = CATapDescription(stereoMixdownOfProcesses: [processObjectID])
         desc.name = "ClangNotchMix"
+        self.init(description: desc, gain: gain, outputUID: outputUID)
+    }
+
+    init?(description desc: CATapDescription, gain: Float, outputUID: String) {
+        gainBox = GainBox(gain)
+        self.outputUID = outputUID
+
         desc.muteBehavior = .mutedWhenTapped
         guard AudioHardwareCreateProcessTap(desc, &tapID) == noErr,
               let tapUID = AudioMixerManager.strProp(tapID, kAudioTapPropertyUID) else { return nil }
@@ -128,6 +135,18 @@ final class AudioMixerManager: ObservableObject {
         timer?.invalidate(); timer = nil
         for s in sessions.values { s.stop() }
         sessions = [:]
+        SoftwareVolume.shared.apply()
+    }
+
+    /// Processes with their own session. A second tap still hears a process another tap
+    /// muted (measured 2026-10-14), so `SoftwareVolume`'s global tap must leave these out.
+    var tappedProcessObjects: [AudioObjectID] {
+        apps.filter { sessions[$0.pid] != nil }.map(\.processObjectID)
+    }
+
+    /// The software main volume moved; per-app copies bypass its global tap, so scale them too.
+    func mainVolumeChanged() {
+        for app in apps { sessions[app.pid]?.gainBox.value = app.gain * SoftwareVolume.shared.multiplier }
     }
 
     /// Warn (don't lock) when an app holds the mic while output is Bluetooth — that's when a
@@ -156,8 +175,9 @@ final class AudioMixerManager: ObservableObject {
             if gain >= 0.99 {
                 sessions[pid] = nil
                 Task.detached(priority: .userInitiated) { s.stop() }
+                SoftwareVolume.shared.apply()
             } else {
-                s.gainBox.value = gain
+                s.gainBox.value = gain * SoftwareVolume.shared.multiplier
             }
             return
         }
@@ -176,8 +196,9 @@ final class AudioMixerManager: ObservableObject {
                 if app.gain >= 0.99 {
                     Task.detached(priority: .userInitiated) { session.stop() }
                 } else {
-                    session.gainBox.value = app.gain
+                    session.gainBox.value = app.gain * SoftwareVolume.shared.multiplier
                     self.sessions[pid] = session
+                    SoftwareVolume.shared.apply()
                 }
             }
         }
@@ -185,6 +206,14 @@ final class AudioMixerManager: ObservableObject {
 
     private func refresh() {
         updateMicWarning()
+        // After an output switch, drop sessions still playing to the old device; the loop
+        // below rebuilds them for the new one.
+        let outputUID = Self.defaultOutputUID()
+        for (pid, s) in sessions where s.outputUID != outputUID {
+            sessions[pid] = nil
+            Task.detached(priority: .userInitiated) { s.stop() }
+            SoftwareVolume.shared.apply()
+        }
         let outputting = Self.outputtingProcesses()
         let saved = savedGains
         var list: [AudioApp] = []
@@ -205,6 +234,7 @@ final class AudioMixerManager: ObservableObject {
         // Tear down sessions for apps that stopped outputting / quit (keep the saved gain).
         for (pid, s) in sessions where !livePids.contains(pid) {
             s.stop(); sessions[pid] = nil
+            SoftwareVolume.shared.apply()
         }
         apps = list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }

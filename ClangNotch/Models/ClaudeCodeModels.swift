@@ -132,6 +132,8 @@ struct ClaudeToolExecution: Identifiable, Equatable {
     // New fields from JSONL
     var description: String?
     var timeout: Int?
+    /// Edit/Write's removed and added lines, for the 세션 화면.
+    var change: ToolChange?
     var inputTokens: Int?
     var outputTokens: Int?
     var cacheReadTokens: Int?
@@ -252,6 +254,34 @@ struct ClaudeMessage: Identifiable, Equatable {
 struct ClaudeInputRequest: Identifiable, Equatable {
     let id: String
     let questions: [AgentInputQuestion]
+    /// The Claude desktop app's next-step box (`mcp__ccd_turn__wrap_up` with an `ask`). Its
+    /// tool result comes back at once, so only the user's next message ends it.
+    var isWrapUp = false
+    /// The box's explanation above its question.
+    var recap: String?
+
+    /// A box asking the user something, or nil for a plain recap. Its buttons only send a
+    /// prepared message in the app, so the notch shows them without answering.
+    static func wrapUp(id: String, input: Any?) -> ClaudeInputRequest? {
+        // Most boxes with a question carry no `blocked` at all; only `ask` marks one.
+        guard let raw = input as? [String: Any], let ask = raw["ask"] as? String,
+              !ask.isEmpty else { return nil }
+        let options = (raw["actions"] as? [[String: Any]] ?? []).compactMap { action -> AgentInputOption? in
+            guard let label = action["label"] as? String else { return nil }
+            return AgentInputOption(label: label, description: action["message"] as? String ?? "")
+        }
+        var request = ClaudeInputRequest(id: id, questions: [
+            AgentInputQuestion(header: "Next step", question: ask, options: options)
+        ])
+        request.isWrapUp = true
+        request.recap = raw["recap"] as? String
+        return request
+    }
+
+    private init(id: String, questions: [AgentInputQuestion]) {
+        self.id = id
+        self.questions = questions
+    }
 
     init(id: String, input: Any?) {
         self.id = id
@@ -316,11 +346,6 @@ struct ClaudeCodeState: Equatable {
 
     /// Last stop_reason from Claude (e.g., "end_turn", "tool_use")
     var lastStopReason: String?
-
-    /// True when the session completed its last response (stop_reason = end_turn and not active)
-    var isSessionComplete: Bool {
-        lastStopReason == "end_turn" && !isThinking && activeTools.isEmpty
-    }
 
     // Convenience accessors
     var contextPercentage: Double { tokenUsage.contextPercentage }

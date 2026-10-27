@@ -43,6 +43,13 @@ enum SessionAppDestination: Equatable, Sendable {
         }
     }
 
+    var isTerminal: Bool { self == .terminal || self == .ssh }
+
+    /// The notch's go-to-session button: a terminal, or a GUI app (desktop app or editor).
+    var openTitle: String {
+        isTerminal ? L("터미널 열기", "Open terminal") : L("GUI 열기", "Open app")
+    }
+
     static func editor(named name: String) -> Self? {
         let name = name.lowercased()
         if name.contains("antigravity") { return .antigravity }

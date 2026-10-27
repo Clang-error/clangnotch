@@ -15,9 +15,6 @@ public final class AppSettings: ObservableObject {
     @AppStorage("showSourceClaudeCode") public var showSourceClaudeCode: Bool = true
     @AppStorage("showSourceUnknown") public var showSourceUnknown: Bool = false
 
-    // Antigravity (Gemini) CLI activity in the notch
-    @AppStorage("enableAntigravity") public var enableAntigravity: Bool = true
-
     // Clipboard history (NSPasteboard polling, text-only, memory-only)
     @AppStorage("enableClipboardHistory") public var enableClipboardHistory: Bool = true
 
@@ -30,6 +27,10 @@ public final class AppSettings: ObservableObject {
     // Keyboard lock (CGEventTap-based system-wide keyboard block, needs Accessibility permission)
     @AppStorage("enableKeyboardLock") public var enableKeyboardLock: Bool = false
 
+    // "볼륨·밝기 표시 바꾸기": replace macOS volume/brightness banners with our 조절창 and
+    // center the other system banners (SystemBannerCenterer + SystemControlOSD, needs Accessibility)
+    @AppStorage("centerSystemBanners") public var centerSystemBanners: Bool = true
+
     // Internet speed test (ping/download/upload against Cloudflare's public endpoints).
     // Only ever runs when the user presses Test in the tab.
     @AppStorage("enableSpeedTest") public var enableSpeedTest: Bool = true
@@ -39,6 +40,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("enableNetworkName") public var enableNetworkName: Bool = true
 
     // Exact hotspot name; an empty value disables T world quota display and polling.
+    /// SKT shared data (T world). Off by default: it needs the user's own SKT account.
+    @AppStorage("enableTWorld") public var enableTWorld: Bool = false
     @AppStorage("tworldHotspotSSID") public var tworldHotspotSSID: String = "아이폰"
 
     // Battery levels for Mac, Bluetooth accessories and iOS devices.
@@ -72,6 +75,10 @@ public final class AppSettings: ObservableObject {
     @AppStorage("enableClaudeCodeJSONL") public var enableClaudeCodeJSONL: Bool = true
     @AppStorage("showPermissionIndicator") public var showPermissionIndicator: Bool = true
     @AppStorage("showTodoList") public var showTodoList: Bool = true
+    /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
+    @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
+    /// 0–1, on top of the system volume.
+    @AppStorage("notchSoundsVolume") public var notchSoundsVolume: Double = 0.7
     /// Comma-separated `~/.ssh/config` host aliases whose Claude Code sessions are mirrored
     /// into the notch over an app-owned SSH reverse tunnel (see RemoteClaudeManager).
     @AppStorage("remoteClaudeHosts") public var remoteClaudeHosts: String = ""
@@ -80,7 +87,6 @@ public final class AppSettings: ObservableObject {
     @AppStorage("enableCodexJSONL") public var enableCodexJSONL: Bool = true
 
     // Context and Display Settings
-    @AppStorage("contextTokenLimit") public var contextTokenLimit: Int = 200_000
     @AppStorage("showContextProgress") public var showContextProgress: Bool = true
 
     // Claude Usage Quota Tracking
@@ -90,6 +96,8 @@ public final class AppSettings: ObservableObject {
 
     /// App copy language — settings window, notch and menu bar popover: "ko" (default) or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.
+    /// Daily check of GitHub Releases for a newer version (`UpdateChecker`).
+    @AppStorage("checkForUpdates") public var checkForUpdates: Bool = true
     @AppStorage("settingsLanguage") public var settingsLanguage: String = "ko"
 
     public init() {}

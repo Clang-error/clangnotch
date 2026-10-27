@@ -1,129 +1,73 @@
+<p align="center">
+  <img src="icon.png" width="128" alt="ClangNotch 아이콘">
+</p>
 
 <h1 align="center">ClangNotch</h1>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/AppGram/agentnotch/main/agentnotch-demo.png" alt="ClangNotch Icon">
-</p>
-
-<p align="center">
-  <strong>Real-time AI coding assistant telemetry in your Mac's notch</strong>
-</p>
-
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#usage">Usage</a> •
-  <a href="#requirements">Requirements</a>
+  Claude Code와 Codex가 일하는 걸 맥 노치에서.
 </p>
 
 ---
 
-## What is ClangNotch?
+ClangNotch는 노치에 붙어서 코딩 에이전트가 지금 무슨 도구를 돌리는지, 턴이 끝났는지, 내 답을 기다리는지 보여 줍니다. Claude Code와 Codex가 원래 남기는 세션 파일을 읽기 때문에 그쪽에서 따로 설정할 건 없습니다.
 
-ClangNotch is a sleek macOS menu bar app that lives in your Mac's notch, providing real-time visibility into your AI coding assistants. Watch as **Claude Code** and **OpenAI Codex** think, read files, and execute tools — all without leaving your editor.
 
-## Features
+## 설치
 
-### 🎯 **Real-Time Tool Tracking**
-See every tool call as it happens — file reads, code edits, shell commands, and more. Know exactly what your AI assistant is doing at any moment.
+[Releases](../../releases)에서 `ClangNotch.dmg`를 받아 응용 프로그램 폴더로 끌어다 놓습니다.
 
-### 📊 **Token & Cost Monitoring**
-Track token usage (input/output) and estimated costs in real-time. Never be surprised by API bills again.
+공증을 받지 않은 앱이라 처음 실행할 때 macOS가 막습니다. **시스템 설정 → 개인정보 보호 및 보안**에서 **그래도 열기**를 누르면 됩니다.
 
-### 🎨 **Source-Aware Design**
-- **Orange** indicator for Claude Code
-- **Blue** indicator for Codex
-- **Light blue** for unknown sources
+macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위쪽에 같은 모양으로 뜹니다.
 
-Visual distinction lets you know which AI is active at a glance.
+## 기능
 
-### 🔔 **Completion Detection**
-Get notified when your AI assistant finishes a task. No more wondering "is it still thinking?"
+**에이전트**
 
-### ⚡ **Lightweight & Native**
-- Lives in your Mac's notch — zero screen real estate used
-- Native macOS app — fast, efficient, battery-friendly
-- Expands on hover to show details
+- Claude Code(CLI, 데스크톱 앱, VS Code)와 Codex(CLI, 데스크톱 앱)의 실시간 상태. `~/.claude/projects`와 `~/.codex/sessions`를 읽음
+- 닫힌 노치에 지금 도는 도구 표시, 턴이 끝나면 체크 표시와 함께 Done
+- 권한 요청과 `AskUserQuestion` 질문에 노치에서 바로 답하기
+- 폴더별 세션 목록. 세션을 누르면 단계별 진행과 파일 변경 내용이 보임
+- Claude와 Codex의 5시간·주간 사용량
+- SSH 서버에서 도는 Claude Code 세션(역방향 터널)
 
-### ⚙️ **Configurable**
-- Show/hide token counts
-- Show/hide cost estimates
-- Filter by source (Claude/Codex)
-- Toggle menu bar icon
+**도구**
 
-## Installation
+펼친 노치의 탭으로 하나씩 들어 있고, 설정에서 끌 수 있습니다.
 
-### Homebrew (Recommended)
+- 클립보드 기록(텍스트만, 메모리에만 보관)
+- 앱별 볼륨
+- iPad 사이드카 조절
+- 맥, 블루투스 기기, 아이폰·아이패드 배터리
+- 속도 측정과 네트워크 정보
+- 청소용 키보드 잠금
 
-```bash
-brew tap AppGram/tap
-brew install --cask agentnotch
-```
+볼륨·밝기 키를 누르면 시스템 표시 대신 ClangNotch 조절창이 뜹니다.
 
-### Manual Download
+## 권한
 
-1. Download `ClangNotch-1.0.0.zip` from [Releases](https://github.com/AppGram/agentnotch/releases)
-2. Unzip and drag `ClangNotch.app` to `/Applications`
-3. Open ClangNotch
+| 권한 | 쓰는 곳 |
+|---|---|
+| 손쉬운 사용 | 볼륨·밝기 키, 키보드 잠금, 시스템 표시 옮기기 |
+| 알림 | 배터리 부족 알림 |
+| 위치 | Wi-Fi 이름 읽기(macOS가 위치 권한 없이는 안 알려 줌) |
+| 오디오 캡처 | 앱별 볼륨 |
 
-## Usage
+노치에서 승인하기를 쓰면 `~/.claude/settings.json`과 `~/.codex/hooks.json`에 훅이 추가되고, 원래 파일은 백업해 둡니다. Codex는 새 훅을 `/hooks`에서 한 번 신뢰해야 실행합니다.
 
-### Setup with Claude Code
+아이폰·아이패드 배터리를 보려면 [libimobiledevice](https://libimobiledevice.org)가 필요합니다. Battery 탭의 설치 버튼을 누르면 터미널에서 `brew install libimobiledevice`를 실행합니다.
 
-Add to your Claude Code configuration to send telemetry:
+## 빌드
 
 ```bash
-# Set OTEL endpoint to ClangNotch (default port 4318)
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+git clone https://github.com/Clang-error/clangnotch.git
+cd clangnotch
+xcodebuild -project ClangNotch.xcodeproj -scheme ClangNotch -configuration Release build
 ```
 
-### Setup with Codex
+빌드 전에 프로젝트의 Signing 설정에서 본인 개발 팀으로 바꿔 주세요.
 
-ClangNotch listens for **OTLP/HTTP** on port **4318** by default, and currently decodes **OTLP logs** (`/v1/logs`) and **metrics** (`/v1/metrics`).
+## 라이선스
 
-Codex CLI (v0.79+) uses `~/.codex/config.toml` with an `[otel]` section (not `[telemetry]`). Add:
-
-```toml
-[analytics]
-enabled = true
-
-[otel]
-# ClangNotch currently does not decode OTLP traces, so disable trace export to avoid noisy errors.
-trace_exporter = "none"
-
-[otel.exporter.otlp-http]
-endpoint = "http://localhost:4318/v1/logs"
-protocol = "binary"
-```
-
-### Using the App
-
-1. **Launch** — ClangNotch appears in your notch (or menu bar on non-notch Macs)
-2. **Hover** — Expand to see recent tool calls with details
-3. **Click** — Open full view with token breakdown and settings
-4. **Settings** — Configure display options via the gear icon
-
-## Screenshots
-
-| Collapsed | Expanded |
-|-----------|----------|
-| Minimal notch indicator | Full tool call history |
-
-## Requirements
-
-- macOS 14.0 (Sonoma) or later
-- Mac with notch (MacBook Pro 14"/16" 2021+) or any Mac (falls back to menu bar)
-
-## Privacy
-
-ClangNotch runs **100% locally**. No data is sent anywhere — it only receives telemetry from your local AI tools.
-
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-<p align="center">
-  Made with ❤️ for developers who love AI coding assistants
-</p>
+[MIT](LICENSE)

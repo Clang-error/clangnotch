@@ -22,6 +22,11 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             RemoteClaudeManager.shared.apply()
         }
+
+        Task { @MainActor in
+            SystemBannerCenterer.shared.syncWithSettings()
+            UpdateChecker.shared.syncWithSettings()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

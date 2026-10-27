@@ -37,6 +37,9 @@ struct CodexTokenUsage: Equatable {
     var cachedInputTokens: Int = 0
     var reasoningOutputTokens: Int = 0
     var totalTokens: Int = 0
+    /// What the last turn sent and got back (`last_token_usage`) — the part sitting in the
+    /// context window. `totalTokens` adds up every turn, so it outgrows the window.
+    var contextTokens: Int = 0
     var modelContextWindow: Int = 200_000
 
     var contextPercentage: Double {
@@ -81,6 +84,8 @@ struct CodexToolExecution: Identifiable, Equatable {
 
     // Additional info
     var workdir: String?
+    /// apply_patch's removed and added lines, for the 세션 화면.
+    var change: ToolChange?
     var output: String?
     var exitCode: Int?
 

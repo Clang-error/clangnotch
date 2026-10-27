@@ -21,7 +21,11 @@ final class NotchViewModel: ObservableObject {
     @Published private(set) var isSettlingClosed = false
     private var settleTask: Task<Void, Never>?
 
-    private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
+    private var animationSpring: Animation {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            ? .interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
+            : notchOpenSpring
+    }
     private var peekTask: Task<Void, Never>?
     private var closedPresentationWidth: CGFloat
     private var hasMeasuredClosedPresentation = false

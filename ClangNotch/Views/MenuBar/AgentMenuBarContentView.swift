@@ -14,8 +14,7 @@ enum MenuBarActivity: Equatable {
         if permissions > 0 { return .needsPermission(permissions) }
         let claude = ClaudeCodeManager.shared.sessionStates.values.filter(\.isActive).count
         let codex = CodexManager.shared.sessionStates.values.filter(\.isActive).count
-        let antigravity = AntigravityManager.shared.state.isActive ? 1 : 0
-        let count = claude + codex + antigravity
+        let count = claude + codex
         return count > 0 ? .working(claude: claude > 0, codex: codex > 0, count: count) : .idle
     }
 
@@ -57,7 +56,6 @@ enum MenuBarActivity: Equatable {
 struct AgentMenuBarContentView: View {
     @ObservedObject private var claudeCodeManager = ClaudeCodeManager.shared
     @ObservedObject private var codexManager = CodexManager.shared
-    @ObservedObject private var antigravityManager = AntigravityManager.shared
     @ObservedObject private var tworld = TWorldSession.shared
     @ObservedObject private var network = NetworkInfoManager.shared
     @StateObject private var settings = AppSettings.shared
@@ -145,7 +143,7 @@ struct AgentMenuBarContentView: View {
             }
 
             // Same gate as the Speed tab: only while on the configured iPhone hotspot.
-            if !settings.tworldHotspotSSID.isEmpty, network.ssid == settings.tworldHotspotSSID,
+            if settings.enableTWorld, !settings.tworldHotspotSSID.isEmpty, network.ssid == settings.tworldHotspotSSID,
                !tworld.requiresLogin || tworld.balance != nil {
                 TWorldUsageView()
             }

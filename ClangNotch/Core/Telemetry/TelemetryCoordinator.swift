@@ -250,6 +250,10 @@ public final class TelemetryCoordinator: ObservableObject {
             handleMetrics(request.body)
         case .claudeHook:
             handleClaudeHook(request.body)
+        case .permissionHook:
+            if let reply = request.reply {
+                PermissionRequestCenter.shared.receive(request.body, reply: reply)
+            }
         case .other:
             break
         }
@@ -264,6 +268,11 @@ public final class TelemetryCoordinator: ObservableObject {
         // Events forwarded from an SSH host carry the host alias the hook script was installed with.
         if let host = json["clangnotch_host"] as? String {
             ClaudeCodeManager.shared.handleRemoteHook(host: host, json: json)
+            return
+        }
+        if let sessionId = json["session_id"] as? String,
+           let size = (json["context_window"] as? [String: Any])?["context_window_size"] as? Int {
+            ClaudeCodeManager.shared.receiveStatusline(sessionId: sessionId, contextWindowSize: size)
             return
         }
         if json["tool_name"] as? String == "AskUserQuestion" {

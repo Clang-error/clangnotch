@@ -34,10 +34,35 @@ public struct AgentSettingsView: View {
     }
 }
 
+/// A switch with what it does in one line under it, so no setting needs a paragraph.
+private struct SettingToggle: View {
+    let title: String
+    let caption: String
+    @Binding var isOn: Bool
+
+    init(_ title: String, _ caption: String, isOn: Binding<Bool>) {
+        self.title = title
+        self.caption = caption
+        self._isOn = isOn
+    }
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 // MARK: - General
 
 struct AppGeneralSettingsTab: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject private var updates = UpdateChecker.shared
     @State private var launchAtLogin = LoginItem.isEnabled
 
     var body: some View {
@@ -56,18 +81,40 @@ struct AppGeneralSettingsTab: View {
                     .onChange(of: launchAtLogin) { _, newValue in
                         LoginItem.setEnabled(newValue)
                     }
-                Toggle(L("실행 시 텔레메트리 수신기 시작", "Start telemetry receiver on launch"), isOn: $settings.telemetryAutoStart)
-                Toggle(L("메뉴 막대 아이콘 표시", "Show menu bar icon"), isOn: $settings.showMenuBarItem)
+                SettingToggle(L("실행할 때 알림 수신기 켜기", "Start the alert receiver on launch"),
+                              L("권한·질문 드롭다운과 원격 SSH 세션이 이걸로 들어옵니다. 끄면 오지 않습니다.",
+                                "Permission and question dropdowns and remote SSH sessions arrive through it."),
+                              isOn: $settings.telemetryAutoStart)
+                SettingToggle(L("메뉴 막대 아이콘 표시", "Show menu bar icon"),
+                              L("세션 수·키보드 잠금·설정을 메뉴 막대에서 열기", "Sessions, keyboard lock and settings from the menu bar"),
+                              isOn: $settings.showMenuBarItem)
             } header: {
                 Text(L("시작", "Startup"))
             }
 
             Section {
-                Toggle(L("배터리 절약 모드", "Battery saver mode"), isOn: $settings.batterySaverEnabled)
+                SettingToggle(L("배터리 절약 모드", "Battery saver mode"),
+                              L("배터리로 쓸 때 글로우 애니메이션을 덜 부드럽게(15fps) 그립니다.",
+                                "Draws the glow at 15 fps instead of 25 while on battery."),
+                              isOn: $settings.batterySaverEnabled)
             } header: {
                 Text(L("성능", "Performance"))
-            } footer: {
-                Text(L("배터리 사용 중 15 FPS, 충전 중 25 FPS.", "15 FPS on battery, 25 FPS when charging."))
+            }
+
+            Section {
+                SettingToggle(L("업데이트 알림 받기", "Notify about updates"),
+                              L("새 버전이 나오면 알림으로 알려 줍니다.", "Shows a notification when a new version is out."),
+                              isOn: $settings.checkForUpdates)
+                    .onChange(of: settings.checkForUpdates) { _, _ in updates.syncWithSettings() }
+                if let version = updates.availableVersion {
+                    HStack {
+                        Text(L("새 버전 \(version)", "Version \(version) available"))
+                        Spacer()
+                        Button(L("받기", "Download")) { NSWorkspace.shared.open(updates.releaseURL) }
+                    }
+                }
+            } header: {
+                Text(L("업데이트", "Updates"))
             }
         }
         .formStyle(.grouped)
@@ -89,47 +136,52 @@ struct NotchSettingsTab: View {
                 NotchTabOrderView()
             } header: {
                 Text(L("탭", "Tabs"))
-            } footer: {
-                Text(L(
-                    "체크를 해제한 탭은 노치에 나타나지 않고, 나머지는 드래그해 순서를 바꿉니다. 체크 해제는 칩만 숨깁니다. 기능 자체가 동작할지는 아래 스위치가 정합니다.",
-                    "Uncheck a tab to keep it out of the notch, drag to reorder the rest. Unchecking only hides the chip — the switches below decide whether a feature runs at all."
-                ))
             }
 
             Section {
-                Toggle(L("클립보드 기록", "Clipboard history"), isOn: $settings.enableClipboardHistory)
+                SettingToggle(L("클립보드 기록", "Clipboard history"),
+                              L("최근 복사한 글. 메모리에만 두고 비밀번호는 빼요.", "Recent copied text, in memory only; passwords skipped."),
+                              isOn: $settings.enableClipboardHistory)
                     .onChange(of: settings.enableClipboardHistory) { _, _ in
                         ClipboardManager.shared.syncWithSettings()
                     }
-                Toggle(L("앱별 볼륨 믹서", "Per-app volume mixer"), isOn: $settings.enableAudioMixer)
+                SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
+                              L("앱마다 소리 크기 조절. 오디오 캡처 권한 필요.", "Volume per app. Needs audio-capture permission."),
+                              isOn: $settings.enableAudioMixer)
                     .onChange(of: settings.enableAudioMixer) { _, on in
                         if on { AudioMixerManager.shared.start() } else { AudioMixerManager.shared.stop() }
                     }
-                Toggle(L("Sidecar 빠른 연결", "Sidecar quick-connect"), isOn: $settings.enableSidecar)
+                SettingToggle(L("Sidecar 빠른 연결", "Sidecar quick-connect"),
+                              L("iPad를 보조 화면으로 바로 연결", "Connect an iPad as a second display"),
+                              isOn: $settings.enableSidecar)
                     .onChange(of: settings.enableSidecar) { _, on in
                         if on { SidecarManager.shared.start() } else { SidecarManager.shared.stop() }
                     }
-                Toggle(L("배터리 잔량", "Battery levels"), isOn: $settings.enableBattery)
-                Toggle(L("인터넷 속도 측정", "Internet speed test"), isOn: $settings.enableSpeedTest)
-                Toggle(L("키보드 잠금", "Keyboard lock"), isOn: $settings.enableKeyboardLock)
+                SettingToggle(L("배터리 잔량", "Battery levels"),
+                              L("Mac·블루투스 기기·iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
+                              isOn: $settings.enableBattery)
+                SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
+                              L("측정 버튼을 누를 때만 데이터를 씁니다.", "Uses data only when you press Test."),
+                              isOn: $settings.enableSpeedTest)
+                SettingToggle(L("키보드 잠금", "Keyboard lock"),
+                              L("직접 풀 때까지 키 입력을 막습니다. 손쉬운 사용 권한 필요.", "Blocks typing until you unlock. Needs Accessibility."),
+                              isOn: $settings.enableKeyboardLock)
+                SettingToggle(L("볼륨·밝기 표시 바꾸기", "Replace volume and brightness HUD"),
+                              L("macOS 볼륨·밝기 표시 대신 노치 조절창을 씁니다. 손쉬운 사용 권한 필요.",
+                                "Shows the notch's own HUD instead of macOS's. Needs Accessibility."),
+                              isOn: $settings.centerSystemBanners)
+                    .onChange(of: settings.centerSystemBanners) { _, _ in
+                        SystemBannerCenterer.shared.syncWithSettings()
+                    }
             } header: {
                 Text(L("기능", "Features"))
-            } footer: {
-                Text(L("""
-                클립보드 기록은 최근 복사한 텍스트를 메모리에만 보관하며 비밀번호는 건너뜁니다. \
-                앱별 볼륨은 오디오 캡처 권한이 필요합니다. 배터리는 Mac, 블루투스 액세서리, iOS 기기를 \
-                보여 줍니다. 속도 측정은 측정 버튼을 눌렀을 때만 트래픽을 보냅니다. \
-                키보드 잠금은 손쉬운 사용 권한이 필요하며 직접 풀 때까지 잠겨 있습니다.
-                """, """
-                Clipboard history keeps recent copied text in memory; passwords are skipped. \
-                Per-app volume needs audio-capture permission. Battery covers the Mac, Bluetooth \
-                accessories and iOS devices. Speed test only sends traffic when you press Test. \
-                Keyboard lock needs Accessibility permission and stays locked until you unlock it.
-                """))
             }
 
             Section {
-                Toggle(L("Wi-Fi 네트워크 이름 표시", "Show Wi-Fi network name"), isOn: $settings.enableNetworkName)
+                SettingToggle(L("Wi-Fi 이름 표시", "Show Wi-Fi name"),
+                              L("Speed 탭과 아래 기능들에 쓰입니다. macOS가 위치 권한을 요구해요(위치는 다른 데 안 씀).",
+                                "Used by the Speed tab and the features below. macOS asks for Location access for it (used for nothing else)."),
+                              isOn: $settings.enableNetworkName)
                     .onChange(of: settings.enableNetworkName) { _, on in
                         if on { network.requestAccess() } else { network.refresh() }
                     }
@@ -148,16 +200,6 @@ struct NotchSettingsTab: View {
                 }
             } header: {
                 Text(L("네트워크 이름", "Network name"))
-            } footer: {
-                Text(L("""
-                macOS는 위치 서비스 권한이 있는 앱에만 Wi-Fi 네트워크 이름(SSID)을 알려 줍니다. \
-                이 기능은 위치를 그 밖의 용도로 쓰지 않습니다. 권한이 없으면 속도 측정에는 \
-                연결 종류 이름("Wi-Fi", "Ethernet")이 대신 표시됩니다.
-                """, """
-                macOS only reveals the Wi-Fi network name (SSID) to apps with Location Services \
-                access — nothing else here uses your location. Without it the speed test falls \
-                back to the connection's name ("Wi-Fi", "Ethernet").
-                """))
             }
 
             TWorldSettingsView()
@@ -182,34 +224,71 @@ struct NotchSettingsTab: View {
 // MARK: - Agents
 
 /// Which coding agents are tracked, and how their activity reads in the notch.
+/// One section per agent, after the settings both share, so nothing about an agent is
+/// split across the page.
 struct AgentsSettingsTab: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject private var remote = RemoteClaudeManager.shared
     @ObservedObject private var telemetry = TelemetryCoordinator.shared
 
+    /// One switch per agent: showing it in the notch and reading its session logs go together.
+    private var claudeEnabled: Binding<Bool> {
+        Binding(get: { settings.showSourceClaudeCode && settings.enableClaudeCodeJSONL },
+                set: { settings.showSourceClaudeCode = $0; settings.enableClaudeCodeJSONL = $0 })
+    }
+
+    private var codexEnabled: Binding<Bool> {
+        Binding(get: { settings.showSourceCodex && settings.enableCodexJSONL },
+                set: { settings.showSourceCodex = $0; settings.enableCodexJSONL = $0 })
+    }
+
     var body: some View {
         Form {
             Section {
-                Toggle("Claude Code", isOn: $settings.showSourceClaudeCode)
-                Toggle("Codex", isOn: $settings.showSourceCodex)
-                Toggle("Antigravity (Gemini)", isOn: $settings.enableAntigravity)
-                Toggle(L("알 수 없음", "Unknown"), isOn: $settings.showSourceUnknown)
+                Toggle(L("효과음", "Sounds"), isOn: $settings.notchSoundsEnabled)
+                HStack(spacing: 8) {
+                    Text(L("효과음 크기", "Sound volume"))
+                    Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+                    // Letting go plays the done sound at the new level.
+                    Slider(value: $settings.notchSoundsVolume, in: 0...1) { editing in
+                        if !editing { NotchSounds.playDone() }
+                    }
+                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
+                }
+                .disabled(!settings.notchSoundsEnabled)
+                Toggle(L("토큰 수 표시", "Show token count"), isOn: $settings.showNotchTokenCount)
+                SettingToggle(L("컨텍스트 막대 표시", "Show context bar"),
+                              L("세션 화면 맨 위에 컨텍스트가 얼마나 찼는지 한 줄로 보여 줍니다. 크기(200k·1M 등)는 세션마다 알아서 잡습니다.",
+                                "A thin line atop the session view showing how full its context is. The window size is detected per session."),
+                              isOn: $settings.showContextProgress)
+                Stepper(value: $settings.recentToolCallsLimit, in: 5...50, step: 5) {
+                    HStack {
+                        Text(L("보관할 최근 툴 호출 수", "Recent tool calls to keep"))
+                        Spacer()
+                        Text("\(settings.recentToolCallsLimit)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } header: {
-                Text(L("소스", "Sources"))
-            } footer: {
-                Text(L("노치에 활동을 표시할 에이전트입니다.", "Which agents' activity reaches the notch."))
+                Text(L("공통 · Claude Code · Codex", "Shared · Claude Code · Codex"))
             }
 
             Section {
-                Toggle(L("JSONL 세션 추적", "Enable JSONL session tracking"), isOn: $settings.enableClaudeCodeJSONL)
-                Toggle(L("권한 대기 표시", "Show permission indicator"), isOn: $settings.showPermissionIndicator)
-                    .disabled(!settings.enableClaudeCodeJSONL)
-                Toggle(L("할 일 목록 표시", "Show todo list"), isOn: $settings.showTodoList)
-                    .disabled(!settings.enableClaudeCodeJSONL)
+                Toggle(L("사용", "Enabled"), isOn: claudeEnabled)
+                Toggle(L("권한 대기 표시 (날개의 Needs OK)", "Show permission indicator (Needs OK on the wing)"), isOn: $settings.showPermissionIndicator)
+                    .disabled(!claudeEnabled.wrappedValue)
+                Toggle(L("할 일 목록 표시 (Current Tasks 카드)", "Show todo list (Current Tasks card)"), isOn: $settings.showTodoList)
+                    .disabled(!claudeEnabled.wrappedValue)
             } header: {
                 Text("Claude Code")
-            } footer: {
-                Text(L("~/.claude를 읽어 세션을 추적합니다.", "Reads ~/.claude to track sessions."))
+            }
+
+            Section {
+                Toggle(L("사용량 한도 추적", "Enable usage quota tracking"), isOn: $settings.enableClaudeUsage)
+                ClaudeUsageSettingsView()
+                    .disabled(!settings.enableClaudeUsage)
+            } header: {
+                Text(L("Claude Code · 사용량", "Claude Code · Usage"))
             }
 
             Section {
@@ -226,51 +305,13 @@ struct AgentsSettingsTab: View {
                         .foregroundStyle(.orange)
                 }
             } header: {
-                Text(L("원격 Claude Code (SSH)", "Remote Claude Code (SSH)"))
-            } footer: {
-                Text(L("~/.ssh/config의 호스트 별칭을 쉼표로 구분해 입력합니다. SSH 키 로그인만 지원합니다. ClangNotch가 각 호스트의 ~/.claude/settings.json에 훅을 추가하고(백업: settings.json.clangnotch-bak) 이 앱까지 SSH 역터널을 열어 둡니다. 호스트에서 이미 실행 중인 세션은 다시 시작해야 표시됩니다.", "Host aliases from ~/.ssh/config, comma-separated; key-based login is required. ClangNotch adds a hook to each host's ~/.claude/settings.json (backup: settings.json.clangnotch-bak) and keeps an SSH reverse tunnel open to this app. Sessions already running on the host show up after they restart."))
+                Text(L("Claude Code · 원격 (SSH)", "Claude Code · Remote (SSH)"))
             }
 
             Section {
-                Toggle(L("사용량 한도 추적", "Enable usage quota tracking"), isOn: $settings.enableClaudeUsage)
-
-                ClaudeUsageSettingsView()
-                    .disabled(!settings.enableClaudeUsage)
+                Toggle(L("사용", "Enabled"), isOn: codexEnabled)
             } header: {
-                Text(L("Claude API 사용량", "Claude API Usage"))
-            }
-
-            Section {
-                Toggle(L("JSONL 세션 추적", "Enable JSONL session tracking"), isOn: $settings.enableCodexJSONL)
-            } header: {
-                Text("OpenAI Codex")
-            } footer: {
-                Text(L("~/.codex/sessions를 읽어 세션을 추적합니다.", "Reads ~/.codex/sessions to track sessions."))
-            }
-
-            Section {
-                Toggle(L("토큰 수 표시", "Show token count"), isOn: $settings.showNotchTokenCount)
-                Toggle(L("컨텍스트 진행 막대 표시", "Show context progress bar"), isOn: $settings.showContextProgress)
-
-                Stepper(value: $settings.contextTokenLimit, in: 50_000...1_000_000, step: 50_000) {
-                    HStack {
-                        Text(L("컨텍스트 한도", "Context limit"))
-                        Spacer()
-                        Text("\(settings.contextTokenLimit / 1000)k")
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                Stepper(value: $settings.recentToolCallsLimit, in: 5...50, step: 5) {
-                    HStack {
-                        Text(L("보관할 최근 툴 호출 수", "Recent tool calls to keep"))
-                        Spacer()
-                        Text("\(settings.recentToolCallsLimit)")
-                            .foregroundColor(.secondary)
-                    }
-                }
-            } header: {
-                Text(L("노치 표시", "Display in Notch"))
+                Text("Codex")
             }
         }
         .formStyle(.grouped)
@@ -296,6 +337,12 @@ struct TelemetryStatusTab: View {
                 }
             } header: {
                 Text(L("수신기", "Receiver"))
+            }
+
+            Section {
+                Toggle(L("알 수 없음", "Unknown"), isOn: $settings.showSourceUnknown)
+            } header: {
+                Text(L("출처", "Sources"))
             }
 
             Section {

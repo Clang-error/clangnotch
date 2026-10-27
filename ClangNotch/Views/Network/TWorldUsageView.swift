@@ -122,39 +122,42 @@ struct TWorldSettingsView: View {
 
     var body: some View {
         Section {
+            Toggle(L("사용", "Enabled"), isOn: $settings.enableTWorld)
+                .onChange(of: settings.enableTWorld) { _, _ in Task { await session.syncWithSettings() } }
+            // Tethering detection reads the same SSID, so it stays editable with the switch off.
             TextField(L("아이폰 핫스팟 SSID", "iPhone hotspot SSID"), text: $settings.tworldHotspotSSID)
-            HStack {
-                TextField(L("T ID 아이디", "T ID username"), text: $loginID)
-                SecureField(L("비밀번호", "Password"), text: $password)
-                Button(L("저장", "Save")) {
-                    Task {
-                        await session.saveCredentials(id: loginID, password: password)
-                        password = ""
+            if settings.enableTWorld {
+                HStack {
+                    TextField(L("T ID 아이디", "T ID username"), text: $loginID)
+                    SecureField(L("비밀번호", "Password"), text: $password)
+                    Button(L("저장", "Save")) {
+                        Task {
+                            await session.saveCredentials(id: loginID, password: password)
+                            password = ""
+                        }
+                    }
+                    .disabled(loginID.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isRefreshing)
+                }
+                if session.hasCredentials {
+                    Text(L("자동 로그인 저장됨 · 세션이 만료되면 T ID에 다시 로그인합니다.", "Auto-login saved · signs in to T ID again when the session expires."))
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                HStack {
+                    Text(session.requiresLogin ? L("로그인 필요", "Login required") : L("저장된 로그인 사용", "Using saved login"))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Button(session.requiresLogin ? L("T world 로그인…", "Sign in to T world…") : L("다시 로그인…", "Sign in again…")) { session.showLogin() }
+                    if !session.requiresLogin || session.balance != nil {
+                        Button(L("연결 해제", "Disconnect")) { Task { await session.disconnect() } }
+                            .disabled(session.isRefreshing)
                     }
                 }
-                .disabled(loginID.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isRefreshing)
-            }
-            if session.hasCredentials {
-                Text(L("자동 로그인 저장됨 · 세션이 만료되면 T ID에 다시 로그인합니다.", "Auto-login saved · signs in to T ID again when the session expires."))
-                    .font(.caption).foregroundColor(.secondary)
-            }
-            HStack {
-                Text(session.requiresLogin ? L("로그인 필요", "Login required") : L("저장된 로그인 사용", "Using saved login"))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button(session.requiresLogin ? L("T world 로그인…", "Sign in to T world…") : L("다시 로그인…", "Sign in again…")) { session.showLogin() }
-                if !session.requiresLogin || session.balance != nil {
-                    Button(L("연결 해제", "Disconnect")) { Task { await session.disconnect() } }
-                        .disabled(session.isRefreshing)
+                if let error = session.errorMessage {
+                    Text(error).font(.caption).foregroundColor(.orange)
                 }
-            }
-            if let error = session.errorMessage {
-                Text(error).font(.caption).foregroundColor(.orange)
             }
         } header: {
             Text(L("SKT 공유 데이터", "SKT shared data"))
-        } footer: {
-            Text(L("SSID가 정확히 일치할 때만 Speed 아래에 표시됩니다. Wi-Fi 이름 및 위치 접근을 허용해 주세요. Speed를 열어 둔 동안 10분 간격으로 조회합니다. 빈 SSID는 기능을 끕니다. 테더링과 공유 기기의 합산량입니다. T ID 아이디와 비밀번호를 저장하면 세션이 만료될 때 자동으로 다시 로그인하며, 저장하지 않으면 만료 때마다 직접 로그인해야 합니다. 비밀번호는 이 Mac의 키체인에만 저장됩니다.", "Shown under Speed only when the SSID matches exactly; allow Wi-Fi name and location access. Checked every 10 minutes while Speed is open. An empty SSID turns the feature off. The total covers tethering and shared devices. Saving your T ID username and password lets the app sign in again automatically when the session expires; otherwise you sign in by hand each time. The password is stored only in this Mac's keychain."))
         }
         .task { await session.prepare() }
     }

@@ -41,6 +41,11 @@ final class CodexManager: ObservableObject {
     /// Per-session state tracking
     @Published private(set) var sessionStates: [String: CodexState] = [:]
 
+    /// When any session last finished a turn normally (task_complete); drives the closed-notch Done.
+    @Published private(set) var lastTurnCompletedAt: Date?
+    /// What that turn ended with, for the 완료 드롭다운.
+    @Published private(set) var lastCompletedTurn: CompletedTurn?
+
     var pendingInputRequests: [CodexInputRequest] {
         sessionStates.values.compactMap(\.pendingInputRequest)
     }
@@ -354,6 +359,13 @@ final class CodexManager: ObservableObject {
 
     private func startSessionScanning() {
         guard sessionScanTimer == nil else { return }
+        if let port = UInt16(exactly: AppSettings.shared.telemetryOtlpPort) {
+            do {
+                try PermissionHooks.install(in: codexDir.appendingPathComponent("hooks.json"), port: port, maxTime: 35)
+            } catch {
+                debugLog("[Codex] Could not install permission hook: \(error.localizedDescription)")
+            }
+        }
         scanForSessions()
         sessionScanTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -909,6 +921,14 @@ final class CodexManager: ObservableObject {
                error["codex_error_info"] as? String == "usage_limit_exceeded" {
                 markUsageLimitExceeded(at: rateLimitTimestamp)
             }
+            // Aborted or rejected turns aren't done; replayed history isn't news.
+            if eventType == "task_complete", payload["error"] == nil,
+               isLoadingHistoryBySession[sessionId] != true {
+                lastTurnCompletedAt = Date()
+                let started = payload["started_at"] as? Double, completed = payload["completed_at"] as? Double
+                lastCompletedTurn = CompletedTurn(sessionId: sessionId, answer: payload["last_agent_message"] as? String ?? "",
+                                                  elapsed: started.flatMap { start in completed.map { $0 - start } })
+            }
 
         case "token_count":
             if let info = payload["info"] as? [String: Any],
@@ -919,6 +939,9 @@ final class CodexManager: ObservableObject {
                 sessionState.tokenUsage.reasoningOutputTokens = totalUsage["reasoning_output_tokens"] as? Int ?? 0
                 sessionState.tokenUsage.totalTokens = totalUsage["total_tokens"] as? Int ?? 0
 
+                if let lastUsage = info["last_token_usage"] as? [String: Any] {
+                    sessionState.tokenUsage.contextTokens = lastUsage["total_tokens"] as? Int ?? 0
+                }
                 if let contextWindow = info["model_context_window"] as? Int {
                     sessionState.tokenUsage.modelContextWindow = contextWindow
                 }
@@ -998,6 +1021,10 @@ final class CodexManager: ObservableObject {
             prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
             if !prompt.isEmpty, !prompt.hasPrefix("<"), !prompt.hasPrefix("#") {
                 sessionState.lastUserPrompt = prompt
+                // A normal chat reply answers or supersedes the previous async question.
+                if sessionState.pendingInputRequest?.isAsync == true {
+                    sessionState.pendingInputRequest = nil
+                }
             }
         }
         guard !externalImportSessions.contains(sessionId) else { return }
@@ -1044,6 +1071,8 @@ final class CodexManager: ObservableObject {
                 startTime: eventTimestamp
             )
             tool.workdir = workdir
+            // apply_patch arrives on its own or inside an `exec` script.
+            tool.change = ToolChange.patch(argumentsJson)
 
             if !sessionState.activeTools.contains(where: { $0.id == callId }) {
                 debugLog("[Codex] Tool started: \(name) (id: \(callId.prefix(8))...) arg: \(argument ?? "-")")

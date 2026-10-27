@@ -10,6 +10,7 @@ struct BatteryView: View {
                 ForEach(manager.lowPriorityDevices) { low in
                     lowBatteryBadgeRow(low)
                 }
+                if !BatteryManager.hasIOSTools { iosToolsRow }
                 if manager.devices.isEmpty {
                     emptyState
                 } else {
@@ -77,6 +78,27 @@ struct BatteryView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color(red: 0.95, green: 0.35, blue: 0.35).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 6)
+    }
+
+    /// 아이폰 도구 줄: shown until libimobiledevice is installed.
+    private var iosToolsRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "iphone")
+                .font(.system(size: 11))
+                .foregroundColor(.white.opacity(0.6))
+            Text(L("아이폰·아이패드 배터리를 보려면 도구 설치가 필요합니다", "Install a tool to see iPhone and iPad batteries"))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.8))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button(L("설치", "Install")) { BatteryManager.installIOSTools() }
+                .controlSize(.small)
+                .help(L("터미널에서 Homebrew와 libimobiledevice를 설치합니다", "Installs Homebrew and libimobiledevice in Terminal"))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 6)
     }
 
@@ -242,7 +264,8 @@ struct HeaderBatteryStrip: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        // 기기마다 한 줄: 가로로 이으면 기기가 늘수록 헤더 오른쪽 상태 글자까지 덮는다.
+        VStack(alignment: .center, spacing: 2) {
             ForEach(shown) { device in
                 HStack(spacing: 4) {
                     Image(systemName: device.compactSymbol)

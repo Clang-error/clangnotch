@@ -146,14 +146,6 @@ struct TetherPlacesSettingsView: View {
             }
         } header: {
             Text(L("테더링 장소 알림", "Tethering place alerts"))
-        } footer: {
-            Text(L("""
-            위의 아이폰 핫스팟 SSID에 연결된 채 등록한 장소의 반경 안에 있으면, \
-            연결되는 즉시 그리고 이후 10분마다 노치로 알립니다. 위치 서비스 권한이 필요합니다.
-            """, """
-            While connected to the iPhone hotspot SSID above inside a saved place's radius, \
-            the notch alerts you right away and every 10 minutes after. Needs Location Services access.
-            """))
         }
     }
 

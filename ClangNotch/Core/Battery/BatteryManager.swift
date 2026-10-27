@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Combine
 import IOBluetooth
 import IOKit.ps
@@ -226,6 +226,30 @@ final class BatteryManager: ObservableObject {
         rearmLowBatteryBadge()
     }
 
+    /// iPhone·iPad levels come from Homebrew's libimobiledevice; without it they just don't show.
+    static var hasIOSTools: Bool { Collector.tool("idevice_id") != nil && Collector.tool("ideviceinfo") != nil }
+
+    /// 아이폰 도구 줄's button: Homebrew (if missing) and libimobiledevice in a Terminal window.
+    /// A `.command` file opens in Terminal without asking for Automation permission.
+    static func installIOSTools() {
+        let script = """
+        #!/bin/zsh
+        if [ ! -x /opt/homebrew/bin/brew ] && [ ! -x /usr/local/bin/brew ]; then
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        fi
+        BREW=$(ls /opt/homebrew/bin/brew /usr/local/bin/brew 2>/dev/null | head -1)
+        "$BREW" install libimobiledevice && echo "\n끝났습니다. 아이폰을 케이블로 연결하고 '이 컴퓨터 신뢰'를 누르세요. 이 창은 닫아도 됩니다."
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ClangNotch 아이폰 도구 설치.command")
+        do {
+            try script.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            NSWorkspace.shared.open(url)
+        } catch {
+            debugLog("[Battery] install script failed: \(error)")
+        }
+    }
+
     // MARK: - 닫힌 노치 배터리 부족 표시
 
     /// 닫힌 노치 경고 순위, 앞이 높은 순위. 헤더 목록과는 따로 지정한다.
@@ -274,9 +298,12 @@ final class BatteryManager: ObservableObject {
     }
 
     /// 에어팟은 케이스가 닫히면 케이스 잔량 보고를 멈춘다. macOS 메뉴처럼 마지막 값을 이어 보여준다.
+    /// 좌우가 따로 잡히는 이어버드만이다. 에어팟 맥스는 케이스 배터리가 없는데, 어쩌다 한 번 들어온
+    /// 케이스 값이 이걸로 영영 남았다(2026-10-14: IOBluetooth는 케이스 0인데 59%가 계속 보임).
     private func keepingCaseLevel(_ fresh: [BatteryDevice]) -> [BatteryDevice] {
         fresh.map { device in
-            guard !device.parts.contains(where: { $0.label == "케이스" }),
+            guard device.parts.contains(where: { $0.label == "L" || $0.label == "R" }),
+                  !device.parts.contains(where: { $0.label == "케이스" }),
                   let previous = lastSeen[device.id]?.parts.first(where: { $0.label == "케이스" })
             else { return device }
             return BatteryDevice(
@@ -329,11 +356,12 @@ final class BatteryManager: ObservableObject {
             // 캐시값으로 울리면 오작동이다. 실시간으로 확인된 것만.
             guard device.live else { continue }
 
-            if device.percent >= rearmThreshold {
+            // 헤더와 같은 기준: 에어팟은 케이스를 뺀다. 케이스가 낮을 때마다 꺼낼 때 울렸다(2026-10-24).
+            if device.displayLevel >= rearmThreshold {
                 armed[device.id] = true
                 continue
             }
-            guard device.percent <= alertThreshold, !device.charging,
+            guard device.displayLevel <= alertThreshold, !device.charging,
                   armed[device.id] ?? true else { continue }
 
             armed[device.id] = false
@@ -344,12 +372,12 @@ final class BatteryManager: ObservableObject {
     private func notify(_ device: BatteryDevice) {
         let content = UNMutableNotificationContent()
         content.title = L("\(device.name) 배터리 부족", "\(device.name) battery low")
-        content.body = L("\(device.percent)% 남았습니다.", "\(device.percent)% left.")
+        content.body = L("\(device.displayLevel)% 남았습니다.", "\(device.displayLevel)% left.")
         content.sound = .default
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: "battery-\(device.id)", content: content, trigger: nil)
         )
-        log("alert \(device.name) \(device.percent)%")
+        log("alert \(device.name) \(device.displayLevel)%")
     }
 
     // MARK: - 진단
@@ -511,6 +539,9 @@ private enum Collector {
 
             // 0은 "값 없음"이다. 배터리를 보고하지 않는 기기(서드파티 BLE 키보드,
             // 애플워치, 페어링만 된 아이폰 등)를 걸러낸다.
+            // 케이스는 좌우 이어버드가 있을 때만 있다. 에어팟 맥스는 케이스 배터리가 없는데
+            // 케이스 59%가 들어온 적이 있다(bluetoothd 로그엔 7일 내내 본체뿐, 2026-10-14).
+            if levels.left == 0 && levels.right == 0 { levels.caseLevel = 0 }
             let parts = [("L", levels.left), ("R", levels.right), ("케이스", levels.caseLevel)]
                 .filter { $0.1 > 0 }
                 .map { BatteryPart(label: $0.0, percent: $0.1) }
@@ -597,7 +628,7 @@ private enum Collector {
     // MARK: 도구
 
     /// libimobiledevice는 Homebrew로 깔리고, 아키텍처마다 경로가 다르다.
-    private static func tool(_ name: String) -> String? {
+    static func tool(_ name: String) -> String? {
         ["/opt/homebrew/bin/", "/usr/local/bin/"]
             .map { $0 + name }
             .first { FileManager.default.isExecutableFile(atPath: $0) }

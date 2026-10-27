@@ -52,6 +52,11 @@ final class ClaudeCodeManager: ObservableObject {
     /// Questions are tracked separately in `pendingInputRequests`.
     @Published private(set) var sessionsConfirmedNeedingPermission: [ClaudeSession] = []
 
+    /// When any session last finished a turn normally (end_turn); drives the closed-notch Done.
+    @Published private(set) var lastTurnCompletedAt: Date?
+    /// What that turn ended with, for the 완료 드롭다운.
+    @Published private(set) var lastCompletedTurn: CompletedTurn?
+
     var sessionsAwaitingInput: [ClaudeSession] {
         availableSessions.filter { sessionStates[$0.id]?.isAwaitingInput == true }
     }
@@ -117,6 +122,7 @@ final class ClaudeCodeManager: ObservableObject {
     /// a permission prompt or merely slow, so those are left entirely to the `permission_prompt`
     /// Notification hook (see `handleNotificationHook`) rather than guessed from timing.
     private let questionToolName = "AskUserQuestion"
+    private let wrapUpToolName = "mcp__ccd_turn__wrap_up"
     /// How recently a transcript must have been written for a question found during history
     /// load to count as still waiting (seconds).
     private let questionWaitStaleAfter: TimeInterval = 300
@@ -144,6 +150,10 @@ final class ClaudeCodeManager: ObservableObject {
     private var sessionJSONLPaths: [String: String] = [:]
     /// Answer hooks can arrive before the matching JSONL tool_use is written.
     private var completedQuestionHookIDs: [String: Set<String>] = [:]
+    /// The end_turn message last announced per session; its lines all repeat the stop reason.
+    private var completedTurnMessageIDs: [String: String] = [:]
+    /// Next-step boxes closed with the 다음 단계 드롭다운's X, so a history reload can't bring them back.
+    private var dismissedWrapUpIDs: Set<String> = []
     private var isLoadingHistoryBySession: [String: Bool] = [:]
 
     /// Sessions running on SSH hosts, keyed by Claude's own session id. They have no JSONL
@@ -441,6 +451,16 @@ final class ClaudeCodeManager: ObservableObject {
             } catch {
                 debugLog("[ClaudeCode] Could not install question hooks: \(error.localizedDescription)")
             }
+            do {
+                try PermissionHooks.install(in: claudeDir.appendingPathComponent("settings.json"), port: port, maxTime: 600)
+            } catch {
+                debugLog("[ClaudeCode] Could not install permission hook: \(error.localizedDescription)")
+            }
+            do {
+                try StatuslineBridge.install(in: claudeDir.appendingPathComponent("settings.json"), port: port)
+            } catch {
+                debugLog("[ClaudeCode] Could not wrap the status line: \(error.localizedDescription)")
+            }
         }
         scanForSessions()
         startWatchingProjectsDirectory()
@@ -550,6 +570,11 @@ final class ClaudeCodeManager: ObservableObject {
     // MARK: - Multi-Session Watching
 
     /// Claude Code's own session UUID (the tailed JSONL's file name), as used by `claude --resume`.
+    /// The watched session a hook's `transcript_path` belongs to.
+    func sessionId(forTranscript path: String) -> String? {
+        sessionJSONLPaths.first(where: { $0.value == path })?.key
+    }
+
     func conversationId(for session: ClaudeSession) -> String? {
         session.terminalSessionId ?? sessionJSONLPaths[session.id].map {
             URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
@@ -680,6 +705,7 @@ final class ClaudeCodeManager: ObservableObject {
         sessionLineBuffers.removeValue(forKey: sessionId)
         sessionJSONLPaths.removeValue(forKey: sessionId)
         completedQuestionHookIDs.removeValue(forKey: sessionId)
+        completedTurnMessageIDs.removeValue(forKey: sessionId)
         sessionStates.removeValue(forKey: sessionId)
         isLoadingHistoryBySession.removeValue(forKey: sessionId)
         sessionsNeedingPermission.removeAll { $0.id == sessionId }
@@ -717,7 +743,8 @@ final class ClaudeCodeManager: ObservableObject {
         if var sessionState = sessionStates[sessionId] {
             if !isLive {
                 sessionState.activeTools.removeAll()
-                sessionState.pendingInputRequests.removeAll()
+                // A next-step box waits for the user however long it takes.
+                sessionState.pendingInputRequests.removeAll { !$0.isWrapUp }
                 sessionState.isThinking = false
                 sessionState.turnStartTime = nil
             } else if sessionState.turnStartTime != nil {
@@ -822,6 +849,9 @@ final class ClaudeCodeManager: ObservableObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return
         }
+        // Not a transcript event: the whole outgoing prompt, earlier tool_use blocks included,
+        // with no timestamp. Parsing it re-added finished tools as running after the turn ended.
+        guard json["type"] as? String != "api-request-blob" else { return }
 
         let isLoadingHistory = isLoadingHistoryBySession[sessionId] == true
         let lineDate = (json["timestamp"] as? String).flatMap { raw in
@@ -866,7 +896,8 @@ final class ClaudeCodeManager: ObservableObject {
         }
 
         if let message = json["message"] as? [String: Any] {
-            parseMessageForSession(message, sessionId: sessionId, lineDate: lineDate, isStale: isStale)
+            parseMessageForSession(message, sessionId: sessionId, lineDate: lineDate, isStale: isStale,
+                                   isMeta: json["isMeta"] as? Bool == true)
         }
     }
 
@@ -923,7 +954,8 @@ final class ClaudeCodeManager: ObservableObject {
         }
     }
 
-    private func parseMessageForSession(_ message: [String: Any], sessionId: String, lineDate: Date? = nil, isStale: Bool = false) {
+    private func parseMessageForSession(_ message: [String: Any], sessionId: String, lineDate: Date? = nil, isStale: Bool = false,
+                                        isMeta: Bool = false) {
         guard var sessionState = sessionStates[sessionId] else { return }
 
         if let model = message["model"] as? String {
@@ -1009,6 +1041,15 @@ final class ClaudeCodeManager: ObservableObject {
                             )
                             tool.description = toolDescription
                             tool.timeout = toolTimeout
+                            tool.change = ToolChange.claude(toolName: toolName, input: item["input"])
+
+                            // Shown until the user's next message, even when loaded from history.
+                            if toolName == wrapUpToolName, !dismissedWrapUpIDs.contains(toolId),
+                               !sessionState.pendingInputRequests.contains(where: { $0.id == toolId }),
+                               let request = ClaudeInputRequest.wrapUp(id: toolId, input: item["input"]) {
+                                sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
+                                sessionState.pendingInputRequests.append(request)
+                            }
 
                             if isStale {
                                 // Old line: remember the tool, but never show it as running.
@@ -1040,12 +1081,19 @@ final class ClaudeCodeManager: ObservableObject {
             sessionState.tokenUsage.cacheCreationInputTokens = usage["cache_creation_input_tokens"] as? Int ?? sessionState.tokenUsage.cacheCreationInputTokens
         }
 
+        // The user wrote (or pressed a box button, which sends its message): the box is answered.
+        if message["role"] as? String == "user", !isMeta,
+           message["content"] is String
+            || (message["content"] as? [[String: Any]])?.contains(where: { $0["type"] as? String == "text" }) == true {
+            sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
+        }
+
         if let role = message["role"] as? String, role == "user",
            let content = message["content"] as? [[String: Any]] {
             for item in content {
                 if let type = item["type"] as? String, type == "tool_result",
                    let toolUseId = item["tool_use_id"] as? String {
-                    sessionState.pendingInputRequests.removeAll { $0.id == toolUseId }
+                    sessionState.pendingInputRequests.removeAll { $0.id == toolUseId && !$0.isWrapUp }
                     clearPermissionCheckForSession(sessionId: sessionId)
                     // Re-sync from the dict: `sessionState` here is a local copy taken at
                     // the top of this function, so the write above (inside
@@ -1086,7 +1134,23 @@ final class ClaudeCodeManager: ObservableObject {
            ["end_turn", "stop_sequence", "max_tokens"].contains(stopReason) {
             sessionState.lastStopReason = stopReason
             sessionState.isThinking = false
+            let turnStart = sessionState.turnStartTime
             sessionState.turnStartTime = nil
+
+            // The final message is written as several lines (thinking, server tools, text),
+            // each already carrying end_turn, some minutes apart; its text line is the end.
+            let content = message["content"] as? [[String: Any]] ?? []
+            let hasAnswerText = content.contains { $0["type"] as? String == "text" }
+            if stopReason == "end_turn", hasAnswerText, !isStale,
+               isLoadingHistoryBySession[sessionId] != true,
+               let messageId = message["id"] as? String,
+               completedTurnMessageIDs[sessionId] != messageId {
+                completedTurnMessageIDs[sessionId] = messageId
+                lastTurnCompletedAt = Date()
+                let answer = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+                lastCompletedTurn = CompletedTurn(sessionId: sessionId, answer: answer.joined(separator: "\n"),
+                                                  elapsed: turnStart.map { Date().timeIntervalSince($0) })
+            }
         }
 
         // Capture conversation text (user prompts + assistant responses)
@@ -1242,6 +1306,9 @@ final class ClaudeCodeManager: ObservableObject {
                 // open) are real; only an idle state entered after our last activity ends it.
                 guard record.isIdle, let changedAt = record.statusChangedAt,
                       changedAt >= lastActivity.addingTimeInterval(-1) else { continue }
+                // Idle is exactly how a session waits on its next-step box: nothing to clear.
+                if !state.isActive, !state.needsPermission,
+                   state.pendingInputRequests.allSatisfy(\.isWrapUp) { continue }
                 debugLog("[ClaudeCode] Session \(candidate.conversationId.prefix(8))... reports idle; clearing its working state")
             } else {
                 // A missing record only proves an exit for a session known to register: one seen
@@ -1253,7 +1320,9 @@ final class ClaudeCodeManager: ObservableObject {
                 debugLog("[ClaudeCode] Session \(candidate.conversationId.prefix(8))... has no live process; clearing its working state")
             }
             state.activeTools.removeAll()
-            state.pendingInputRequests.removeAll()
+            // A next-step box outlives idle; only an exit drops it.
+            let exited = live[candidate.conversationId] == nil
+            state.pendingInputRequests.removeAll { exited || !$0.isWrapUp }
             state.isThinking = false
             state.turnStartTime = nil
             state.needsPermission = false
@@ -1311,6 +1380,27 @@ final class ClaudeCodeManager: ObservableObject {
     /// Applies one Claude Code hook event forwarded from an SSH host by the hook script
     /// RemoteClaudeManager installs there. A remote session has no JSONL to tail, so its
     /// state is driven only by these events: prompt → tool start/end → stop.
+    /// Each session's real context window, from its status line (`StatuslineBridge`).
+    @Published private(set) var contextWindowSizes: [String: Int] = [:]
+
+    func receiveStatusline(sessionId: String, contextWindowSize: Int) {
+        guard contextWindowSizes[sessionId] != contextWindowSize else { return }
+        contextWindowSizes[sessionId] = contextWindowSize
+    }
+
+    /// The 다음 단계 드롭다운's X. A box can outlive its answer: the desktop app copies an SSH
+    /// session's transcript here only when a turn ends, so the answer shows up minutes late.
+    func dismissWrapUp(id: String) {
+        dismissedWrapUpIDs.insert(id)
+        for (sessionId, var sessionState) in sessionStates
+        where sessionState.pendingInputRequests.contains(where: { $0.id == id }) {
+            sessionState.pendingInputRequests.removeAll { $0.id == id }
+            sessionStates[sessionId] = sessionState
+            syncStateIfSelected(sessionId)
+        }
+        objectWillChange.send()
+    }
+
     func handleRemoteHook(host: String, json: [String: Any]) {
         guard sessionScanTimer != nil,
               let conversationId = json["session_id"] as? String,
@@ -1369,6 +1459,7 @@ final class ClaudeCodeManager: ObservableObject {
                 startTime: now
             )
             tool.description = (json["tool_input"] as? [String: Any])?["description"] as? String
+            tool.change = ToolChange.claude(toolName: toolName, input: json["tool_input"])
             sessionState.activeTools.append(tool)
             sessionState.isThinking = false
             if sessionState.turnStartTime == nil { sessionState.turnStartTime = now }
@@ -1391,8 +1482,12 @@ final class ClaudeCodeManager: ObservableObject {
             sessionState.activeTools.removeAll()
             sessionState.pendingInputRequests.removeAll()
             sessionState.isThinking = false
+            let turnStart = sessionState.turnStartTime
             sessionState.turnStartTime = nil
             sessionState.lastStopReason = "end_turn"
+            lastTurnCompletedAt = now
+            lastCompletedTurn = CompletedTurn(sessionId: session.id, answer: json["last_assistant_message"] as? String ?? "",
+                                              elapsed: turnStart.map { now.timeIntervalSince($0) })
         case "Notification":
             guard let type = json["notification_type"] as? String,
                   Self.attentionNotificationTypes.contains(type) else { return }

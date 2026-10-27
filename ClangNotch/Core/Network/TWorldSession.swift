@@ -35,6 +35,7 @@ final class TWorldSession: ObservableObject {
     var nextAutoRefresh: Date? { lastAttempt?.addingTimeInterval(600) }
 
     func prepare() async {
+        guard AppSettings.shared.enableTWorld else { return }
         if let restoreTask { await restoreTask.value; return }
         let task = Task {
             do {
@@ -76,9 +77,17 @@ final class TWorldSession: ObservableObject {
         keepAliveTimer = nil
     }
 
+    /// The SKT 공유 데이터 switch: off stops the queries and automatic sign-ins at once.
+    func syncWithSettings() async {
+        guard AppSettings.shared.enableTWorld else { stopKeepAlive(); return }
+        await prepare()
+        if !requiresLogin { startKeepAlive() }
+    }
+
     /// Runs as its own task: the card that asks for a refresh lives only while the popover or
     /// Speed tab is open, and closing it must not cancel a sign-in halfway through.
     func refresh(force: Bool = false) async {
+        guard AppSettings.shared.enableTWorld else { return }
         if let refreshTask { await refreshTask.value; return }
         let task = Task { [self] in
             await performRefresh(force: force)

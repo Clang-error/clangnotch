@@ -41,7 +41,6 @@ struct ClangNotchContentView: View {
     @StateObject private var settings = AppSettings.shared
     @StateObject private var claudeCodeManager = ClaudeCodeManager.shared
     @StateObject private var codexManager = CodexManager.shared
-    @StateObject private var antigravityManager = AntigravityManager.shared
     @StateObject private var clipboardManager = ClipboardManager.shared
     @StateObject private var audioMixer = AudioMixerManager.shared
     @StateObject private var sidecarManager = SidecarManager.shared
@@ -62,14 +61,22 @@ struct ClangNotchContentView: View {
     @State private var startupGlowTask: Task<Void, Never>?
     @State private var showErrorGlow = false
     @State private var errorGlowTask: Task<Void, Never>?
-    @State private var showCompletionNotice = false
     @State private var showQuestionNotice = false
     @State private var codexInputRequest: CodexInputRequest?
     @State private var claudeInputRequest: ClaudeInputRequest?
-    @State private var completionNoticeTask: Task<Void, Never>?
-    @State private var completionDebounceTask: Task<Void, Never>?
-    @State private var lastCompletionId: UUID?
-    @State private var completionToolCall: ToolCall?
+    /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
+    @State private var doneFlash: DoneFlash?
+    @State private var doneFlashTask: Task<Void, Never>?
+    @StateObject private var permissionCenter = PermissionRequestCenter.shared
+    @State private var showPermissionNotice = false
+    /// The request on screen, kept so the dropdown still shows it while folding away.
+    @State private var shownPermission: PermissionRequestItem?
+    /// The session the 세션 화면 shows, opened from a 세션 줄.
+    @State private var sessionDetail: SessionDetailTarget?
+    @State private var doneNotice: DoneNotice?
+    @State private var doneNoticeTask: Task<Void, Never>?
+    /// A finish that came while another dropdown held the notch; shown once that one goes.
+    @State private var pendingDoneNotice: DoneNotice?
     @State private var toolCallUpdateTask: Task<Void, Never>?
     @State private var showSpeedNotice = false
     @State private var speedPeekTask: Task<Void, Never>?
@@ -94,7 +101,7 @@ struct ClangNotchContentView: View {
 
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
     private var sizeAnimation: Animation {
-        notchVM.notchState == .closed ? notchCloseAnimation : animationSpring
+        notchVM.notchState == .closed ? notchCloseAnimation : (reduceMotion ? animationSpring : notchOpenSpring)
     }
     private var modeSwitchAnimation: Animation {
         reduceMotion ? .easeOut(duration: 0.12) : .interactiveSpring(response: 0.3, dampingFraction: 0.86)
@@ -118,8 +125,23 @@ struct ClangNotchContentView: View {
     private let codexBrightColor = Color(red: 0.5, green: 0.75, blue: 1.0)
     // Wing indicator dots keep the original Codex blue.
     private let codexIndicatorColor = Color(red: 0.1, green: 0.3, blue: 0.7)
-    private let antigravityGlowColor = Color(red: 0.6, green: 0.3, blue: 0.85)
-    private let antigravityBrightColor = Color(red: 0.75, green: 0.45, blue: 1.0)
+    // Apple Pay's confirmation blue (dark-mode system blue).
+    private let doneBlue = Color(red: 0.04, green: 0.52, blue: 1.0)
+
+    private struct DoneFlash: Equatable {
+        enum Source { case claude, codex }
+        let id = UUID()
+        let source: Source
+        /// The finished turn; tapping the Done wing goes to its session.
+        var turn: CompletedTurn?
+    }
+
+    private struct DoneNotice: Equatable {
+        let source: DoneFlash.Source
+        let turn: CompletedTurn
+        let projectName: String
+        let at = Date()
+    }
 
     private var isExpanded: Bool {
         notchVM.notchState == .open || notchVM.notchState == .peeking
@@ -194,16 +216,10 @@ struct ClangNotchContentView: View {
         claudeHasRealActivity && codexHasRealActivity
     }
 
-    /// Determines if Antigravity (Gemini) has activity
-    private var antigravityHasRealActivity: Bool {
-        antigravityManager.hasAnySessionActivity
-    }
-
     /// Any AI source currently active.
     private var anyAIActive: Bool {
         claudeCodeManager.hasAnySessionActivity
             || (settings.showSourceCodex && codexManager.hasAnySessionActivity)
-            || antigravityHasRealActivity
     }
 
     /// Real work state used for the one-shot closed-notch entrance. Retained idle
@@ -211,7 +227,6 @@ struct ClangNotchContentView: View {
     private var hasLiveAgentActivity: Bool {
         claudeHasRealActivity
             || codexHasRealActivity
-            || antigravityHasRealActivity
             || (isAgentActiveForVisibleSource && hasActiveToolCall)
     }
 
@@ -280,7 +295,9 @@ struct ClangNotchContentView: View {
             || tetherMonitor.activePlaceName != nil
             || !claudeCodeManager.sessionsNeedingPermission.isEmpty
             || !claudeCodeManager.sessionsAwaitingInput.isEmpty
+            || (settings.showSourceCodex && !codexManager.pendingInputRequests.isEmpty)
             || batteryManager.closedNotchLowBattery != nil
+            || doneFlash != nil
     }
 
     private var notchActive: Bool {
@@ -290,14 +307,18 @@ struct ClangNotchContentView: View {
     /// Activity-glow border condition (extracted to keep the body type-checkable).
     private var shouldShowActivityGlow: Bool {
         // Also traces the open panel's and the dropdown's outline while an agent works.
-        guard !showCompletionNotice else { return false }
-        // A question dropdown glows even though the asking session sits idle waiting.
-        if notchVM.notchState == .peeking && showQuestionNotice { return true }
+        guard doneFlash == nil else { return false }
+        // A question or permission dropdown glows even though the asking session sits idle waiting.
+        if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) { return true }
+        // The 완료 드롭다운 glows only for work still really going on: the finished session's
+        // activity grace period lit it and then cut it off mid-dropdown.
+        if notchVM.notchState == .peeking && doneNotice != nil {
+            return claudeHasRealActivity || codexHasRealActivity
+        }
         return showActivityGlow
             || (isAgentActiveForVisibleSource && hasActiveToolCall)
             || claudeCodeManager.hasAnySessionActivity
             || (settings.showSourceCodex && codexManager.hasAnySessionActivity)
-            || antigravityManager.hasAnySessionActivity
     }
 
     /// Opening from closed, the tethering glow is the same closed-sweep view it already was,
@@ -328,7 +349,7 @@ struct ClangNotchContentView: View {
                                     && (isGlowSettled || !glowExpandsFromClosed))
             } else if shouldShowActivityGlow {
                 let showBothSources = hasSimultaneousClaudeCodexActivity
-                    && !(showQuestionNotice && notchVM.notchState == .peeking)
+                    && !((showQuestionNotice || showPermissionNotice) && notchVM.notchState == .peeking)
                 NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
                                 glowColor: showBothSources ? codexGlowColor : currentGlowColor,
                                 brightColor: showBothSources ? codexBrightColor : currentBrightColor,
@@ -371,6 +392,9 @@ struct ClangNotchContentView: View {
 
     /// Determines which glow color to use based on active source
     private var currentGlowColor: Color {
+        if showPermissionNotice && notchVM.notchState == .peeking {
+            return permissionCenter.queue.first?.agent == .codex ? codexGlowColor : claudeGlowColor
+        }
         if showQuestionNotice && notchVM.notchState == .peeking {
             return codexInputRequest == nil ? claudeGlowColor : codexGlowColor
         }
@@ -378,8 +402,6 @@ struct ClangNotchContentView: View {
             return activityGlowColor
         } else if codexHasRealActivity {
             return codexGlowColor
-        } else if antigravityHasRealActivity {
-            return antigravityGlowColor
         } else if settings.showSourceCodex && codexManager.hasAnySessionActivity && !claudeCodeManager.hasAnySessionActivity {
             return codexGlowColor
         }
@@ -388,6 +410,9 @@ struct ClangNotchContentView: View {
 
     /// Determines which bright color to use based on active source
     private var currentBrightColor: Color {
+        if showPermissionNotice && notchVM.notchState == .peeking {
+            return permissionCenter.queue.first?.agent == .codex ? codexBrightColor : claudeBrightColor
+        }
         if showQuestionNotice && notchVM.notchState == .peeking {
             return codexInputRequest == nil ? claudeBrightColor : codexBrightColor
         }
@@ -395,8 +420,6 @@ struct ClangNotchContentView: View {
             return activityBrightColor
         } else if codexHasRealActivity {
             return codexBrightColor
-        } else if antigravityHasRealActivity {
-            return antigravityBrightColor
         } else if settings.showSourceCodex && codexManager.hasAnySessionActivity && !claudeCodeManager.hasAnySessionActivity {
             return codexBrightColor
         }
@@ -438,6 +461,10 @@ struct ClangNotchContentView: View {
                 // a near-miss on a button shouldn't dismiss the notch (closing is
                 // handled by the cursor leaving the notch region).
                 if notchVM.notchState == .closed {
+                    if let doneFlash, let turn = doneFlash.turn {
+                        focusSession(doneFlash.source, turn.sessionId)
+                        return
+                    }
                     openSelectedMode()
                 }
             }
@@ -474,7 +501,8 @@ struct ClangNotchContentView: View {
                     glowExpandsFromClosed = oldState == .closed
                 }
                 glowSettleTask = Task {
-                    try? await Task.sleep(for: .milliseconds(300))
+                    // The open spring is still settling at 300ms; a glow drawn then rides the bounce.
+                    try? await Task.sleep(for: .milliseconds(450))
                     guard !Task.isCancelled else { return }
                     withAnimation(.easeIn(duration: 0.2)) { isGlowSettled = true }
                 }
@@ -524,7 +552,6 @@ struct ClangNotchContentView: View {
                     if settings.enableCodexJSONL {
                         codexManager.setTrackingEnabled(!paused, keepingUsage: true)
                     }
-                    antigravityManager.setPaused(paused)
                 }
                 .onChange(of: settings.showSourceClaudeCode) { _, _ in
                     handleToolCallUpdate()
@@ -538,7 +565,28 @@ struct ClangNotchContentView: View {
         notchChangesA
             .onChange(of: activeMode) { _, mode in
                 hoverExitNotBefore = Date().addingTimeInterval(0.55)
+                sessionDetail = nil
                 notchVM.resizeOpen(to: mode.expandedSize)
+            }
+            .onChange(of: permissionCenter.queue) { _, queue in
+                handlePermissionQueue(queue)
+            }
+            // Answer buttons and Send are taller than the read-only list: re-fit.
+            .onChange(of: permissionCenter.answerableQuestionSessions) { _, _ in
+                if showQuestionNotice, !showPermissionNotice, let request = claudeInputRequest {
+                    triggerClaudeInputNotice(request)
+                }
+            }
+            .onChange(of: notchVM.notchState) { _, state in
+                // A request that came while the panel was open drops in once it closes.
+                // Waits out the close animation, like the speed notice, so the two don't fight.
+                if state == .closed { sessionDetail = nil }
+                guard state == .closed, !permissionCenter.queue.isEmpty else { return }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard notchVM.notchState == .closed else { return }
+                    handlePermissionQueue(permissionCenter.queue)
+                }
             }
     }
 
@@ -551,7 +599,6 @@ struct ClangNotchContentView: View {
                         guard isSourceVisible(telemetryCoordinator.telemetrySource) else { return }
                         // Agent just finished - trigger completion notice and stop glows
                         stopAllGlows()
-                        handleAgentCompletion()
                     }
                 }
                 .onChange(of: hasLiveAgentActivity) { wasActive, isActive in
@@ -562,6 +609,14 @@ struct ClangNotchContentView: View {
                         resetClosedJellyReveal()
                     }
                 }
+                .onChange(of: claudeCodeManager.lastCompletedTurn) { _, turn in
+                    guard let turn, settings.showSourceClaudeCode else { return }
+                    handleCompletedTurn(turn, .claude)
+                }
+                .onChange(of: codexManager.lastCompletedTurn) { _, turn in
+                    guard let turn, settings.showSourceCodex else { return }
+                    handleCompletedTurn(turn, .codex)
+                }
                 .onChange(of: baseNotchActive) { wasActive, isActive in
                     // A collapse from the panel lands on the notch and clears there instead.
                     if wasActive && !isActive && !notchVM.isSettlingClosed {
@@ -570,8 +625,10 @@ struct ClangNotchContentView: View {
                         cancelClosedJellyDismiss()
                     }
                 }
-                .onChange(of: claudeCodeManager.pendingInputRequests, initial: true) { _, requests in
+                .onChange(of: claudeCodeManager.pendingInputRequests, initial: true) { old, requests in
                     if let request = requests.first, request != claudeInputRequest {
+                        // `old == requests` is the launch pass: a question already waiting stays quiet.
+                        if old != requests, request.id != claudeInputRequest?.id { NotchSounds.playAttention() }
                         triggerClaudeInputNotice(request)
                     } else if requests.isEmpty, claudeInputRequest != nil {
                         claudeInputRequest = nil
@@ -582,10 +639,11 @@ struct ClangNotchContentView: View {
                         }
                     }
                 }
-                .onChange(of: codexManager.pendingInputRequests.count) { oldCount, newCount in
-                    if newCount > oldCount, let request = codexManager.pendingInputRequests.first {
+                .onChange(of: codexManager.pendingInputRequests, initial: true) { old, requests in
+                    if let request = requests.first, request != codexInputRequest {
+                        if old != requests, request.id != codexInputRequest?.id { NotchSounds.playAttention() }
                         triggerCodexInputNotice(request)
-                    } else if newCount == 0, codexInputRequest != nil {
+                    } else if requests.isEmpty, codexInputRequest != nil {
                         codexInputRequest = nil
                         if let request = claudeCodeManager.pendingInputRequests.first {
                             triggerClaudeInputNotice(request)
@@ -659,6 +717,8 @@ struct ClangNotchContentView: View {
             closedJellyDismissTask?.cancel()
             closedLabelTransitionTask?.cancel()
             glowSettleTask?.cancel()
+            doneFlashTask?.cancel()
+            doneNoticeTask?.cancel()
         }
     }
 
@@ -709,7 +769,6 @@ struct ClangNotchContentView: View {
             return recent
         }()
         let isClaudeActive = claudeCodeManager.hasAnySessionActivity
-        let isClaudeSessionIdle = claudeCodeManager.state.isSessionComplete && !isClaudeActive
 
         // Codex active tool (from JSONL parsing)
         let codexActiveTool: CodexToolExecution? = settings.showSourceCodex
@@ -726,12 +785,10 @@ struct ClangNotchContentView: View {
             return recent
         }()
         let isCodexActive = settings.showSourceCodex && codexManager.hasAnySessionActivity
-        let isSimultaneousClaudeCodex = claudeHasRealActivity && codexHasRealActivity
-
-        // Claude's end_turn lingers in lastStopReason until the next Claude activity, so
-        // exclude the other live sources — otherwise a stale "Done" hides an active
-        // Codex/Antigravity tool in the left wing.
-        let isSessionIdle = isClaudeSessionIdle && !isCodexActive && !antigravityHasRealActivity
+        let isClaudeQuestionWait = settings.showSourceClaudeCode && !claudeCodeManager.pendingInputRequests.isEmpty
+        let isCodexQuestionWait = settings.showSourceCodex && !codexManager.pendingInputRequests.isEmpty
+        let isSimultaneousClaudeCodex = (claudeHasRealActivity || isClaudeQuestionWait)
+            && (codexHasRealActivity || isCodexQuestionWait)
 
         let hasPermissionNeeded = settings.showPermissionIndicator
             && (!claudeCodeManager.sessionsNeedingPermission.isEmpty || !codexManager.pendingInputRequests.isEmpty)
@@ -741,30 +798,35 @@ struct ClangNotchContentView: View {
         // Determine what tool to show (prefer active Codex, then active Claude, then recent)
         let currentClaudeTool: ClaudeToolExecution? = claudeActiveTool ?? recentClaudeTool
         let currentCodexTool: CodexToolExecution? = codexActiveTool ?? recentCodexTool
-        // Antigravity: map its current action to either a tool label or the thinking state
-        let antigravityActive = antigravityHasRealActivity
-        let antigravityAction: String? = antigravityActive ? antigravityManager.state.currentAction : nil
-        let antigravityToolLabel: String? = (antigravityAction != nil && antigravityAction != "Thinking") ? antigravityAction : nil
-        let isThinking = (isClaudeActive && currentClaudeTool == nil) || (isCodexActive && currentCodexTool == nil) || (antigravityActive && antigravityToolLabel == nil)
+        let isThinking = (isClaudeActive && currentClaudeTool == nil) || (isCodexActive && currentCodexTool == nil)
 
         // Get current tool name (prefer Codex if active, otherwise Claude)
         let currentToolName: String? = {
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
                 return codexTool.toolName
             }
-            return currentClaudeTool?.toolName ?? antigravityToolLabel
+            return currentClaudeTool?.toolName
         }()
         let hasCurrentTool = currentToolName != nil
 
-        // A question waiting on an answer is already announced by the right wing's
+        // A lone question waiting on an answer is announced by the right wing's
         // "Answer". Repeating its tool name on the left says nothing new and is what
         // blows the bar up: "AskUserQuestion" alone claims 120pt, and since both wings
         // must claim the same width to stay centred, that is 240pt of empty black bar.
-        let isQuestionWait = (settings.showSourceClaudeCode && !claudeCodeManager.pendingInputRequests.isEmpty)
-            || (settings.showSourceCodex && !codexManager.pendingInputRequests.isEmpty)
+        let isQuestionWait = isClaudeQuestionWait || isCodexQuestionWait
+        // Keep Codex on the left and working Claude on the right, as when both work.
+        let showsCodexQuestionOnLeft = isCodexQuestionWait && isSimultaneousClaudeCodex
+        let showsClaudeQuestionOnRight = isClaudeQuestionWait && isSimultaneousClaudeCodex
+        let showsQuestionOnRight = showsClaudeQuestionOnRight || (isQuestionWait && !isSimultaneousClaudeCodex)
+
+        // A finished turn takes both wings for a moment, but never over something that
+        // waits on the user (Locked, Answer, Needs OK).
+        let showsDone = doneFlash != nil && !isKeyboardLocked && !isQuestionWait && !hasPermissionNeeded
 
         // When fully idle (no tool/thinking), the closed notch shows nothing.
-        let showLeftWing = (hasCurrentTool || isThinking) && !isQuestionWait
+        let showLeftWing = showsDone
+            || ((hasCurrentTool || isThinking) && (!isQuestionWait || isSimultaneousClaudeCodex))
+            || showsCodexQuestionOnLeft
 
         let measuredTextWidth: (String, CGFloat, NSFont.Weight) -> CGFloat = { text, size, weight in
             ceil((text as NSString).size(withAttributes: [
@@ -788,18 +850,18 @@ struct ClangNotchContentView: View {
             : (currentToolName ?? "Thinking...")
         let closedLabel = closedDisplayedLabel.isEmpty ? sourceLabel : closedDisplayedLabel
         let labelCapsuleWidth = min(124, measuredTextWidth(closedLabel, 10, .medium) + 12)
-        let showsClaudeIcon = !isSessionIdle && (hasCurrentTool || isThinking) && isClaudeActive && !isCodexActive
-        let showsCodexIcon = !isSessionIdle && (hasCurrentTool || isThinking) && isCodexActive
-        let leftWingWidth: CGFloat = showLeftWing ? (showsClaudeIcon || showsCodexIcon ? 12 : 8) + 6 + labelCapsuleWidth : 0
+        let showsClaudeIcon = (hasCurrentTool || isThinking) && isClaudeActive && !isCodexActive
+        let showsCodexIcon = (hasCurrentTool || isThinking) && isCodexActive
+        let leftWingWidth: CGFloat = showsDone ? 12 + 6 + measuredTextWidth("Done", 10, .medium)
+            : showsCodexQuestionOnLeft ? 58
+            : (showLeftWing ? (showsClaudeIcon || showsCodexIcon ? 12 : 8) + 6 + labelCapsuleWidth : 0)
         let simultaneousClaudeLabel = currentClaudeTool?.toolName ?? "Thinking..."
-        let showsSimultaneousClaudeWing = isSimultaneousClaudeCodex && !hasPermissionNeeded && !isQuestionWait
+        let showsSimultaneousClaudeWing = isSimultaneousClaudeCodex && !isClaudeQuestionWait
+            && (isCodexQuestionWait || !hasPermissionNeeded) && !showsDone
 
         let thinkingModelName: String? = {
             if isCodexActive {
                 return extractCodexModelName(codexManager.state.model)
-            }
-            if antigravityActive && !isClaudeActive {
-                return "Gemini"
             }
             return extractModelName(claudeCodeManager.state.model)
         }()
@@ -812,10 +874,11 @@ struct ClangNotchContentView: View {
             if isKeyboardLocked {
                 return measuredTextWidth("Locked", 10, .semibold) + 18
             }
-            if isQuestionWait || hasPermissionNeeded { return 58 }
-            if isSimultaneousClaudeCodex {
+            if showsDone { return DoneCheckmarkView.size }
+            if showsSimultaneousClaudeWing {
                 return min(124, measuredTextWidth(simultaneousClaudeLabel, 10, .medium) + 12) + 6 + 12
             }
+            if showsQuestionOnRight || hasPermissionNeeded { return 58 }
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
                 if codexTool.isRunning {
                     guard let argument = codexTool.argument else { return 8 }
@@ -889,19 +952,34 @@ struct ClangNotchContentView: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .lineLimit(1)
                                 .fixedSize()
-                        } else if isSessionIdle {
-                            // Session complete indicator
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
-                                .shadow(color: Color.green.opacity(0.5), radius: 2)
+                        } else if showsCodexQuestionOnLeft {
+                            HStack(spacing: 4) {
+                                Image(systemName: "bubble.left.and.bubble.right")
+                                    .font(.system(size: 8))
+                                Text("Answer")
+                                    .font(.system(size: 9, weight: .medium))
+                            }
+                            .foregroundColor(.blue)
+                        } else if showsDone, let doneFlash {
+                            if doneFlash.source == .claude {
+                                Image("ClaudeIcon")
+                                    .resizable()
+                                    .frame(width: 12, height: 12)
+                            } else {
+                                Image("ChatGPTIcon")
+                                    .resizable()
+                                    .foregroundColor(.white)
+                                    .frame(width: 12, height: 12)
+                            }
                             Text("Done")
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.green.opacity(0.9))
+                                .foregroundColor(doneBlue)
+                                .lineLimit(1)
+                                .fixedSize()
                         } else if hasCurrentTool || isThinking {
                             // Source-specific indicator color
-                            let indicatorColor = isCodexActive ? codexIndicatorColor : (isClaudeActive ? activityGlowColor : (antigravityActive ? antigravityGlowColor : activityGlowColor))
-                            let isActive = isCodexActive || isClaudeActive || antigravityActive
+                            let indicatorColor = isCodexActive ? codexIndicatorColor : activityGlowColor
+                            let isActive = isCodexActive || isClaudeActive
                             if showsClaudeIcon {
                                 Image("ClaudeIcon")
                                     .resizable()
@@ -963,14 +1041,17 @@ struct ClangNotchContentView: View {
                                     .fixedSize(horizontal: true, vertical: false)
                             }
                             .foregroundColor(lockedTint)
-                        } else if isQuestionWait {
+                        } else if showsDone, let doneFlash {
+                            DoneCheckmarkView(color: doneBlue)
+                                .id(doneFlash.id)
+                        } else if showsQuestionOnRight {
                             HStack(spacing: 4) {
                                 Image(systemName: "bubble.left.and.bubble.right")
                                     .font(.system(size: 8))
                                 Text("Answer")
                                     .font(.system(size: 9, weight: .medium))
                             }
-                            .foregroundColor(settings.showSourceCodex && !codexManager.pendingInputRequests.isEmpty ? .blue : .orange)
+                            .foregroundColor(showsClaudeQuestionOnRight || !isCodexQuestionWait ? .orange : .blue)
                         } else if showsSimultaneousClaudeWing {
                             // Mirror of the left wing: label, then the dot at the outer edge.
                             HStack(spacing: 6) {
@@ -1182,6 +1263,12 @@ struct ClangNotchContentView: View {
                         Task { await telemetryCoordinator.start() }
                     }.help(L("텔레메트리 시작", "Start telemetry"))
                 }
+                // Apple's own mute look: the bell, struck through when the sounds are off.
+                NotchControlButton(systemName: settings.notchSoundsEnabled ? "bell" : "bell.slash",
+                                   tint: settings.notchSoundsEnabled ? nil : .white.opacity(0.45)) {
+                    settings.notchSoundsEnabled.toggle()
+                }
+                .help(settings.notchSoundsEnabled ? L("효과음 끄기", "Mute sounds") : L("효과음 켜기", "Turn sounds on"))
                 NotchControlButton(systemName: "gearshape") { openSettings() }
                     .help(L("설정", "Settings"))
                 NotchControlButton(systemName: "power", tint: .white.opacity(0.5)) { confirmQuit() }
@@ -1224,6 +1311,17 @@ struct ClangNotchContentView: View {
             BatteryView(manager: batteryManager)
         } else if activeMode == .speed, hasSpeedTest {
             ScrollView(.vertical) { SpeedTestView(manager: speedTest) }
+        } else if let sessionDetail {
+            SessionDetailView(
+                target: sessionDetail, manager: claudeCodeManager, codexManager: codexManager,
+                onBack: { showSessionDetail(nil) },
+                openTitle: openTitle(sessionDetail.agent == .codex ? .codex : .claude, sessionDetail.sessionId),
+                onOpenTerminal: {
+                    focusSession(sessionDetail.agent == .codex ? .codex : .claude, sessionDetail.sessionId)
+                    notchVM.close()
+                }
+            )
+            .transition(modeContentTransition)
         } else {
             aiExpandedContent
         }
@@ -1261,7 +1359,6 @@ struct ClangNotchContentView: View {
     private var overviewHasActivity: Bool {
         (settings.showSourceClaudeCode && claudeHasRealActivity)
             || codexHasRealActivity
-            || (settings.enableAntigravity && antigravityHasRealActivity)
             || isAgentActiveForVisibleSource
     }
 
@@ -1360,22 +1457,6 @@ struct ClangNotchContentView: View {
                     }
                 }
 
-                if settings.enableAntigravity, antigravityManager.state.recentlyUsed {
-                    NotchSection(title: "ANTIGRAVITY") {
-                        Button {
-                            notchVM.close()
-                            SessionAppLauncher.open(.antigravity)
-                        } label: {
-                            Label(antigravityManager.state.currentAction ?? L("활동 대기 중", "Waiting for activity"), systemImage: "sparkles")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.purple)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(L("Antigravity 열기", "Open Antigravity"))
-                    }
-                }
 
                 usageOverview
 
@@ -1392,7 +1473,8 @@ struct ClangNotchContentView: View {
                         manager: claudeCodeManager,
                         codexManager: codexManager,
                         maxItems: nil,
-                        onOpen: { notchVM.close() }
+                        onOpen: { notchVM.close() },
+                        onSelect: { showSessionDetail($0) }
                     )
                 }
 
@@ -1406,15 +1488,6 @@ struct ClangNotchContentView: View {
                     }
                     .buttonStyle(NotchHoverButtonStyle(cornerRadius: 6))
                     .help(L("에디터에서 권한 확인", "Review permission in your editor"))
-                }
-
-            // Context progress bar (with integrated API usage badges)
-                if settings.showContextProgress {
-                    ContextProgressBar(
-                        tokenUsage: claudeCodeManager.state.tokenUsage,
-                        contextLimit: settings.contextTokenLimit,
-                        showApiUsage: settings.enableClaudeUsage
-                    )
                 }
 
             // Use Claude Code tokens when JSONL is source, otherwise use telemetry
@@ -1443,14 +1516,14 @@ struct ClangNotchContentView: View {
     @ViewBuilder
     private var peekHeader: some View {
         Group {
-            if showQuestionNotice {
+            if showPermissionNotice || showQuestionNotice {
                 Color.clear
-            } else if showCompletionNotice, let toolCall = completionToolCall {
-                completionHeader(toolCall: toolCall)
             } else if showSpeedNotice {
                 SpeedPeekHeader(manager: speedTest)
             } else if let tetherPlaceName {
                 TetherPeekHeader(placeName: tetherPlaceName)
+            } else if doneNotice != nil {
+                Color.clear
             } else {
                 HStack(spacing: 10) {
                     TelemetryStatusIndicatorView(state: telemetryCoordinator.state)
@@ -1468,14 +1541,16 @@ struct ClangNotchContentView: View {
     @ViewBuilder
     private var peekContent: some View {
         Group {
-            if showQuestionNotice {
+            if showPermissionNotice, let item = permissionCenter.queue.first ?? shownPermission {
+                permissionDropdown(item)
+            } else if showQuestionNotice {
                 questionContent
-            } else if showCompletionNotice, let toolCall = completionToolCall {
-                completionContent(toolCall: toolCall)
             } else if showSpeedNotice {
                 SpeedPeekContent(manager: speedTest)
             } else if let tetherPlaceName {
                 TetherPeekContent(placeName: tetherPlaceName)
+            } else if let doneNotice {
+                doneDropdown(doneNotice)
             } else {
                 VStack(spacing: 8) {
                     if settings.showNotchTokenCount, recentTokenTotal > 0 {
@@ -1496,6 +1571,19 @@ struct ClangNotchContentView: View {
                 .padding(.top, 8)
             }
         }
+    }
+
+    /// Set while the asking Claude session's hook waits on the notch, so picking an option
+    /// answers the question from here.
+    private var claudeQuestionAnswer: (([String: Any]) -> Void)? {
+        // A next-step box's buttons send a message in the app; the notch can't press them.
+        guard let request = claudeInputRequest, !request.isWrapUp,
+              let sessionId = claudeCodeManager.sessionStates.first(where: {
+                  $0.value.pendingInputRequests.contains { $0.id == request.id }
+              })?.key,
+              permissionCenter.answerableQuestionSessions.contains(sessionId) else { return nil }
+        let center = permissionCenter
+        return { answers in center.answerQuestion(sessionId: sessionId, answers: answers) }
     }
 
     private var questionNoticeColor: Color {
@@ -1524,7 +1612,7 @@ struct ClangNotchContentView: View {
             Button {
                 goToAskingSession()
             } label: {
-                Label(L("이동", "Go"), systemImage: "arrow.up.forward.app")
+                Label(askingSessionOpenTitle, systemImage: "arrow.up.forward.app")
                     .font(.system(size: 10, weight: .medium))
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
@@ -1543,7 +1631,34 @@ struct ClangNotchContentView: View {
         }
     }
 
+    /// The session that holds a Claude question, by its request.
+    private func claudeSessionId(asking request: ClaudeInputRequest) -> String? {
+        claudeCodeManager.sessionStates.first { $0.value.pendingInputRequests.contains { $0.id == request.id } }?.key
+    }
+
+    private func wrapUpDropdown(_ request: ClaudeInputRequest) -> some View {
+        let sessionId = claudeSessionId(asking: request)
+        return WrapUpDropdownView(
+            request: request,
+            projectName: sessionId.map { projectName(.claude, $0) } ?? "",
+            accent: agentAccent(.claude),
+            openTitle: askingSessionOpenTitle,
+            onOpen: { goToAskingSession() },
+            onDismiss: { claudeCodeManager.dismissWrapUp(id: request.id) }
+        )
+    }
+
     private var questionContent: some View {
+        Group {
+            if let request = claudeInputRequest, request.isWrapUp {
+                wrapUpDropdown(request)
+            } else {
+                plainQuestionContent
+            }
+        }
+    }
+
+    private var plainQuestionContent: some View {
         VStack(spacing: 8) {
             questionHeader
 
@@ -1554,7 +1669,9 @@ struct ClangNotchContentView: View {
                 .scrollIndicators(.visible)
             } else if let request = claudeInputRequest {
                 ScrollView(.vertical) {
-                    QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange)
+                    QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
+                                        onSubmit: claudeQuestionAnswer)
+                        .id(request.id)
                 }
                 .scrollIndicators(.visible)
             }
@@ -1692,10 +1809,23 @@ struct ClangNotchContentView: View {
         let questions: [AgentInputQuestion]
         let sourceName: String
         let accentColor: Color
+        /// Set while the agent's hook waits on the notch: options become buttons and the
+        /// picks go back as `[question: label]` (a label list for multi-select).
+        var onSubmit: (([String: Any]) -> Void)? = nil
+        @State private var picks: [Int: Set<Int>] = [:]
+
+        /// One single-choice question needs no Send: the tap is the answer.
+        private var answersOnTap: Bool {
+            questions.count == 1 && questions.first?.multiSelect == false
+        }
+
+        private var canSend: Bool {
+            questions.indices.allSatisfy { picks[$0]?.isEmpty == false }
+        }
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(questions.enumerated()), id: \.offset) { _, question in
+                ForEach(Array(questions.enumerated()), id: \.offset) { index, question in
                     VStack(alignment: .leading, spacing: 5) {
                         Text(question.multiSelect ? L("\(question.header) · 복수 선택", "\(question.header) · multiple choice") : question.header)
                             .font(.system(size: 10, weight: .semibold))
@@ -1703,21 +1833,20 @@ struct ClangNotchContentView: View {
                         Text(question.question)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.white)
-                        ForEach(Array(question.options.enumerated()), id: \.offset) { _, option in
-                            HStack(alignment: .top, spacing: 5) {
-                                Circle()
-                                    .fill(Color.white.opacity(0.5))
-                                    .frame(width: 4, height: 4)
-                                    .padding(.top, 5)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(option.label)
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.white.opacity(0.9))
-                                    if !option.description.isEmpty {
-                                        Text(option.description)
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.white.opacity(0.6))
-                                    }
+                        ForEach(Array(question.options.enumerated()), id: \.offset) { optionIndex, option in
+                            if onSubmit != nil {
+                                optionButton(option, picked: picks[index]?.contains(optionIndex) == true,
+                                             multiSelect: question.multiSelect) {
+                                    pick(optionIndex, in: index, multiSelect: question.multiSelect)
+                                }
+                                .popIn(.rise, delay: Double(min(optionIndex, 6)) * 0.035)
+                            } else {
+                                HStack(alignment: .top, spacing: 5) {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.5))
+                                        .frame(width: 4, height: 4)
+                                        .padding(.top, 5)
+                                    optionText(option)
                                 }
                             }
                         }
@@ -1729,11 +1858,82 @@ struct ClangNotchContentView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.7))
                 }
-                Label(L("\(sourceName)에서 응답", "Answer in \(sourceName)"), systemImage: "arrow.up.right.square")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(accentColor.opacity(0.8))
+                HStack {
+                    Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
+                                          : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
+                          systemImage: "arrow.up.right.square")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(accentColor.opacity(0.8))
+                    Spacer(minLength: 0)
+                    if onSubmit != nil, !answersOnTap {
+                        Button(action: submit) {
+                            Text(L("보내기", "Send"))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(canSend ? .black : .white.opacity(0.4))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 5)
+                                .background(Capsule().fill(canSend ? accentColor : Color.white.opacity(0.08)))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canSend)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
+        private func optionText(_ option: AgentInputOption) -> some View {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(option.label)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                if !option.description.isEmpty {
+                    Text(option.description)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+            }
+        }
+
+        private func optionButton(_ option: AgentInputOption, picked: Bool, multiSelect: Bool,
+                                  action: @escaping () -> Void) -> some View {
+            Button(action: action) {
+                HStack(alignment: .top, spacing: 7) {
+                    Image(systemName: multiSelect ? (picked ? "checkmark.square.fill" : "square")
+                                                  : (picked ? "largecircle.fill.circle" : "circle"))
+                        .font(.system(size: 11))
+                        .foregroundColor(picked ? accentColor : .white.opacity(0.45))
+                        .padding(.top, 1)
+                    optionText(option)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(picked ? accentColor.opacity(0.16) : Color.white.opacity(0.05)))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+
+        private func pick(_ option: Int, in question: Int, multiSelect: Bool) {
+            if multiSelect {
+                picks[question, default: []].formSymmetricDifference([option])
+            } else {
+                picks[question] = [option]
+            }
+            if answersOnTap { submit() }
+        }
+
+        private func submit() {
+            guard canSend, let onSubmit else { return }
+            var answers: [String: Any] = [:]
+            for (index, question) in questions.enumerated() {
+                let labels = (picks[index] ?? []).sorted().map { question.options[$0].label }
+                answers[question.question] = question.multiSelect ? labels : labels.first
+            }
+            onSubmit(answers)
         }
     }
 
@@ -1784,20 +1984,6 @@ struct ClangNotchContentView: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-        }
-    }
-
-    private struct NotchPill: View {
-        let text: String
-        var mono: Bool = false
-
-        var body: some View {
-            Text(text)
-                .font(.system(size: 10, weight: .medium, design: mono ? .monospaced : .default))
-                .foregroundColor(.white.opacity(0.7))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.white.opacity(0.08), in: Capsule())
         }
     }
 
@@ -1903,75 +2089,6 @@ struct ClangNotchContentView: View {
 
     }
 
-    // MARK: - Context Progress Bar
-
-    private struct ContextProgressBar: View {
-        let tokenUsage: ClaudeTokenUsage
-        let contextLimit: Int
-        var showApiUsage: Bool = false
-
-        private var totalTokens: Int {
-            tokenUsage.inputTokens + tokenUsage.outputTokens + tokenUsage.cacheReadInputTokens
-        }
-
-        private var progress: Double {
-            guard contextLimit > 0 else { return 0 }
-            return min(1.0, Double(totalTokens) / Double(contextLimit))
-        }
-
-        private var progressColor: Color {
-            if progress > 0.9 { return .red }
-            if progress > 0.7 { return .orange }
-            if progress > 0.5 { return .yellow }
-            return .green
-        }
-
-        var body: some View {
-            VStack(spacing: 4) {
-                HStack {
-                    Text("Context")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.6))
-
-                    Text("\(formatTokens(totalTokens)) / \(formatTokens(contextLimit))")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.7))
-
-                    Spacer()
-
-                    // API Usage badges integrated inline
-                    if showApiUsage {
-                        InlineApiUsageBadges()
-                    }
-                }
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        // Background
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.white.opacity(0.1))
-
-                        // Progress fill
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(progressColor.opacity(0.8))
-                            .frame(width: geo.size.width * progress)
-                    }
-                }
-                .frame(height: 6)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-        }
-
-        private func formatTokens(_ count: Int) -> String {
-            if count >= 1000 {
-                return String(format: "%.1fk", Double(count) / 1000.0)
-            }
-            return "\(count)"
-        }
-    }
-
     private func handleHover(_ hovering: Bool) {
         hoverTask?.cancel()
 
@@ -1980,7 +2097,12 @@ struct ClangNotchContentView: View {
                 isHovering = true
             }
 
-            if notchVM.notchState == .peeking && showQuestionNotice {
+            if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
+                return
+            }
+            // Reading the 완료 드롭다운 holds it; it doesn't turn into the full panel.
+            if notchVM.notchState == .peeking && doneNotice != nil {
+                doneNoticeTask?.cancel()
                 return
             }
             guard notchVM.notchState != .open else { return }
@@ -1991,14 +2113,19 @@ struct ClangNotchContentView: View {
 
                 await MainActor.run {
                     guard notchVM.notchState != .open, isHovering,
-                          !(notchVM.notchState == .peeking && showQuestionNotice) else { return }
+                          !(notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice || doneNotice != nil)) else { return }
                     openSelectedMode()
                 }
             }
         } else {
-            // Question reading stays compact until answered or explicitly dismissed.
-            if notchVM.notchState == .peeking && showQuestionNotice {
+            // Question and permission reading stays compact until answered or explicitly dismissed.
+            if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
                 isHovering = false
+                return
+            }
+            if notchVM.notchState == .peeking && doneNotice != nil {
+                isHovering = false
+                scheduleDoneNoticeDismiss(after: 1.5)
                 return
             }
             let delay = max(0.15, hoverExitNotBefore.timeIntervalSinceNow)
@@ -2222,144 +2349,29 @@ struct ClangNotchContentView: View {
         }
 
         scheduleClear()
-        updateCompletionNoticeState()
-    }
-
-    private func updateCompletionNoticeState() {
-        let hasActiveNow = visibleToolCalls.contains { $0.isActive }
-        let lastCompleted = visibleToolCalls.first(where: { !$0.isActive })
-        let isCompletionEvent = lastCompleted.map(isCompletionToolCall) ?? false
-
-        if hasActiveNow {
-            completionDebounceTask?.cancel()
-        } else if isCompletionEvent {
-            // Only show completion peek for actual "Complete" tool calls from telemetry,
-            // not for every tool that finishes. JSONL tracking handles session completion separately.
-            completionDebounceTask?.cancel()
-            completionDebounceTask = Task {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                let stillIdle = !visibleToolCalls.contains { $0.isActive }
-                guard stillIdle, let completed = lastCompleted else { return }
-                if let endTime = completed.endTime, Date().timeIntervalSince(endTime) > 10 {
-                    return
-                }
-                guard completed.id != lastCompletionId else { return }
-                await MainActor.run {
-                    showCompletionNotice = true
-                    completionToolCall = completed
-                    lastCompletionId = completed.id
-                    stopActivityGlowForCompletion()
-                    resetClosedJellyReveal()
-                    notchVM.peek(duration: 3.0)
-                    completionNoticeTask?.cancel()
-                    completionNoticeTask = Task {
-                        try? await Task.sleep(for: .seconds(3))
-                        guard !Task.isCancelled else { return }
-                        await MainActor.run {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showCompletionNotice = false
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-    }
-
-    private func isCompletionToolCall(_ toolCall: ToolCall) -> Bool {
-        let name = toolCall.toolName.lowercased()
-        return name == "complete"
-            || name == "response complete"
-            || name == "output ready"
-            || name == "response completed"
-    }
-
-    private func completionHeader(toolCall: ToolCall) -> some View {
-        HStack(spacing: 10) {
-            let isSuccess = toolCall.isSuccess
-            Image(systemName: isSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(isSuccess ? .green : .red)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(isSuccess ? "Task Complete" : "Task Failed")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
-                Text(L("출처: \(toolCall.source.displayName)", "Source: \(toolCall.source.displayName)"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(sourceTint(for: toolCall.source))
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private func sourceTint(for source: TelemetrySource) -> Color {
-        switch source {
-        case .codex:
-            return Color(red: 0.2, green: 0.45, blue: 0.9)
-        case .claudeCode:
-            return Color(red: 1.0, green: 0.55, blue: 0.2)
-        case .unknown:
-            return Color.white.opacity(0.65)
-        }
-    }
-
-    private func completionContent(toolCall: ToolCall) -> some View {
-        VStack(spacing: 8) {
-            let summary = completionSummary(for: toolCall)
-            Text(summary)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.7))
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 8) {
-                Text(toolCall.toolName)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
-                    .lineLimit(1)
-
-                Spacer()
-
-                if settings.showNotchTokenCount, let tokens = toolCall.tokenCount {
-                    NotchPill(text: "\(tokens) t")
-                }
-
-                NotchPill(text: toolCall.formattedDuration, mono: true)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-    }
-
-    private func completionSummary(for toolCall: ToolCall) -> String {
-        if let result = toolCall.result {
-            switch result {
-            case .success(let content):
-                let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    return trimmed
-                }
-            case .failure(let error):
-                let trimmed = error.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    return trimmed
-                }
-            }
-        }
-        if isCompletionToolCall(toolCall) {
-            return L("응답 완료", "Model finished response")
-        }
-        return L("\(toolCall.toolName) 완료", "Finished \(toolCall.toolName)")
     }
 
     private func stopActivityGlowForCompletion() {
         glowTask?.cancel()
         showActivityGlow = false
+    }
+
+    /// Only a closed notch shows it: the open panel already lists the session, and a
+    /// dropdown covers the wings. A second finish within 3s replays it and restarts the clock.
+    private func showDoneFlash(_ source: DoneFlash.Source, turn: CompletedTurn? = nil) {
+        guard notchVM.notchState == .closed else { return }
+        stopActivityGlowForCompletion()
+        doneFlash = DoneFlash(source: source, turn: turn)
+        // The turn's end can drop the surface a pass before doneFlash holds it up.
+        cancelClosedJellyDismiss()
+        doneFlashTask?.cancel()
+        doneFlashTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.3)) { doneFlash = nil }
+            }
+        }
     }
 
     private func triggerCodexInputNotice(_ request: CodexInputRequest) {
@@ -2373,6 +2385,14 @@ struct ClangNotchContentView: View {
         claudeInputRequest = request
         codexInputRequest = nil
 
+        if request.isWrapUp {
+            showQuestionNotice = true
+            guard !showPermissionNotice else { return }
+            resetClosedJellyReveal()
+            notchVM.peek(duration: nil, additionalHeight: peekHeight(for: wrapUpDropdown(request), width: permissionNotchWidth),
+                         width: permissionNotchWidth)
+            return
+        }
         showInputNotice(questions: request.questions, sourceName: "Claude", accentColor: .orange)
     }
 
@@ -2380,13 +2400,16 @@ struct ClangNotchContentView: View {
 
         let content = VStack(spacing: 8) {
             questionHeader
-            QuestionOptionsView(questions: questions, sourceName: sourceName, accentColor: accentColor)
+            QuestionOptionsView(questions: questions, sourceName: sourceName, accentColor: accentColor,
+                                onSubmit: sourceName == "Claude" ? claudeQuestionAnswer : nil)
         }
         .padding(.top, 10)
         .frame(width: openNotchSize.width - expandedNotchInset * 2)
         .fixedSize(horizontal: false, vertical: true)
         let additionalHeight = ceil(NSHostingView(rootView: content).fittingSize.height) + 12
         showQuestionNotice = true
+        // The 권한 드롭다운 has a deadline; the question shows once it's gone.
+        guard !showPermissionNotice else { return }
         resetClosedJellyReveal()
         notchVM.peek(duration: nil, additionalHeight: additionalHeight, width: openNotchSize.width)
     }
@@ -2396,6 +2419,23 @@ struct ClangNotchContentView: View {
     /// Brings the asking session's own app or terminal forward — the same destination as
     /// clicking that session in the list — since the answer has to be typed there. Falls
     /// back to expanding the AI tab only when the asking session can't be identified.
+    /// The 질문 드롭다운's go button reads like the session's: 터미널 열기 or GUI 열기.
+    private var askingSessionOpenTitle: String {
+        if let request = codexInputRequest,
+           let session = codexManager.availableSessions.first(where: {
+               codexManager.sessionStates[$0.id]?.pendingInputRequest?.id == request.id
+           }) {
+            return openTitle(.codex, session.id)
+        }
+        if let request = claudeInputRequest,
+           let session = claudeCodeManager.sessionsAwaitingInput.first(where: {
+               claudeCodeManager.sessionStates[$0.id]?.pendingInputRequests.contains { $0.id == request.id } == true
+           }) {
+            return openTitle(.claude, session.id)
+        }
+        return L("이동", "Go")
+    }
+
     private func goToAskingSession() {
         if let request = codexInputRequest,
            let session = codexManager.availableSessions.first(where: {
@@ -2419,7 +2459,7 @@ struct ClangNotchContentView: View {
     private func dismissQuestionNotice() {
         showQuestionNotice = false
         if notchVM.notchState == .peeking {
-            notchVM.close()
+            restorePeek()
         }
     }
 
@@ -2483,14 +2523,15 @@ struct ClangNotchContentView: View {
         speedDismissTask?.cancel()
         showSpeedNotice = false
         if notchVM.notchState == .peeking {
-            notchVM.close()
+            restorePeek()
         }
     }
 
     /// Only drops from a closed notch: an open panel or another notice already owns the
     /// space, and the monitor repeats the alert while tethering continues.
     private func triggerTetherNotice(_ placeName: String) {
-        guard notchVM.notchState == .closed, !showQuestionNotice, !showSpeedNotice, !showCompletionNotice else { return }
+        guard notchVM.notchState == .closed, !showQuestionNotice, !showSpeedNotice,
+              !showPermissionNotice, doneNotice == nil else { return }
         tetherPlaceName = placeName
         resetClosedJellyReveal()
         notchVM.peek(duration: nil, additionalHeight: 64)
@@ -2510,9 +2551,228 @@ struct ClangNotchContentView: View {
         tetherPlaceName = nil
         // A notice that dropped in on top owns the peek now; leave closing it to that notice.
         if wasShowing, notchVM.notchState == .peeking,
-           !showQuestionNotice, !showSpeedNotice, !showCompletionNotice {
+           !showQuestionNotice, !showSpeedNotice, !showPermissionNotice, doneNotice == nil {
+            restorePeek()
+        }
+    }
+
+    // MARK: - 권한 드롭다운 / 완료 드롭다운
+
+    private func agentAccent(_ agent: PermissionRequestItem.Agent) -> Color {
+        agent == .codex ? codexGlowColor : claudeGlowColor
+    }
+
+    private func permissionDropdown(_ item: PermissionRequestItem) -> some View {
+        PermissionDropdownView(
+            item: item, position: 1, total: permissionCenter.queue.count, accent: agentAccent(item.agent),
+            inTerminal: item.sessionId.flatMap { sessionDestination(item.agent == .codex ? .codex : .claude, $0) }?.isTerminal ?? true
+        ) { decision in
+            permissionCenter.decide(item.id, decision)
+            // "In terminal" also brings that terminal forward, where the prompt will be.
+            if decision == .terminal, let sessionId = item.sessionId {
+                focusSession(item.agent == .codex ? .codex : .claude, sessionId)
+            }
+        }
+    }
+
+    private func doneDropdown(_ notice: DoneNotice) -> some View {
+        DoneDropdownView(
+            agent: notice.source == .codex ? .codex : .claude,
+            projectName: notice.projectName, turn: notice.turn, accent: doneBlue,
+            openTitle: openTitle(notice.source, notice.turn.sessionId)
+        ) {
+            // Fold first, then switch apps: doing both at once cut the fold off mid-way.
+            dismissDoneNotice()
+            Task {
+                try? await Task.sleep(for: .seconds(notchCloseDuration))
+                await MainActor.run { focusSession(notice.source, notice.turn.sessionId) }
+            }
+        }
+    }
+
+    /// Height a dropdown needs below the closed notch at the given dropdown width.
+    private func peekHeight<V: View>(for view: V, width: CGFloat) -> CGFloat {
+        let content = view
+            .frame(width: width - expandedNotchInset * 2)
+            .fixedSize(horizontal: false, vertical: true)
+        return ceil(NSHostingView(rootView: content).fittingSize.height) + 12
+    }
+
+    /// Requests come and go on their own (answered, timed out, or answered in Claude's
+    /// own prompt); the dropdown follows the oldest one still waiting.
+    private func handlePermissionQueue(_ queue: [PermissionRequestItem]) {
+        if let first = queue.first {
+            guard notchVM.notchState != .open else { return }
+            if first.id != shownPermission?.id { NotchSounds.playAttention() }
+            showPermissionNotice = true
+            shownPermission = first
+            resetClosedJellyReveal()
+            notchVM.peek(duration: nil, additionalHeight: peekHeight(for: permissionDropdown(first), width: permissionNotchWidth),
+                         width: permissionNotchWidth)
+        } else if showPermissionNotice {
+            if notchVM.notchState == .peeking, !hasNoticeAfter(permission: true) {
+                foldPeek {
+                    // A request that arrived meanwhile owns the dropdown now.
+                    guard permissionCenter.queue.isEmpty else { return }
+                    showPermissionNotice = false
+                    shownPermission = nil
+                }
+                return
+            }
+            showPermissionNotice = false
+            shownPermission = nil
+            if notchVM.notchState == .peeking { restorePeek() }
+        }
+    }
+
+    /// Whether anything still wants the dropdown once the given notice is gone.
+    private func hasNoticeAfter(permission: Bool = false, done: Bool = false) -> Bool {
+        (!permission && showPermissionNotice) || showQuestionNotice || showSpeedNotice
+            || tetherPlaceName != nil || (!done && doneNotice != nil) || pendingDoneNotice != nil
+    }
+
+    /// Folds the dropdown with its content still in it and clears that content once it's
+    /// tucked away; clearing first left the dropdown empty for the whole close.
+    private func foldPeek(then clear: @escaping () -> Void) {
+        notchVM.close()
+        Task {
+            try? await Task.sleep(for: .seconds(notchCloseDuration))
+            await MainActor.run { clear() }
+        }
+    }
+
+    /// Re-fits the dropdown to whichever notice still holds it, highest priority first,
+    /// or closes it. Every notice that goes away comes through here, so none of them can
+    /// close the notch out from under another (or leave it stuck open, empty).
+    private func restorePeek() {
+        if showPermissionNotice, !permissionCenter.queue.isEmpty {
+            handlePermissionQueue(permissionCenter.queue)
+        } else if showQuestionNotice, let request = claudeInputRequest {
+            triggerClaudeInputNotice(request)
+        } else if showQuestionNotice, let request = codexInputRequest {
+            triggerCodexInputNotice(request)
+        } else if showSpeedNotice {
+            notchVM.peek(duration: 90)
+        } else if tetherPlaceName != nil {
+            notchVM.peek(duration: nil, additionalHeight: 64)
+        } else if let doneNotice {
+            notchVM.peek(duration: nil, additionalHeight: peekHeight(for: doneDropdown(doneNotice), width: permissionNotchWidth),
+                         width: permissionNotchWidth)
+        } else if let pending = pendingDoneNotice {
+            pendingDoneNotice = nil
+            if Date().timeIntervalSince(pending.at) < 60 {
+                showDoneNotice(pending)
+            } else {
+                notchVM.close()
+            }
+        } else if notchVM.notchState == .peeking {
             notchVM.close()
         }
+    }
+
+    /// A finish drops the 완료 드롭다운, unless its own app is in front (the wing's Done is
+    /// enough there) or another dropdown holds the notch (it waits its turn).
+    private func handleCompletedTurn(_ turn: CompletedTurn, _ source: DoneFlash.Source) {
+        guard notchVM.notchState != .open else { return }
+        NotchSounds.playDone()
+        if isSessionAppFrontmost(source, turn.sessionId) {
+            showDoneFlash(source, turn: turn)
+            return
+        }
+        let notice = DoneNotice(source: source, turn: turn, projectName: projectName(source, turn.sessionId))
+        if showPermissionNotice || showQuestionNotice || showSpeedNotice || tetherPlaceName != nil {
+            pendingDoneNotice = notice
+        } else {
+            showDoneNotice(notice)
+        }
+    }
+
+    private func showDoneNotice(_ notice: DoneNotice) {
+        stopActivityGlowForCompletion()
+        doneFlashTask?.cancel()
+        doneFlash = nil
+        doneNotice = notice
+        resetClosedJellyReveal()
+        notchVM.peek(duration: nil, additionalHeight: peekHeight(for: doneDropdown(notice), width: permissionNotchWidth),
+                     width: permissionNotchWidth)
+        scheduleDoneNoticeDismiss(after: 5)
+    }
+
+    private func scheduleDoneNoticeDismiss(after seconds: Double) {
+        doneNoticeTask?.cancel()
+        doneNoticeTask = Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { dismissDoneNotice() }
+        }
+    }
+
+    private func dismissDoneNotice() {
+        doneNoticeTask?.cancel()
+        guard let notice = doneNotice else { return }
+        if notchVM.notchState == .peeking, !hasNoticeAfter(done: true) {
+            foldPeek { if doneNotice == notice { doneNotice = nil } }
+            return
+        }
+        doneNotice = nil
+        if notchVM.notchState == .peeking { restorePeek() }
+    }
+
+    private func projectName(_ source: DoneFlash.Source, _ sessionId: String) -> String {
+        let cwd: String? = switch source {
+        case .claude: claudeCodeManager.sessionStates[sessionId]?.cwd
+        case .codex: codexManager.availableSessions.first { $0.id == sessionId }?.cwd
+        }
+        guard let cwd, !cwd.isEmpty else { return "" }
+        return URL(fileURLWithPath: cwd).lastPathComponent
+    }
+
+    /// Where clicking the session in the list would go: its terminal, desktop app or editor.
+    private func sessionDestination(_ source: DoneFlash.Source, _ sessionId: String) -> SessionAppDestination? {
+        switch source {
+        case .claude:
+            guard let session = claudeCodeManager.availableSessions.first(where: { $0.id == sessionId }) else { return nil }
+            return SessionAppDestination.claude(
+                entrypoint: claudeCodeManager.sessionStates[sessionId]?.entrypoint ?? .unknown,
+                ideName: session.ideName)
+        case .codex:
+            guard let session = codexManager.availableSessions.first(where: { $0.id == sessionId }) else { return nil }
+            return codexManager.appDestination(for: session)
+        }
+    }
+
+    /// "터미널 열기" or "GUI 열기", by where the session runs.
+    private func openTitle(_ source: DoneFlash.Source, _ sessionId: String) -> String {
+        (sessionDestination(source, sessionId) ?? .terminal).openTitle
+    }
+
+    /// App-level: the session's terminal or editor is the frontmost app.
+    private func isSessionAppFrontmost(_ source: DoneFlash.Source, _ sessionId: String) -> Bool {
+        guard let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
+        return sessionDestination(source, sessionId)?.bundleIdentifiers.contains(front) == true
+    }
+
+    /// The same destination as clicking the session in the list.
+    private func focusSession(_ source: DoneFlash.Source, _ sessionId: String) {
+        switch source {
+        case .claude:
+            if let session = claudeCodeManager.availableSessions.first(where: { $0.id == sessionId }) {
+                claudeCodeManager.focusIDE(for: session)
+            }
+        case .codex:
+            if let session = codexManager.availableSessions.first(where: { $0.id == sessionId }) {
+                codexManager.focusApp(for: session)
+            }
+        }
+    }
+
+    /// Opens (or, with nil, leaves) the 세션 화면, widening the notch for it.
+    private func showSessionDetail(_ target: SessionDetailTarget?) {
+        // The resize moves the edges under a cursor that may sit near one; don't let that
+        // read as leaving the notch.
+        hoverExitNotBefore = Date().addingTimeInterval(0.55)
+        withAnimation(modeSwitchAnimation) { sessionDetail = target }
+        notchVM.resizeOpen(to: target == nil ? activeMode.expandedSize : sessionDetailNotchSize)
     }
 
     private func openSelectedMode() {
@@ -2539,36 +2799,6 @@ struct ClangNotchContentView: View {
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.3)) {
                     showStartupGlow = false
-                }
-            }
-        }
-    }
-
-    private func handleAgentCompletion() {
-        // Refresh visible tool calls first
-        visibleToolCalls = telemetryCoordinator.recentToolCalls.filter { isSourceVisible($0.source) }
-
-        // Find the completion tool call that was just added
-        guard let completeCall = visibleToolCalls.first(where: { $0.toolName == "Complete" }),
-              completeCall.id != lastCompletionId else { return }
-
-        showCompletionNotice = true
-        completionToolCall = completeCall
-        lastCompletionId = completeCall.id
-        stopActivityGlowForCompletion()
-
-        // Peek the notch to show completion
-        resetClosedJellyReveal()
-        notchVM.peek(duration: 3.0)
-
-        // Hide completion notice after delay
-        completionNoticeTask?.cancel()
-        completionNoticeTask = Task {
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.3)) {
-                    showCompletionNotice = false
                 }
             }
         }

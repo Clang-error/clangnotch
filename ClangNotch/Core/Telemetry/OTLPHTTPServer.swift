@@ -8,12 +8,15 @@ final class OTLPHTTPServer {
         case logs
         case metrics
         case claudeHook
+        case permissionHook
         case other
     }
 
     struct Request {
         let route: Route
         let body: Data
+        /// Set only for `.permissionHook`: the hook's curl waits on it for a decision.
+        var reply: HookReply? = nil
     }
 
     var onRequest: ((Request) -> Void)?
@@ -69,6 +72,7 @@ private final class HTTPConnectionHandler {
     private var route: OTLPHTTPServer.Route = .other
     private var contentEncoding: String?
     private var didFinish = false
+    private var heldReply: HookReply?
 
     init(
         connection: NWConnection,
@@ -125,6 +129,13 @@ private final class HTTPConnectionHandler {
         let body = Data(buffer.prefix(contentLength))
         buffer.removeSubrange(0..<contentLength)
         let decodedBody = decodeBodyIfNeeded(body)
+        if route == .permissionHook {
+            // Held open: the answer comes from the notch, or nothing after its time limit.
+            let reply = HookReply { [weak self] body in self?.sendResponseAndFinish(status: 200, body: body) }
+            heldReply = reply
+            onRequest(.init(route: route, body: decodedBody, reply: reply))
+            return
+        }
         onRequest(.init(route: route, body: decodedBody))
         sendResponseAndFinish(status: 200)
     }
@@ -133,6 +144,8 @@ private final class HTTPConnectionHandler {
         guard !didFinish else { return }
         didFinish = true
         connection.cancel()
+        // The hook gave up first (agent timeout, interrupted turn): drop the request.
+        heldReply?.connectionClosed()
         onComplete(self)
     }
 
@@ -158,9 +171,15 @@ private final class HTTPConnectionHandler {
         }
     }
 
-    private func sendResponseAndFinish(status: Int) {
-        let response = "HTTP/1.1 \(status) OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        connection.send(content: response.data(using: .utf8), completion: .contentProcessed { [weak self] error in
+    private func sendResponseAndFinish(status: Int, body: Data? = nil) {
+        var response = Data("HTTP/1.1 \(status) OK\r\n".utf8)
+        if let body {
+            response += Data("Content-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
+            response += body
+        } else {
+            response += Data("Content-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+        }
+        connection.send(content: response, completion: .contentProcessed { [weak self] error in
             if let error {
                 self?.onError("OTLP HTTP send error: \(error)")
             }
@@ -229,6 +248,54 @@ private final class HTTPConnectionHandler {
         if path.hasSuffix("/claude-hook") {
             return .claudeHook
         }
+        if path.hasSuffix("/permission-hook") {
+            return .permissionHook
+        }
         return .other
+    }
+}
+
+/// One held `/permission-hook` request. Exactly one of `send` (a decision body, or nil for
+/// "no decision") and the connection closing wins; the other becomes a no-op.
+final class HookReply: @unchecked Sendable {
+    private let lock = NSLock()
+    private let deliver: (Data?) -> Void
+    private var isDone = false
+    private var closedEarly = false
+    private var onClose: (() -> Void)?
+
+    init(deliver: @escaping (Data?) -> Void) {
+        self.deliver = deliver
+    }
+
+    func send(_ body: Data?) {
+        lock.lock()
+        guard !isDone else { lock.unlock(); return }
+        isDone = true
+        lock.unlock()
+        deliver(body)
+    }
+
+    /// Runs `handler` once if the hook disconnects before an answer, even if it already has.
+    func setOnClose(_ handler: @escaping () -> Void) {
+        lock.lock()
+        if closedEarly {
+            lock.unlock()
+            handler()
+            return
+        }
+        onClose = handler
+        lock.unlock()
+    }
+
+    fileprivate func connectionClosed() {
+        lock.lock()
+        guard !isDone else { lock.unlock(); return }
+        isDone = true
+        closedEarly = true
+        let handler = onClose
+        onClose = nil
+        lock.unlock()
+        handler?()
     }
 }

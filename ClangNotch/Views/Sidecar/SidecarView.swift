@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SidecarView: View {
     @ObservedObject var manager: SidecarManager
+    @State private var displays = ArrangedDisplay.current()
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -20,13 +21,28 @@ struct SidecarView: View {
                         SidecarCard(device: device, manager: manager)
                     }
                 }
+                if displays.count > 1 {
+                    DisplayArrangementCard(displays: displays)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                }
             }
+            // The iPad card folding and the 배치도 카드 arriving move the layout together.
+            .animation(Self.spring, value: manager.devices)
+            .animation(Self.spring, value: displays.count > 1)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { manager.start() }
+        .onAppear {
+            manager.start()
+            displays = ArrangedDisplay.current()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            withAnimation(Self.spring) { displays = ArrangedDisplay.current() }
+        }
     }
+
+    static let spring = Animation.spring(response: 0.4, dampingFraction: 0.86)
 
     private var emptyState: some View {
         VStack(spacing: 8) {
@@ -51,6 +67,8 @@ private struct SidecarCard: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
+    /// Ties the glyph, name, status and button of the two layouts so they slide into place.
+    @Namespace private var morph
 
     private let accent = Color(red: 0.3, green: 0.85, blue: 0.55)   // connected (green)
     private let pending = Color(red: 1.0, green: 0.78, blue: 0.3)   // switching (amber)
@@ -76,25 +94,41 @@ private struct SidecarCard: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            iPadGlyph
-            VStack(spacing: 3) {
-                Text(device.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(busy ? pending : (connected ? accent : Color.white.opacity(0.3)))
-                        .frame(width: 6, height: 6)
-                    Text(statusText)
-                        .font(.system(size: 11, weight: busy ? .semibold : .regular))
-                        .foregroundColor(busy ? pending : (connected ? accent.opacity(0.9) : .white.opacity(0.5)))
+        Group {
+            // Connected, the card folds into one short row so the 배치도 카드 below fits.
+            if connected {
+                HStack(spacing: 12) {
+                    compactGlyph
+                        .matchedGeometryEffect(id: "glyph", in: morph)
+                    VStack(alignment: .leading, spacing: 3) {
+                        nameText
+                            .matchedGeometryEffect(id: "name", in: morph)
+                        statusRow
+                            .matchedGeometryEffect(id: "status", in: morph)
+                    }
+                    Spacer(minLength: 8)
+                    actionButton
+                        .frame(width: 110)
+                        .matchedGeometryEffect(id: "button", in: morph)
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            } else {
+                VStack(spacing: 12) {
+                    iPadGlyph
+                    VStack(spacing: 3) {
+                        nameText
+                            .matchedGeometryEffect(id: "name", in: morph)
+                        statusRow
+                            .matchedGeometryEffect(id: "status", in: morph)
+                    }
+                    actionButton
+                        .matchedGeometryEffect(id: "button", in: morph)
+                }
+                .padding(14)
             }
-            actionButton
         }
-        .padding(14)
+        .animation(reduceMotion ? nil : SidecarView.spring, value: connected)
         .frame(maxWidth: .infinity)
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
@@ -102,6 +136,44 @@ private struct SidecarCard: View {
                 .stroke((busy || connected) ? tone.opacity(0.45) : Color.white.opacity(0.08), lineWidth: 1)
         )
         .padding(.horizontal, 6)
+    }
+
+    private var nameText: some View {
+        Text(device.name)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(.white)
+            .lineLimit(1)
+    }
+
+    private var statusRow: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(busy ? pending : (connected ? accent : Color.white.opacity(0.3)))
+                .frame(width: 6, height: 6)
+            Text(statusText)
+                .font(.system(size: 11, weight: busy ? .semibold : .regular))
+                .foregroundColor(busy ? pending : (connected ? accent.opacity(0.9) : .white.opacity(0.5)))
+        }
+    }
+
+    /// The iPad glyph at row size, without the halo.
+    private var compactGlyph: some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(tone.opacity(0.12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(tone, lineWidth: 2)
+            )
+            .frame(width: 26, height: 36)
+            .overlay {
+                if busy {
+                    ProgressView().controlSize(.mini).tint(pending)
+                } else {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(accent)
+                }
+            }
     }
 
     private var iPadGlyph: some View {
@@ -123,6 +195,7 @@ private struct SidecarCard: View {
                 )
                 .frame(width: 50, height: 68)
                 .overlay(glyphCenter)
+                .matchedGeometryEffect(id: "glyph", in: morph)
         }
         .frame(height: 96)
         .onAppear {

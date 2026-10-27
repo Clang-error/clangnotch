@@ -34,6 +34,12 @@ common = '''
 swift = '''import Foundation
 import Combine
 func debugLog(_ value: @autoclosure () -> String) {}
+func check(_ condition: @autoclosure () -> Bool, _ message: String = "Check failed") {
+    guard condition() else {
+        print("FAIL: \\(message)")
+        exit(1)
+    }
+}
 func L(_ korean: String, _ english: String) -> String { korean }
 struct Selection { let id: String }
 final class ClaudeFixture {
@@ -45,7 +51,12 @@ final class ClaudeFixture {
     var availableSessions: [ClaudeSession] = []
     var sessionJSONLPaths = ["s": "/test.jsonl"]
     var completedQuestionHookIDs: [String: Set<String>] = [:]
+    var completedTurnMessageIDs: [String: String] = [:]
+    var dismissedWrapUpIDs: Set<String> = []
+    var lastTurnCompletedAt: Date?
+    var lastCompletedTurn: CompletedTurn?
     let questionToolName = "AskUserQuestion"
+    let wrapUpToolName = "mcp__ccd_turn__wrap_up"
     let questionWaitStaleAfter: TimeInterval = 300
     let staleLineAfter: TimeInterval = 120
     let turnSafetyTimeout: TimeInterval = 300
@@ -62,7 +73,7 @@ swift += formatter(claude, 'lineTimestampFormatters') + '\n'
 start = claude.index('    private static let attentionNotificationTypes:')
 end = claude.index('\n    ]', start) + len('\n    ]')
 swift += claude[start:end].replace('private static let', 'static let', 1) + '\n'
-for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle']:
+for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissWrapUp']:
     swift += method(claude, name) + '\n'
 swift += '}\nfinal class CodexFixture {\n' + common + '''
     var state = CodexState()
@@ -74,6 +85,8 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     var sessionWatchers: [String: Bool] = [:]
     var sessionActivityCache: [URL: (modifiedAt: Date, fileSize: UInt64, activity: Date?)] = [:]
     var rateLimits = CodexRateLimits()
+    var lastTurnCompletedAt: Date?
+    var lastCompletedTurn: CompletedTurn?
     func clearEndedSessions() {}
     func loadLatestRateLimits(from: URL) {}
     func selectSession(_ session: CodexSession) { selectedSession = Selection(id: session.id) }
@@ -105,6 +118,27 @@ swift += '''}
             precondition(lines.count == 2)
             precondition(lines.allSatisfy { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) != nil })
         }
+        // Claude desktop next-step box: waits past its own tool result, ends on the user's message.
+        let w = ClaudeFixture()
+        let box: [String: Any] = ["ask": "받아도 될까요?",
+                                  "actions": [["label": "받아도 돼", "message": "받아서 조사해"], ["label": "안 받고", "message": "웹으로만"]]]
+        w.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        w.parseMessageForSession(["role":"user", "content":[["type":"tool_result", "tool_use_id":"box"]]], sessionId:"s")
+        precondition(w.state.pendingInputRequests.first?.questions.first?.options.map(\.label) == ["받아도 돼", "안 받고"],
+                     "A box with a question stays after its tool result, with or without blocked")
+        w.parseMessageForSession(["role":"user", "content":"<system-reminder>x</system-reminder>"], sessionId:"s", isMeta: true)
+        precondition(w.state.isAwaitingInput, "Meta lines are not the user's answer")
+        w.parseMessageForSession(["role":"user", "content":"받아서 조사해"], sessionId:"s")
+        precondition(!w.state.isAwaitingInput, "The user's message answers the box")
+        let recap: [String: Any] = ["recap": "끝났습니다."]
+        w.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"r", "name":"mcp__ccd_turn__wrap_up", "input": recap]]], sessionId:"s")
+        precondition(!w.state.isAwaitingInput, "A recap without a question waits for nothing")
+        let closed = ClaudeFixture()
+        closed.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        closed.dismissWrapUp(id: "box")
+        precondition(!closed.state.isAwaitingInput, "The X closes the box")
+        closed.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        precondition(!closed.state.isAwaitingInput, "Reading the closed box's line again doesn't reopen it")
         let c = ClaudeFixture()
         c.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"t", "name":"Bash"]]], sessionId:"s")
         precondition(c.state.isActive && c.state.hasActiveTools)
@@ -121,6 +155,26 @@ swift += '''}
             c.parseMessageForSession(["role":"assistant", "stop_reason":terminal, "content":[["type":"text", "text":"done"]]], sessionId:"s")
             precondition(!c.state.isActive && c.state.lastStopReason == terminal)
         }
+        c.lastTurnCompletedAt = nil
+        c.parseMessageForSession(["id":"m1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"thinking"]]], sessionId:"s")
+        precondition(c.lastTurnCompletedAt == nil, "A thinking line of the final message is not the end yet")
+        c.parseMessageForSession(["id":"m1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"done"]]], sessionId:"s")
+        precondition(c.lastTurnCompletedAt != nil, "The final answer text closes the turn")
+        c.lastTurnCompletedAt = nil
+        c.parseMessageForSession(["id":"m1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"more"]]], sessionId:"s")
+        precondition(c.lastTurnCompletedAt == nil, "One message announces Done once")
+        c.isLoadingHistoryBySession["s"] = true
+        c.parseMessageForSession(["id":"m2", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"old"]]], sessionId:"s")
+        c.isLoadingHistoryBySession["s"] = nil
+        precondition(c.lastTurnCompletedAt == nil, "Replayed history must not announce Done")
+        c.parseMessageForSession(["id":"m3", "role":"assistant", "stop_reason":"max_tokens", "content":[["type":"text", "text":"cut"]]], sessionId:"s")
+        precondition(c.lastTurnCompletedAt == nil, "Only end_turn counts as a normal finish")
+        c.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"t2", "name":"Bash"]]], sessionId:"s")
+        c.parseMessageForSession(["role":"user", "content":[["type":"tool_result", "tool_use_id":"t2"]]], sessionId:"s")
+        c.parseJSONLLineForSession(#"{"type":"api-request-blob","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash"}]}}"#, sessionId:"s")
+        precondition(!c.state.hasActiveTools, "A request blob replaying the prompt must not re-run a finished tool")
+        c.parseMessageForSession(["id":"m4", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"done"]]], sessionId:"s")
+        precondition(!c.state.isActive, "The turn ends with no ghost tool left running")
         c.parseJSONLLineForSession("{\\"type\\":\\"system\\"}", sessionId:"s")
         precondition(!c.state.isActive, "Metadata must not restart a finished turn")
         c.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"q", "name":"AskUserQuestion"]]], sessionId:"s")
@@ -220,6 +274,12 @@ swift += '''}
         x.parseResponseItem(["type":"message", "role":"assistant", "phase":"final_answer", "content":[["type":"output_text", "text":"waiting"]]], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
         x.parseEventMsg(["type":"task_complete"], sessionState:&xs, sessionId:"s", rateLimitTimestamp:Date())
         precondition(xs.pendingInputRequest != nil && !xs.isActive, "Async questions outlive the sending turn")
+        precondition(x.lastTurnCompletedAt != nil, "task_complete announces Done")
+        x.lastTurnCompletedAt = nil
+        var aborted = CodexState()
+        x.parseEventMsg(["type":"turn_aborted"], sessionState:&aborted, sessionId:"s", rateLimitTimestamp:Date())
+        x.parseEventMsg(["type":"task_complete", "error":["codex_error_info":"usage_limit_exceeded"]], sessionState:&aborted, sessionId:"s", rateLimitTimestamp:Date())
+        precondition(x.lastTurnCompletedAt == nil, "Aborted or rejected turns are not Done")
         func reply(_ call: String, indices: [Int]) throws -> [String: Any] {
             let answers: [[String: Any]] = try indices.map { index in
                 let key = String(data: try JSONSerialization.data(withJSONObject: ["request_user_input_async", call, index]), encoding: .utf8)!
@@ -234,6 +294,15 @@ swift += '''}
         precondition(xs.pendingInputRequest != nil, "Keep waiting for unanswered questions")
         x.parseResponseItem(try reply("async-q", indices: [1]), sessionState:&xs, sessionId:"s", eventTimestamp:Date())
         precondition(xs.pendingInputRequest == nil, "The matching answers must dismiss the dropdown")
+        for prompt in ["켜놨어", "그냥 냅둬라 언제오는지만"] {
+            x.parseResponseItem(["type":"function_call", "call_id":"text-reply-q", "name":"request_user_input_async", "arguments":asyncInput], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
+            x.parseResponseItem(["type":"function_call_output", "call_id":"text-reply-q", "output":#"{"accepted":true}"#], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
+            x.parseEventMsg(["type":"task_complete"], sessionState:&xs, sessionId:"s", rateLimitTimestamp:Date())
+            x.parseResponseItem(["type":"message", "role":"user", "content":[["type":"input_text", "text":"<external_context>updated</external_context>"]]], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
+            precondition(xs.pendingInputRequest != nil, "Context updates must not dismiss an unanswered question")
+            x.parseResponseItem(["type":"message", "role":"user", "content":[["type":"input_text", "text":prompt]]], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
+            precondition(xs.pendingInputRequest == nil && xs.lastUserPrompt == prompt, "A normal chat reply or new instruction must retire the previous async question")
+        }
         x.parseResponseItem(["type":"function_call", "call_id":"rejected-q", "name":"request_user_input_async", "arguments":asyncInput], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
         x.parseResponseItem(["type":"function_call_output", "call_id":"rejected-q", "output":#"{"accepted":false}"#], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
         precondition(xs.pendingInputRequest == nil, "A rejected question must not remain pending")
@@ -409,6 +478,7 @@ swift += '''}
     }
 }
 '''
+swift = swift.replace('precondition(', 'check(')
 with tempfile.TemporaryDirectory(prefix='clangnotch-activity-checks-') as folder:
     temp = Path(folder)
     (temp/'Checks.swift').write_text(swift)

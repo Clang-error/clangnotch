@@ -6,6 +6,8 @@ private struct UnifiedWorkspaceGroup: Identifiable {
     var codex: [CodexSession] = []
 
     var id: String { path }
+    /// One row per session (a folder can hold several).
+    var rowID: String { (claude.first?.id ?? codex.first.map { "codex-\($0.id)" }) ?? path }
 }
 
 struct ClaudeSessionListView: View {
@@ -13,12 +15,17 @@ struct ClaudeSessionListView: View {
     @ObservedObject var codexManager: CodexManager
     let maxItems: Int?
     let onOpen: () -> Void
+    /// Set in the notch: a row opens its 세션 화면 instead of jumping to the app.
+    let onSelect: ((SessionDetailTarget) -> Void)?
+    @State private var listAppearedAt = Date()
 
-    init(manager: ClaudeCodeManager, codexManager: CodexManager, maxItems: Int? = nil, onOpen: @escaping () -> Void = {}) {
+    init(manager: ClaudeCodeManager, codexManager: CodexManager, maxItems: Int? = nil, onOpen: @escaping () -> Void = {},
+         onSelect: ((SessionDetailTarget) -> Void)? = nil) {
         self.manager = manager
         self.codexManager = codexManager
         self.maxItems = maxItems
         self.onOpen = onOpen
+        self.onSelect = onSelect
     }
 
     var body: some View {
@@ -41,22 +48,24 @@ struct ClaudeSessionListView: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
+                let rows = visibleGroups.flatMap { group in
+                    group.claude.map { UnifiedWorkspaceGroup(path: group.path, claude: [$0]) }
+                        + group.codex.map { UnifiedWorkspaceGroup(path: group.path, codex: [$0]) }
+                }
                 VStack(spacing: 8) {
-                    ForEach(visibleGroups) { group in
-                        ForEach(group.claude) { session in
-                            UnifiedWorkspaceSessionRow(
-                                group: UnifiedWorkspaceGroup(path: group.path, claude: [session]),
-                                onOpen: onOpen, manager: manager, codexManager: codexManager
-                            )
-                        }
-                        ForEach(group.codex) { session in
-                            UnifiedWorkspaceSessionRow(
-                                group: UnifiedWorkspaceGroup(path: group.path, codex: [session]),
-                                onOpen: onOpen, manager: manager, codexManager: codexManager
-                            )
-                        }
+                    ForEach(Array(rows.enumerated()), id: \.element.rowID) { index, row in
+                        UnifiedWorkspaceSessionRow(
+                            group: row,
+                            onOpen: onOpen, onSelect: onSelect, manager: manager, codexManager: codexManager
+                        )
+                        // Rows rise in one after another as the list opens (the first eight;
+                        // past that the wait would be noticeable). A session that shows up
+                        // later, with the list already open, swells once to say it's new.
+                        .popIn(.rise, delay: Double(min(index, 8)) * 0.035)
+                        .newHighlight(cornerRadius: 9, active: Date().timeIntervalSince(listAppearedAt) > 0.6)
                     }
                 }
+                .onAppear { listAppearedAt = Date() }
             }
         }
     }
@@ -117,6 +126,7 @@ struct ClaudeSessionListView: View {
 private struct UnifiedWorkspaceSessionRow: View {
     let group: UnifiedWorkspaceGroup
     let onOpen: () -> Void
+    let onSelect: ((SessionDetailTarget) -> Void)?
     @ObservedObject var manager: ClaudeCodeManager
     @ObservedObject var codexManager: CodexManager
     @State private var hovering = false
@@ -174,6 +184,16 @@ private struct UnifiedWorkspaceSessionRow: View {
 
     var body: some View {
         Button {
+            if let onSelect {
+                if let session = group.claude.first {
+                    manager.selectSession(session)
+                    onSelect(SessionDetailTarget(agent: .claude, sessionId: session.id))
+                } else if let session = group.codex.first {
+                    codexManager.selectSession(session)
+                    onSelect(SessionDetailTarget(agent: .codex, sessionId: session.id))
+                }
+                return
+            }
             onOpen()
             if let session = group.claude.first {
                 manager.selectSession(session)
@@ -236,7 +256,7 @@ private struct UnifiedWorkspaceSessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(L("\(destinationLabel) 열기", "Open \(destinationLabel)"))
+        .help(onSelect != nil ? L("세션 진행 보기", "Show session progress") : L("\(destinationLabel) 열기", "Open \(destinationLabel)"))
         .contextMenu {
             ForEach(group.claude) { session in
                 if let id = manager.conversationId(for: session) {

@@ -14,6 +14,10 @@ let closedNotchGlowPadding: CGFloat = 24
 /// Fixed outer size shared by every expanded tab.
 let openNotchSize: CGSize = .init(width: 600, height: 540)
 let questionNotchWidth: CGFloat = 420
+/// The 세션 화면 widens the open notch for its step list and diff side by side.
+let sessionDetailNotchSize: CGSize = .init(width: 720, height: openNotchSize.height)
+/// The 권한·완료 드롭다운: commands, paths and answers need more room than the 420pt notices.
+let permissionNotchWidth: CGFloat = 520
 let maximumPeekHeight: CGFloat = 340
 // The inward shoulder consumes 19pt before the 16pt content margin.
 let expandedNotchInset: CGFloat = 35
@@ -23,6 +27,10 @@ let expandedNotchInset: CGFloat = 35
 /// damped one crept the last few points so slowly it read as a second, slower push inward.
 let notchCloseDuration: TimeInterval = 0.3
 let notchCloseAnimation = Animation.timingCurve(0.25, 0.8, 0.35, 1, duration: notchCloseDuration)
+
+/// Opening and dropping a dropdown overshoot a little and settle — the notch feels springy
+/// going out and stays tidy coming back (`notchCloseAnimation`).
+let notchOpenSpring = Animation.spring(response: 0.5, dampingFraction: 0.72)
 
 /// Open toolbar height. The view reserves the physical notch height separately
 /// above this toolbar so the camera housing cannot obscure its controls.

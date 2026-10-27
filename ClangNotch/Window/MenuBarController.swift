@@ -53,8 +53,7 @@ final class MenuBarController: NSObject {
         // objectWillChange fires before the mutation, so settle briefly before reading.
         Publishers.MergeMany(
             ClaudeCodeManager.shared.objectWillChange.eraseToAnyPublisher(),
-            CodexManager.shared.objectWillChange.eraseToAnyPublisher(),
-            AntigravityManager.shared.objectWillChange.eraseToAnyPublisher()
+            CodexManager.shared.objectWillChange.eraseToAnyPublisher()
         )
         .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
         .sink { [weak self] _ in
