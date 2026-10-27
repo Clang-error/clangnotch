@@ -50,6 +50,19 @@ final class CodexManager: ObservableObject {
         sessionStates.values.compactMap(\.pendingInputRequest)
     }
 
+    /// Remembered so a history reload can't bring a dismissed question back.
+    private var dismissedInputRequestIDs: Set<String> = []
+
+    /// The NEEDS YOU 카드's X, for a question whose answer never reached the transcript.
+    func dismissInputRequest(id: String) {
+        dismissedInputRequestIDs.insert(id)
+        for (sessionId, var sessionState) in sessionStates where sessionState.pendingInputRequest?.id == id {
+            sessionState.pendingInputRequest = nil
+            sessionStates[sessionId] = sessionState
+        }
+        objectWillChange.send()
+    }
+
     /// Track when we last had activity (for grace period)
     private var lastActivityTime: Date = Date.distantPast
     private let activityGracePeriod: TimeInterval = 1.0
@@ -1081,6 +1094,7 @@ final class CodexManager: ObservableObject {
             }
 
             if ["request_user_input", "request_user_input_async"].contains(name),
+               !dismissedInputRequestIDs.contains(callId),
                let request = parseInputRequest(argumentsJson, callId: callId, isAsync: name == "request_user_input_async") {
                 sessionState.pendingInputRequest = request
             }

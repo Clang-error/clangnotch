@@ -153,7 +153,7 @@ final class ClaudeCodeManager: ObservableObject {
     /// The end_turn message last announced per session; its lines all repeat the stop reason.
     private var completedTurnMessageIDs: [String: String] = [:]
     /// Next-step boxes closed with the 다음 단계 드롭다운's X, so a history reload can't bring them back.
-    private var dismissedWrapUpIDs: Set<String> = []
+    private var dismissedInputRequestIDs: Set<String> = []
     private var isLoadingHistoryBySession: [String: Bool] = [:]
 
     /// Sessions running on SSH hosts, keyed by Claude's own session id. They have no JSONL
@@ -1045,7 +1045,7 @@ final class ClaudeCodeManager: ObservableObject {
                             tool.change = ToolChange.claude(toolName: toolName, input: item["input"])
 
                             // Shown until the user's next message, even when loaded from history.
-                            if toolName == wrapUpToolName, !dismissedWrapUpIDs.contains(toolId),
+                            if toolName == wrapUpToolName, !dismissedInputRequestIDs.contains(toolId),
                                !sessionState.pendingInputRequests.contains(where: { $0.id == toolId }),
                                let request = ClaudeInputRequest.wrapUp(id: toolId, input: item["input"]) {
                                 sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
@@ -1062,7 +1062,7 @@ final class ClaudeCodeManager: ObservableObject {
                             } else if !sessionState.activeTools.contains(where: { $0.id == toolId }) {
                                 debugLog("[ClaudeCode] Tool started: \(toolName) (id: \(toolId.prefix(8))...) desc: \(toolDescription ?? "-")")
                                 sessionState.activeTools.append(tool)
-                                if toolName == questionToolName {
+                                if toolName == questionToolName, !dismissedInputRequestIDs.contains(toolId) {
                                     sessionState.pendingInputRequests.append(ClaudeInputRequest(id: toolId, input: item["input"]))
                                 }
                             }
@@ -1189,6 +1189,11 @@ final class ClaudeCodeManager: ObservableObject {
         }
 
         return newTodos
+    }
+
+    /// The NEEDS YOU 카드's X for a tool approval the notch can't see the end of.
+    func dismissPermission(sessionId: String) {
+        clearPermissionCheckForSession(sessionId: sessionId)
     }
 
     private func clearPermissionCheckForSession(sessionId: String) {
@@ -1389,10 +1394,11 @@ final class ClaudeCodeManager: ObservableObject {
         contextWindowSizes[sessionId] = contextWindowSize
     }
 
-    /// The 다음 단계 드롭다운's X. A box can outlive its answer: the desktop app copies an SSH
-    /// session's transcript here only when a turn ends, so the answer shows up minutes late.
-    func dismissWrapUp(id: String) {
-        dismissedWrapUpIDs.insert(id)
+    /// The X on the 다음 단계 드롭다운 and the NEEDS YOU 카드. A request can outlive its answer:
+    /// the desktop app copies an SSH session's transcript here only when a turn ends, so the
+    /// answer shows up minutes late, and a missed tool_result leaves a question up for good.
+    func dismissInputRequest(id: String) {
+        dismissedInputRequestIDs.insert(id)
         for (sessionId, var sessionState) in sessionStates
         where sessionState.pendingInputRequests.contains(where: { $0.id == id }) {
             sessionState.pendingInputRequests.removeAll { $0.id == id }
@@ -1464,7 +1470,7 @@ final class ClaudeCodeManager: ObservableObject {
             sessionState.activeTools.append(tool)
             sessionState.isThinking = false
             if sessionState.turnStartTime == nil { sessionState.turnStartTime = now }
-            if toolName == questionToolName {
+            if toolName == questionToolName, !dismissedInputRequestIDs.contains(tool.id) {
                 sessionState.pendingInputRequests.append(ClaudeInputRequest(id: tool.id, input: json["tool_input"]))
             }
         case "PostToolUse":

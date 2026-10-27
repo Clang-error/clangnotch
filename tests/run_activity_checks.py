@@ -52,7 +52,7 @@ final class ClaudeFixture {
     var sessionJSONLPaths = ["s": "/test.jsonl"]
     var completedQuestionHookIDs: [String: Set<String>] = [:]
     var completedTurnMessageIDs: [String: String] = [:]
-    var dismissedWrapUpIDs: Set<String> = []
+    var dismissedInputRequestIDs: Set<String> = []
     var lastTurnCompletedAt: Date?
     var lastCompletedTurn: CompletedTurn?
     let questionToolName = "AskUserQuestion"
@@ -73,12 +73,13 @@ swift += formatter(claude, 'lineTimestampFormatters') + '\n'
 start = claude.index('    private static let attentionNotificationTypes:')
 end = claude.index('\n    ]', start) + len('\n    ]')
 swift += claude[start:end].replace('private static let', 'static let', 1) + '\n'
-for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissWrapUp']:
+for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission']:
     swift += method(claude, name) + '\n'
 swift += '}\nfinal class CodexFixture {\n' + common + '''
     var state = CodexState()
     var sessionStates = ["s": CodexState()]
     var pendingFunctionCalls: [String: [String: Date]] = [:]
+    var dismissedInputRequestIDs: Set<String> = []
     var externalImportSessions: Set<String> = []
     var sessionsDir = FileManager.default.temporaryDirectory
     var availableSessions: [CodexSession] = []
@@ -135,7 +136,7 @@ swift += '''}
         precondition(!w.state.isAwaitingInput, "A recap without a question waits for nothing")
         let closed = ClaudeFixture()
         closed.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
-        closed.dismissWrapUp(id: "box")
+        closed.dismissInputRequest(id: "box")
         precondition(!closed.state.isAwaitingInput, "The X closes the box")
         closed.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
         precondition(!closed.state.isAwaitingInput, "Reading the closed box's line again doesn't reopen it")

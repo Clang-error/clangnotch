@@ -1436,12 +1436,16 @@ struct ClangNotchContentView: View {
         ScrollView(.vertical) {
             VStack(spacing: 12) {
                 if settings.showSourceCodex, let request = codexManager.pendingInputRequests.first {
-                    NotchSection(title: "NEEDS YOU · Codex") {
+                    NotchSection(title: "NEEDS YOU · Codex", onDismiss: { codexManager.dismissInputRequest(id: request.id) }) {
                         QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue)
                     }
                 }
                 if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsConfirmedNeedingPermission.isEmpty {
-                    NotchSection(title: "NEEDS YOU · Claude") {
+                    NotchSection(title: "NEEDS YOU · Claude", onDismiss: {
+                        if let session = claudeCodeManager.sessionsConfirmedNeedingPermission.first {
+                            claudeCodeManager.dismissPermission(sessionId: session.id)
+                        }
+                    }) {
                         Button {
                             if let session = claudeCodeManager.sessionsConfirmedNeedingPermission.first {
                                 claudeCodeManager.focusIDE(for: session)
@@ -1458,7 +1462,7 @@ struct ClangNotchContentView: View {
                     }
                 }
                 if settings.showSourceClaudeCode, let request = claudeCodeManager.pendingInputRequests.first {
-                    NotchSection(title: "NEEDS YOU · Claude") {
+                    NotchSection(title: "NEEDS YOU · Claude", onDismiss: { claudeCodeManager.dismissInputRequest(id: request.id) }) {
                         QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange)
                     }
                 }
@@ -1650,7 +1654,7 @@ struct ClangNotchContentView: View {
             accent: agentAccent(.claude),
             openTitle: askingSessionOpenTitle,
             onOpen: { goToAskingSession() },
-            onDismiss: { claudeCodeManager.dismissWrapUp(id: request.id) }
+            onDismiss: { claudeCodeManager.dismissInputRequest(id: request.id) }
         )
     }
 
@@ -1945,19 +1949,36 @@ struct ClangNotchContentView: View {
 
     private struct NotchSection<Content: View>: View {
         let title: String?
+        var onDismiss: (() -> Void)? = nil
         let content: Content
 
-        init(title: String? = nil, @ViewBuilder content: () -> Content) {
+        init(title: String? = nil, onDismiss: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
             self.title = title
+            self.onDismiss = onDismiss
             self.content = content()
         }
 
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
                 if let title {
-                    Text(title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.55))
+                    HStack(spacing: 0) {
+                        Text(title)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.55))
+                        if let onDismiss {
+                            Spacer(minLength: 0)
+                            Button(action: onDismiss) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white.opacity(0.55))
+                                    .frame(width: 22, height: 22)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(L("닫기", "Dismiss"))
+                            .padding(.vertical, -5)
+                        }
+                    }
                 }
 
                 content
