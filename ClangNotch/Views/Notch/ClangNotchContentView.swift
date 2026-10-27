@@ -101,7 +101,7 @@ struct ClangNotchContentView: View {
 
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
     private var sizeAnimation: Animation {
-        notchVM.notchState == .closed ? notchCloseAnimation : (reduceMotion ? animationSpring : notchOpenSpring)
+        notchVM.notchState == .closed ? notchVM.closeAnimation : (reduceMotion ? animationSpring : notchOpenSpring)
     }
     private var modeSwitchAnimation: Animation {
         reduceMotion ? .easeOut(duration: 0.12) : .interactiveSpring(response: 0.3, dampingFraction: 0.86)
@@ -2584,7 +2584,7 @@ struct ClangNotchContentView: View {
             // Fold first, then switch apps: doing both at once cut the fold off mid-way.
             dismissDoneNotice()
             Task {
-                try? await Task.sleep(for: .seconds(notchCloseDuration))
+                try? await Task.sleep(for: .seconds(dropdownFoldDuration))
                 await MainActor.run { focusSession(notice.source, notice.turn.sessionId) }
             }
         }
@@ -2634,9 +2634,9 @@ struct ClangNotchContentView: View {
     /// Folds the dropdown with its content still in it and clears that content once it's
     /// tucked away; clearing first left the dropdown empty for the whole close.
     private func foldPeek(then clear: @escaping () -> Void) {
-        notchVM.close()
+        notchVM.fold()
         Task {
-            try? await Task.sleep(for: .seconds(notchCloseDuration))
+            try? await Task.sleep(for: .seconds(dropdownFoldDuration))
             await MainActor.run { clear() }
         }
     }
@@ -2663,10 +2663,10 @@ struct ClangNotchContentView: View {
             if Date().timeIntervalSince(pending.at) < 60 {
                 showDoneNotice(pending)
             } else {
-                notchVM.close()
+                notchVM.fold()
             }
         } else if notchVM.notchState == .peeking {
-            notchVM.close()
+            notchVM.fold()
         }
     }
 

@@ -108,14 +108,24 @@ final class NotchViewModel: ObservableObject {
         peekTask?.cancel()
     }
 
+    /// How the notch is collapsing right now; the view animates its size with the same curve.
+    private(set) var closeAnimation = notchCloseAnimation
+
     func close() {
         peekTask?.cancel()
         collapseToClosed()
     }
 
-    private func collapseToClosed() {
+    /// Folds a dropdown away (`dropdownFoldAnimation`); the open notch still closes with `close()`.
+    func fold() {
+        peekTask?.cancel()
+        collapseToClosed(animation: dropdownFoldAnimation, duration: dropdownFoldDuration)
+    }
+
+    private func collapseToClosed(animation: Animation = notchCloseAnimation, duration: TimeInterval = notchCloseDuration) {
         let wasExpanded = notchState != .closed
-        withAnimation(notchCloseAnimation) {
+        closeAnimation = animation
+        withAnimation(animation) {
             notchSize = CGSize(width: closedPresentationWidth, height: closedNotchSize.height)
             notchState = .closed
             if wasExpanded { isSettlingClosed = true }
@@ -123,7 +133,7 @@ final class NotchViewModel: ObservableObject {
         guard wasExpanded else { return }
         settleTask?.cancel()
         settleTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(notchCloseDuration))
+            try? await Task.sleep(for: .seconds(duration))
             guard !Task.isCancelled else { return }
             self?.isSettlingClosed = false
         }

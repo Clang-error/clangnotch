@@ -28,6 +28,11 @@ let expandedNotchInset: CGFloat = 35
 let notchCloseDuration: TimeInterval = 0.3
 let notchCloseAnimation = Animation.timingCurve(0.25, 0.8, 0.35, 1, duration: notchCloseDuration)
 
+/// A dropdown going away: slower and eased at both ends. With `notchCloseAnimation` it lost
+/// 80% of its height in the first few frames and read as cut off.
+let dropdownFoldDuration: TimeInterval = 0.45
+let dropdownFoldAnimation = Animation.timingCurve(0.4, 0, 0.2, 1, duration: dropdownFoldDuration)
+
 /// Opening and dropping a dropdown overshoot a little and settle — the notch feels springy
 /// going out and stays tidy coming back (`notchCloseAnimation`).
 let notchOpenSpring = Animation.spring(response: 0.5, dampingFraction: 0.72)

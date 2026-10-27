@@ -384,7 +384,8 @@ final class ClaudeCodeManager: ObservableObject {
             state = sessionState
         } else {
             state = ClaudeCodeState()
-            state.cwd = session.workspaceFolders.first ?? ""
+            // `workspacePath`, not the raw folder: a terminal session's is "path#sessionId".
+            state.cwd = session.workspacePath ?? ""
         }
     }
 
@@ -658,7 +659,7 @@ final class ClaudeCodeManager: ObservableObject {
         debugLog("[ClaudeCode]   - Found JSONL: \(jsonlFile.lastPathComponent)")
 
         var sessionState = ClaudeCodeState()
-        sessionState.cwd = session.workspaceFolders.first ?? ""
+        sessionState.cwd = session.workspacePath ?? ""
         sessionState.isConnected = true
         sessionStates[session.id] = sessionState
 
