@@ -63,12 +63,10 @@ final class MenuBarController: NSObject {
     }
 
     private func updateMenuBarVisibility() {
-        // Stays visible whenever the Keyboard Lock feature is enabled at all (not just
-        // while actively locked) — otherwise the icon flickers in/out on every
-        // lock/unlock, which reads as broken rather than as a safety fallback.
-        let shouldShow = AppSettings.shared.showMenuBarItem
-            || AppSettings.shared.enableKeyboardLock
-            || KeyboardLockManager.shared.isLocked
+        // The switch decides; a locked keyboard brings the icon back only while locked, as
+        // the way to unlock when the notch can't be reached. Keeping it up whenever the
+        // feature was merely enabled made the switch do nothing.
+        let shouldShow = AppSettings.shared.showMenuBarItem || KeyboardLockManager.shared.isLocked
         if shouldShow {
             if statusItem == nil {
                 setupStatusItemAndPopover()

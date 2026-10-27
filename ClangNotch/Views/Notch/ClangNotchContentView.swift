@@ -466,6 +466,13 @@ struct ClangNotchContentView: View {
                         return
                     }
                     openSelectedMode()
+                } else if notchVM.notchState == .peeking, doneNotice != nil,
+                          !showPermissionNotice, !showQuestionNotice {
+                    // Hovering holds the 완료 드롭다운 to read it; a click opens the notch,
+                    // which used to wait until the dropdown had folded away by itself.
+                    doneNoticeTask?.cancel()
+                    doneNotice = nil
+                    openSelectedMode()
                 }
             }
             // The mask, glow and jelly scale sit on a fixed-width container, and only the
@@ -1237,15 +1244,7 @@ struct ClangNotchContentView: View {
             // Keep all controls below the physical camera housing.
             Color.clear.frame(height: notchVM.closedNotchSize.height)
             HStack(spacing: 10) {
-                Image(systemName: "waveform.path")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(chipAccent)
-                    .frame(width: 22, height: 22)
-                    .background(chipAccent.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("ClangNotch")
-                        .font(.system(size: 15, weight: .semibold))
-                }
+                agentOverview
                 Spacer()
                 HStack(spacing: 6) {
                     TelemetryStatusIndicatorView(state: telemetryCoordinator.state)
@@ -1362,21 +1361,30 @@ struct ClangNotchContentView: View {
             || isAgentActiveForVisibleSource
     }
 
+    /// 요약 줄, at the head of the open notch so it shows on every tab.
     private var agentOverview: some View {
         HStack(spacing: 12) {
-            Text(overviewHasActivity ? L("작업 중", "Working") : L("대기 중", "Quiet"))
+            // How many sessions are working right now; telemetry alone can light it with none.
+            let working = (settings.showSourceClaudeCode
+                           ? claudeCodeManager.availableSessions.filter { claudeCodeManager.sessionStates[$0.id]?.isActive == true }.count : 0)
+                + (settings.showSourceCodex
+                   ? codexManager.availableSessions.filter { codexManager.sessionStates[$0.id]?.isActive == true }.count : 0)
+            Text(!overviewHasActivity ? L("대기 중", "Quiet")
+                 : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working"))
                 .foregroundStyle(overviewHasActivity ? chipAccent : .secondary)
-            Spacer(minLength: 0)
+                .modifier(Breathing(active: overviewHasActivity))
             let sessionCount = (settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0)
                 + (settings.showSourceCodex ? codexManager.availableSessions.count : 0)
             Text(L("세션 \(sessionCount)", "Sessions \(sessionCount)"))
             Label("\(attentionCount)", systemImage: "bubble.left.and.exclamationmark.bubble.right")
                 .foregroundStyle(attentionCount > 0 ? .orange : .secondary)
+                .modifier(Breathing(active: attentionCount > 0))
                 .help(L("답변·승인 대기", "Waiting for your response"))
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(.system(size: 13, weight: .semibold))
         .monospacedDigit()
-        .padding(.vertical, 8)
+        .lineLimit(1)
+        .fixedSize()
         .accessibilityElement(children: .combine)
     }
 
@@ -1427,8 +1435,6 @@ struct ClangNotchContentView: View {
     private var aiExpandedContent: some View {
         ScrollView(.vertical) {
             VStack(spacing: 12) {
-                agentOverview
-
                 if settings.showSourceCodex, let request = codexManager.pendingInputRequests.first {
                     NotchSection(title: "NEEDS YOU · Codex") {
                         QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue)

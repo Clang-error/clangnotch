@@ -59,3 +59,41 @@ extension View {
         modifier(NewHighlight(cornerRadius: cornerRadius, delay: delay, active: active))
     }
 }
+
+/// A working session row: the notch's travelling glow, going round the row's outline over a
+/// faint steady rim. Under Reduce Motion only the rim stays.
+struct TracingGlowOutline: View {
+    var cornerRadius: CGFloat
+    var color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: reduceMotion)) { timeline in
+            let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3) / 3
+            shape
+                .strokeBorder(AngularGradient(stops: [
+                    .init(color: color.opacity(0), location: 0),
+                    .init(color: color.opacity(reduceMotion ? 0 : 0.55), location: 0.1),
+                    .init(color: color.opacity(0), location: 0.25),
+                    .init(color: color.opacity(0), location: 1),
+                ], center: .center, angle: .degrees(phase * 360)), lineWidth: 2.2)
+                .background(shape.strokeBorder(color.opacity(0.22), lineWidth: 1.5))
+        }
+    }
+}
+
+/// A status word that slowly fades and comes back while `active`. Driven by a paused
+/// TimelineView, so nothing redraws once it goes quiet; Reduce Motion keeps it still.
+struct Breathing: ViewModifier {
+    var active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: !active || reduceMotion)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let wave = 0.5 + 0.5 * cos(2 * .pi * t / 2.4)
+            content.opacity(!active || reduceMotion ? 1 : 0.45 + 0.55 * wave)
+        }
+    }
+}

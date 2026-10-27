@@ -85,12 +85,17 @@ struct ClaudeSessionListView: View {
             }
         }
 
-        // Show the most recently active workspace first. A path tie-breaker keeps
-        // the order deterministic when two sessions update at the same instant.
+        // Working folders first, in name order: sorting them by last activity swapped two
+        // busy rows every time either wrote a line. Idle ones keep most recent first, which
+        // holds still because they write nothing. The path breaks ties.
         return grouped.values.sorted { lhs, rhs in
-            let lhsActivity = latestActivity(for: lhs)
-            let rhsActivity = latestActivity(for: rhs)
-            if lhsActivity != rhsActivity { return lhsActivity > rhsActivity }
+            let lhsActive = isActive(lhs), rhsActive = isActive(rhs)
+            if lhsActive != rhsActive { return lhsActive }
+            if !lhsActive {
+                let lhsActivity = latestActivity(for: lhs)
+                let rhsActivity = latestActivity(for: rhs)
+                if lhsActivity != rhsActivity { return lhsActivity > rhsActivity }
+            }
             return lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
         }
     }
@@ -98,6 +103,11 @@ struct ClaudeSessionListView: View {
     private func normalizedPath(_ path: String) -> String {
         guard !path.isEmpty else { return L("알 수 없음", "Unknown") }
         return URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private func isActive(_ group: UnifiedWorkspaceGroup) -> Bool {
+        group.claude.contains { manager.sessionStates[$0.id]?.isActive == true }
+            || group.codex.contains { codexManager.sessionStates[$0.id]?.isActive == true }
     }
 
     private func latestActivity(for group: UnifiedWorkspaceGroup) -> Date {
@@ -177,6 +187,13 @@ private struct UnifiedWorkspaceSessionRow: View {
         return nil
     }
 
+    /// A working session is outlined in its agent's notch glow color.
+    private var activeOutline: Color? {
+        if claudeActive { return Color(red: 0.9, green: 0.4, blue: 0.1) }
+        if codexActive { return Color(red: 0.2, green: 0.5, blue: 1.0) }
+        return nil
+    }
+
     /// The session whose todos, context and tokens the open notch shows.
     private var isSelected: Bool {
         group.claude.contains { $0.id == manager.selectedSession?.id }
@@ -248,7 +265,9 @@ private struct UnifiedWorkspaceSessionRow: View {
             .background(Color.white.opacity(isSelected ? (hovering ? 0.11 : 0.08) : (hovering ? 0.07 : 0.035)),
                         in: RoundedRectangle(cornerRadius: 9))
             .overlay {
-                if isSelected {
+                if let activeOutline {
+                    TracingGlowOutline(cornerRadius: 9, color: activeOutline)
+                } else if isSelected {
                     RoundedRectangle(cornerRadius: 9).stroke(Color.orange.opacity(0.35), lineWidth: 1)
                 }
             }
