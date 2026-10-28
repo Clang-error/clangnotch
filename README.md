@@ -8,6 +8,11 @@
   Claude Code와 Codex가 일하는 걸 맥 노치에서.
 </p>
 
+<p align="center">
+  <img src="assets/demo-claude.gif" width="49%" alt="Claude Code 작업 중 → 완료">
+  <img src="assets/demo-codex.gif" width="49%" alt="Codex 작업 중 → 완료">
+</p>
+
 ---
 
 ClangNotch는 노치에 붙어서 코딩 에이전트가 지금 무슨 도구를 돌리는지,응답이 끝났는지, 내 답을 기다리는지 보여 줍니다. Claude Code와 Codex가 원래 남기는 세션 파일을 읽기 때문에 따로 설정하지 않아도됩니다.
