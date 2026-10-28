@@ -1223,16 +1223,14 @@ struct ClangNotchContentView: View {
         return nil
     }
 
-    /// Extract model name from Codex model ID (e.g., "GPT-4" from "gpt-4-turbo")
+    /// Extract model name from Codex model ID (e.g., "Sol" from "gpt-6.1-sol")
     private func extractCodexModelName(_ modelId: String) -> String? {
-        let id = modelId.lowercased()
-        if id.contains("o3") { return "o3" }
-        if id.contains("o1") { return "o1" }
-        if id.contains("gpt-4") { return "GPT-4" }
-        if id.contains("gpt-3") { return "GPT-3" }
-        if id.contains("codex") { return "Codex" }
+        let parts = modelId.lowercased().split(separator: "-")
+        // The family name is the last all-letter part; the version number is dropped.
+        if let name = parts.last(where: { $0 != "gpt" && $0.allSatisfy(\.isLetter) }) {
+            return name.capitalized
+        }
         // Fallback: first part
-        let parts = id.split(separator: "-")
         if let first = parts.first {
             return String(first).uppercased()
         }
