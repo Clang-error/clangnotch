@@ -153,7 +153,7 @@ struct WrapUpDropdownView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(L("닫기", "Dismiss"))
+                .help(L("알림 접기 — 질문 대기는 유지됩니다", "Collapse — the question stays pending"))
             }
             .popIn()
 

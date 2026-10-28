@@ -139,6 +139,28 @@ struct NotchSettingsTab: View {
             }
 
             Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(L("열리기까지 기다리는 시간", "Delay before opening"))
+                        Spacer()
+                        Text(String(format: L("%.1f초", "%.1fs"), settings.notchOpenDelay))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    Slider(value: $settings.notchOpenDelay, in: 0...1, step: 0.05)
+                    Text(L("커서를 노치에 이만큼 올려 둬야 펼쳐집니다. 메뉴 막대로 가다 스쳐도 안 열리게 하려면 늘리세요.",
+                           "The cursor has to rest on the notch this long before it opens. Raise it if the notch opens while you head for the menu bar."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                SettingToggle(L("열릴 때 햅틱", "Haptic on open"),
+                              L("노치가 펼쳐질 때 트랙패드가 가볍게 톡 칩니다.", "A light trackpad tap when the notch opens."),
+                              isOn: $settings.notchHapticsEnabled)
+            } header: {
+                Text(L("열기", "Opening"))
+            }
+
+            Section {
                 SettingToggle(L("클립보드 기록", "Clipboard history"),
                               L("최근 복사한 글. 메모리에만 두고 비밀번호는 빼요.", "Recent copied text, in memory only; passwords skipped."),
                               isOn: $settings.enableClipboardHistory)
@@ -256,6 +278,19 @@ struct AgentsSettingsTab: View {
                     Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
                 }
                 .disabled(!settings.notchSoundsEnabled)
+                Picker(L("답을 기다리면 다시 알림", "Remind while waiting"), selection: $settings.attentionReminderMinutes) {
+                    Text(L("안 함", "Never")).tag(0)
+                    Text(L("3분마다", "Every 3 min")).tag(3)
+                    Text(L("5분마다", "Every 5 min")).tag(5)
+                    Text(L("10분마다", "Every 10 min")).tag(10)
+                }
+                .disabled(!settings.notchSoundsEnabled)
+                Toggle(L("화면이 잠겨 있으면 소리 끄기", "Mute while the screen is locked"), isOn: $settings.muteSoundsWhenLocked)
+                    .disabled(!settings.notchSoundsEnabled)
+                SettingToggle(L("사용량 추정", "Usage forecast"),
+                              L("지금 속도로 쓰면 리셋 때 몇 %일지 사용량 막대에 회색 눈금과 한 줄로 보여 줍니다.",
+                                "Shows where usage lands at reset at the current pace, as a grey tick and a line under each usage bar."),
+                              isOn: $settings.usagePaceEnabled)
                 Toggle(L("토큰 수 표시", "Show token count"), isOn: $settings.showNotchTokenCount)
                 SettingToggle(L("컨텍스트 막대 표시", "Show context bar"),
                               L("세션 화면 맨 위에 컨텍스트가 얼마나 찼는지 한 줄로 보여 줍니다. 크기(200k·1M 등)는 세션마다 알아서 잡습니다.",

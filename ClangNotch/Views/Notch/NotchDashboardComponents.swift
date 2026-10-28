@@ -6,6 +6,26 @@ enum NotchPalette {
     static let surface = Color(red: 0.075, green: 0.085, blue: 0.10)
 }
 
+extension View {
+    /// The open notch's one card style, the way most notch apps draw it: a dim white
+    /// fill and a hairline, no hue. `rail` adds a 3pt bar on the left edge — the only
+    /// emphasis (NEEDS YOU), in the waiting agent's colour.
+    func notchCard(cornerRadius: CGFloat = 14, rail: Color? = nil) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return background(Color.white.opacity(0.05), in: shape)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+            .overlay(alignment: .leading) {
+                if let rail {
+                    Capsule()
+                        .fill(rail)
+                        .frame(width: 3)
+                        .padding(.vertical, 10)
+                        .padding(.leading, 4)
+                }
+            }
+    }
+}
+
 extension NotchMode {
     var icon: String {
         switch self {
@@ -44,6 +64,15 @@ extension NotchMode {
     }
 }
 
+/// Plain button that dips to 0.9 while pressed (boring.notch's ScaleButtonStyle).
+struct NotchPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 /// Plain button whose background brightens on hover and press, like the tab chips.
 /// `base` is the resting fill for rows that already have one.
 struct NotchHoverButtonStyle: ButtonStyle {
@@ -75,6 +104,9 @@ struct NotchNavigationButton: View {
     let mode: NotchMode
     let selected: Bool
     let needsAttention: Bool
+    /// Shared by all chips so the selected capsule slides from tab to tab.
+    let namespace: Namespace.ID
+    var matchID = "selectedChip"
     let action: () -> Void
     @State private var hovering = false
 
@@ -93,15 +125,24 @@ struct NotchNavigationButton: View {
                         .transition(.opacity.combined(with: .move(edge: .leading)))
                 }
                 if needsAttention {
-                    Circle().fill(.orange).frame(width: 5, height: 5)
+                    Circle().fill(.red).frame(width: 5, height: 5)
                 }
             }
-            .foregroundStyle(selected ? NotchPalette.accent : .white.opacity(hovering ? 0.9 : 0.55))
+            .foregroundStyle(selected ? .white : .white.opacity(hovering ? 0.85 : 0.5))
             .padding(.horizontal, 10)
             .frame(height: 37)
-            .background(selected ? NotchPalette.accent.opacity(0.12) : .white.opacity(hovering ? 0.06 : 0),
-                        in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? NotchPalette.accent.opacity(0.18) : .clear))
+            .background {
+                if selected {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.12))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                        .matchedGeometryEffect(id: matchID, in: namespace)
+                } else if hovering {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)

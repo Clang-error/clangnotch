@@ -52,6 +52,7 @@ struct ClangNotchContentView: View {
     @State private var isHovering = false
     @State private var hoverTask: Task<Void, Never>?
     @State private var hoverExitNotBefore = Date.distantPast
+    @State private var isMenuTracking = false
     @State private var sessionStart = Date()
     @State private var showActivityGlow = false
     @State private var glowTask: Task<Void, Never>?
@@ -110,7 +111,7 @@ struct ClangNotchContentView: View {
     private var modeContentTransition: AnyTransition {
         reduceMotion
             ? .opacity
-            : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
+            : .blurFade(radius: 6).combined(with: .scale(scale: 0.985, anchor: .top))
     }
 
     private let startupGlowColor = Color(red: 0.55, green: 0.8, blue: 0.9)
@@ -635,7 +636,10 @@ struct ClangNotchContentView: View {
                 .onChange(of: claudeCodeManager.pendingInputRequests, initial: true) { old, requests in
                     if let request = requests.first, request != claudeInputRequest {
                         // `old == requests` is the launch pass: a question already waiting stays quiet.
-                        if old != requests, request.id != claudeInputRequest?.id { NotchSounds.playAttention() }
+                        if old != requests, request.id != claudeInputRequest?.id {
+                            let sessionId = claudeCodeManager.sessionStates.first { $0.value.pendingInputRequests.contains { $0.id == request.id } }?.key
+                            NotchSounds.playAttention(for: sessionId)
+                        }
                         triggerClaudeInputNotice(request)
                     } else if requests.isEmpty, claudeInputRequest != nil {
                         claudeInputRequest = nil
@@ -648,7 +652,10 @@ struct ClangNotchContentView: View {
                 }
                 .onChange(of: codexManager.pendingInputRequests, initial: true) { old, requests in
                     if let request = requests.first, request != codexInputRequest {
-                        if old != requests, request.id != codexInputRequest?.id { NotchSounds.playAttention() }
+                        if old != requests, request.id != codexInputRequest?.id {
+                            let sessionId = codexManager.sessionStates.first { $0.value.pendingInputRequest?.id == request.id }?.key
+                            NotchSounds.playAttention(for: sessionId)
+                        }
                         triggerCodexInputNotice(request)
                     } else if requests.isEmpty, codexInputRequest != nil {
                         codexInputRequest = nil
@@ -693,6 +700,36 @@ struct ClangNotchContentView: View {
             guard notchVM.notchState == .open, let index = note.userInfo?["index"] as? Int,
                   visibleModes.indices.contains(index) else { return }
             withAnimation(modeSwitchAnimation) { expandedMode = visibleModes[index] }
+        }
+        // Nag again while something keeps waiting: every N minutes, the attention sound for
+        // the first waiting session that isn't muted. Next-step boxes don't count; they linger.
+        .task(id: "\(waitingSessionIDs)-\(settings.attentionReminderMinutes)") {
+            let minutes = settings.attentionReminderMinutes
+            guard minutes > 0, !waitingSessionIDs.isEmpty else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(minutes * 60))
+                guard !Task.isCancelled else { return }
+                // Looking at the open notch already; no need to nag.
+                if notchVM.notchState != .open,
+                   let id = waitingSessionIDs.first(where: { !NotchSounds.isMuted($0) }) {
+                    NotchSounds.playAttention(for: id)
+                }
+            }
+        }
+        // A context menu (세션 줄 right-click) draws outside the notch; leaving for it
+        // mustn't close the notch under the menu. Re-check once the menu is gone.
+        // Only while the notch is open: a Picker in the Settings window must not touch it.
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+            guard notchVM.notchState == .open else { return }
+            isMenuTracking = true
+            hoverTask?.cancel()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in
+            guard isMenuTracking else { return }
+            isMenuTracking = false
+            // The cursor monitor sat idle while the menu tracked; read the cursor fresh.
+            UICoordinator.shared.refreshClickThrough()
+            if !UICoordinator.shared.cursorOverNotch { handleHover(false) }
         }
         .onAppear {
             triggerStartupGlow()
@@ -740,7 +777,7 @@ struct ClangNotchContentView: View {
             if notchVM.notchState == .open {
                 expandedContent
                     .frame(height: max(0, notchVM.notchSize.height - headerHeight - 12))
-                    .transition(.opacity)
+                    .transition(reduceMotion ? .opacity : .blurFade(radius: 10))
             } else if notchVM.notchState == .peeking {
                 peekContent
                     .frame(height: max(0, notchVM.notchSize.height - notchVM.closedNotchSize.height - 12))
@@ -769,7 +806,9 @@ struct ClangNotchContentView: View {
         // Only while the session is still active — once activity ends, notchActive goes
         // false (clear background), so drawing wings here would ghost over the desktop.
         let recentClaudeTool: ClaudeToolExecution? = {
+            // Back to thinking: the model line beats a finished tool's time.
             guard claudeCodeManager.hasAnySessionActivity,
+                  !claudeCodeManager.state.isThinking,
                   let recent = claudeCodeManager.state.recentTools.first,
                   let endTime = recent.endTime,
                   Date().timeIntervalSince(endTime) < 5.0 else { return nil }
@@ -786,6 +825,7 @@ struct ClangNotchContentView: View {
         let recentCodexTool: CodexToolExecution? = {
             guard settings.showSourceCodex,
                   codexManager.hasAnySessionActivity,
+                  !codexManager.state.isThinking,
                   let recent = codexManager.state.recentTools.first,
                   let endTime = recent.endTime,
                   Date().timeIntervalSince(endTime) < 5.0 else { return nil }
@@ -1324,33 +1364,63 @@ struct ClangNotchContentView: View {
         }
     }
 
+    /// Centred when the chips fit; scrolls sideways only when they don't.
     private var modeSwitcher: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(visibleModes) { mode in
-                        NotchNavigationButton(mode: mode, selected: activeMode == mode,
-                                              needsAttention: mode == .ai && attentionCount > 0) {
-                            withAnimation(modeSwitchAnimation) {
-                                expandedMode = mode
-                            }
-                        }
-                        .id(mode)
-                    }
+        ViewThatFits(in: .horizontal) {
+            modeChips(matchID: "selectedChip-fit")
+                .frame(maxWidth: .infinity)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    modeChips(matchID: "selectedChip-scroll")
                 }
-            }
-            .onAppear { proxy.scrollTo(activeMode, anchor: .center) }
-            .onChange(of: activeMode) { _, mode in
-                withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(mode, anchor: .center) }
+                .onAppear { proxy.scrollTo(activeMode, anchor: .center) }
+                .onChange(of: activeMode) { _, mode in
+                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(mode, anchor: .center) }
+                }
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @Namespace private var chipNamespace
+
+    /// Each `ViewThatFits` branch gets its own capsule id, in case both get measured at once.
+    private func modeChips(matchID: String) -> some View {
+        HStack(spacing: 4) {
+            ForEach(visibleModes) { mode in
+                NotchNavigationButton(mode: mode, selected: activeMode == mode,
+                                      needsAttention: mode == .ai && attentionCount > 0,
+                                      namespace: chipNamespace, matchID: matchID) {
+                    withAnimation(modeSwitchAnimation) {
+                        expandedMode = mode
+                    }
+                }
+                .id(mode)
+            }
+        }
     }
 
     private var attentionCount: Int {
         (settings.showSourceClaudeCode ? claudeCodeManager.sessionsConfirmedNeedingPermission.count : 0)
             + (settings.showSourceClaudeCode ? claudeCodeManager.sessionsAwaitingInput.count : 0)
             + (settings.showSourceCodex ? codexManager.pendingInputRequests.count : 0)
+    }
+
+    /// Sessions waiting on a permission or a real question (not a next-step box).
+    private var waitingSessionIDs: [String] {
+        var ids: [String] = []
+        if settings.showSourceClaudeCode {
+            if settings.showPermissionIndicator {
+                ids += claudeCodeManager.sessionsConfirmedNeedingPermission.map(\.id)
+            }
+            ids += claudeCodeManager.availableSessions
+                .filter { claudeCodeManager.sessionStates[$0.id]?.pendingInputRequests.contains { !$0.isWrapUp } == true }
+                .map(\.id)
+        }
+        if settings.showSourceCodex {
+            ids += codexManager.sessionStates.filter { $0.value.pendingInputRequest != nil }.map(\.key).sorted()
+        }
+        return ids
     }
 
     private var overviewHasActivity: Bool {
@@ -1369,13 +1439,16 @@ struct ClangNotchContentView: View {
                    ? codexManager.availableSessions.filter { codexManager.sessionStates[$0.id]?.isActive == true }.count : 0)
             Text(!overviewHasActivity ? L("대기 중", "Quiet")
                  : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working"))
-                .foregroundStyle(overviewHasActivity ? chipAccent : .secondary)
-                .modifier(Breathing(active: overviewHasActivity))
+                // Glow first: its gradient sits closest to the text and wins while working.
+                // The grey only reaches the text when idle (a style set before the glow
+                // used to dim the glow colours too).
+                .modifier(overviewGlow)
+                .foregroundStyle(.white.opacity(0.8))
             let sessionCount = (settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0)
                 + (settings.showSourceCodex ? codexManager.availableSessions.count : 0)
             Text(L("세션 \(sessionCount)", "Sessions \(sessionCount)"))
             Label("\(attentionCount)", systemImage: "bubble.left.and.exclamationmark.bubble.right")
-                .foregroundStyle(attentionCount > 0 ? .orange : .secondary)
+                .foregroundStyle(attentionCount > 0 ? .red : .secondary)
                 .modifier(Breathing(active: attentionCount > 0))
                 .help(L("답변·승인 대기", "Waiting for your response"))
         }
@@ -1384,6 +1457,20 @@ struct ClangNotchContentView: View {
         .lineLimit(1)
         .fixedSize()
         .accessibilityElement(children: .combine)
+    }
+
+    /// "작업 중" lit in the working agent's colour like the glow; both working → it alternates.
+    private var overviewGlow: GlowSweepText {
+        let claude = settings.showSourceClaudeCode && claudeHasRealActivity
+        let codex = codexHasRealActivity
+        if claude && codex {
+            return GlowSweepText(active: true, color: codexGlowColor, bright: codexBrightColor,
+                                 secondary: claudeGlowColor, secondaryBright: claudeBrightColor)
+        }
+        let useCodex = codex && !claude
+        return GlowSweepText(active: overviewHasActivity,
+                             color: useCodex ? codexGlowColor : claudeGlowColor,
+                             bright: useCodex ? codexBrightColor : claudeBrightColor)
     }
 
     private var usageOverview: some View {
@@ -1434,22 +1521,28 @@ struct ClangNotchContentView: View {
         ScrollView(.vertical) {
             VStack(spacing: 12) {
                 if settings.showSourceCodex, let request = codexManager.pendingInputRequests.first {
-                    NotchSection(title: "NEEDS YOU · Codex", onDismiss: { codexManager.dismissInputRequest(id: request.id) }) {
-                        QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue)
+                    let sessionId = codexManager.sessionStates.first { $0.value.pendingInputRequest?.id == request.id }?.key
+                    NotchSection(title: "NEEDS YOU · Codex", rail: codexGlowColor, onDismiss: { codexManager.dismissInputRequest(id: request.id) }) {
+                        QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue,
+                                            openTitle: sessionId.map { openTitle(.codex, $0) },
+                                            onOpen: sessionId.map { id in { focusSession(.codex, id); notchVM.close() } })
                     }
                 }
                 if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsConfirmedNeedingPermission.isEmpty {
-                    NotchSection(title: "NEEDS YOU · Claude", onDismiss: {
+                    NotchSection(title: "NEEDS YOU · Claude", rail: claudeGlowColor, onDismiss: {
                         if let session = claudeCodeManager.sessionsConfirmedNeedingPermission.first {
                             claudeCodeManager.dismissPermission(sessionId: session.id)
                         }
                     }) {
+                        let permissionSession = claudeCodeManager.sessionsConfirmedNeedingPermission.first
                         Button {
-                            if let session = claudeCodeManager.sessionsConfirmedNeedingPermission.first {
-                                claudeCodeManager.focusIDE(for: session)
+                            if let permissionSession {
+                                focusSession(.claude, permissionSession.id)
+                                notchVM.close()
                             }
                         } label: {
-                            Label(L("에디터에서 권한 확인", "Review permission in your editor"), systemImage: "arrow.up.forward.app")
+                            Label(permissionSession.map { openTitle(.claude, $0.id) } ?? L("에디터에서 권한 확인", "Review permission in your editor"),
+                                  systemImage: "arrow.up.forward.app")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.orange)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1460,8 +1553,11 @@ struct ClangNotchContentView: View {
                     }
                 }
                 if settings.showSourceClaudeCode, let request = claudeCodeManager.pendingInputRequests.first {
-                    NotchSection(title: "NEEDS YOU · Claude", onDismiss: { claudeCodeManager.dismissInputRequest(id: request.id) }) {
-                        QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange)
+                    let sessionId = claudeCodeManager.sessionStates.first { $0.value.pendingInputRequests.contains { $0.id == request.id } }?.key
+                    NotchSection(title: "NEEDS YOU · Claude", rail: claudeGlowColor, onDismiss: { claudeCodeManager.dismissInputRequest(id: request.id) }) {
+                        QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
+                                            openTitle: sessionId.map { openTitle(.claude, $0) },
+                                            onOpen: sessionId.map { id in { focusSession(.claude, id); notchVM.close() } })
                     }
                 }
 
@@ -1652,7 +1748,8 @@ struct ClangNotchContentView: View {
             accent: agentAccent(.claude),
             openTitle: askingSessionOpenTitle,
             onOpen: { goToAskingSession() },
-            onDismiss: { claudeCodeManager.dismissInputRequest(id: request.id) }
+            // Collapses only, like the 질문 드롭다운; Answer and the NEEDS YOU 카드 stay.
+            onDismiss: { dismissQuestionNotice() }
         )
     }
 
@@ -1690,6 +1787,7 @@ struct ClangNotchContentView: View {
     struct CodexUsageNotchSection: View {
         let rateLimits: CodexRateLimits
         @ObservedObject private var codexManager = CodexManager.shared
+        @AppStorage("usagePaceEnabled") private var paceEnabled = true
 
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
@@ -1697,7 +1795,7 @@ struct ClangNotchContentView: View {
                     Text(L("Codex 사용량", "Codex usage"))
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(.white.opacity(0.4))
                     if rateLimits.limitReached {
                         // A window can sit well under 100% while a different one
                         // is what's actually blocking, so say so outright.
@@ -1770,22 +1868,21 @@ struct ClangNotchContentView: View {
                     Text("\(Int(window.usedPercent.rounded()))%")
                         .font(.caption.monospacedDigit())
                         .foregroundColor(levelColor(window.usedPercent))
+                        .contentTransition(.numericText(value: window.usedPercent))
+                        .animation(.smooth, value: window.usedPercent)
                     if let resetsAt = window.resetsAt {
                         Text("• \(relativeResetText(resetsAt)) · \(resetsAt, format: .dateTime.hour().minute())")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
                 }
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.white.opacity(0.1))
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(levelColor(window.usedPercent))
-                            .frame(width: geometry.size.width * CGFloat(min(window.usedPercent, 100) / 100))
-                    }
+                let length = TimeInterval(window.windowMinutes * 60)
+                UsageBar(percent: window.usedPercent, color: levelColor(window.usedPercent),
+                         projectedFraction: paceEnabled
+                            ? UsagePace.projectedFraction(percent: window.usedPercent, resetsAt: window.resetsAt, window: length) : nil)
+                if paceEnabled {
+                    UsagePaceLine(percent: window.usedPercent, resetsAt: window.resetsAt, window: length)
                 }
-                .frame(height: 6)
             }
         }
 
@@ -1820,6 +1917,10 @@ struct ClangNotchContentView: View {
         /// Set while the agent's hook waits on the notch: options become buttons and the
         /// picks go back as `[question: label]` (a label list for multi-select).
         var onSubmit: (([String: Any]) -> Void)? = nil
+        /// NEEDS YOU 카드: the footer becomes a button that goes to the session's GUI or
+        /// terminal (it looked like one before and did nothing). `openTitle` names where.
+        var openTitle: String? = nil
+        var onOpen: (() -> Void)? = nil
         @State private var picks: [Int: Set<Int>] = [:]
 
         /// One single-choice question needs no Send: the tap is the answer.
@@ -1867,11 +1968,25 @@ struct ClangNotchContentView: View {
                         .foregroundColor(.white.opacity(0.7))
                 }
                 HStack {
-                    Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
-                                          : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
-                          systemImage: "arrow.up.right.square")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(accentColor.opacity(0.8))
+                    if let onOpen {
+                        Button(action: onOpen) {
+                            Label(openTitle ?? L("\(sourceName)에서 응답", "Answer in \(sourceName)"),
+                                  systemImage: "arrow.up.right.square")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(accentColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
+                                              : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
+                              systemImage: "arrow.up.right.square")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(accentColor.opacity(0.8))
+                    }
                     Spacer(minLength: 0)
                     if onSubmit != nil, !answersOnTap {
                         Button(action: submit) {
@@ -1945,13 +2060,17 @@ struct ClangNotchContentView: View {
         }
     }
 
+
     private struct NotchSection<Content: View>: View {
         let title: String?
+        var rail: Color? = nil
         var onDismiss: (() -> Void)? = nil
         let content: Content
 
-        init(title: String? = nil, onDismiss: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
+        init(title: String? = nil, rail: Color? = nil,
+             onDismiss: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
             self.title = title
+            self.rail = rail
             self.onDismiss = onDismiss
             self.content = content()
         }
@@ -1960,9 +2079,12 @@ struct ClangNotchContentView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if let title {
                     HStack(spacing: 0) {
+                        // Small tracked label, the way cyclop/Sapphire head their cards.
                         Text(title)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white.opacity(0.55))
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.8)
+                            .foregroundColor(.white.opacity(0.4))
+                            .lineLimit(1)
                         if let onDismiss {
                             Spacer(minLength: 0)
                             Button(action: onDismiss) {
@@ -1983,11 +2105,7 @@ struct ClangNotchContentView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.06))
-            )
+            .notchCard(rail: rail)
         }
     }
 
@@ -2007,7 +2125,7 @@ struct ClangNotchContentView: View {
                     .background(Circle().fill(Color.white.opacity(hovering ? 0.16 : 0.08)))
                     .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(NotchPressButtonStyle())
             .onHover { hovering = $0 }
         }
     }
@@ -2133,12 +2251,22 @@ struct ClangNotchContentView: View {
             guard notchVM.notchState != .open else { return }
 
             hoverTask = Task {
-                try? await Task.sleep(for: .milliseconds(90))
+                try? await Task.sleep(for: .seconds(settings.notchOpenDelay))
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {
                     guard notchVM.notchState != .open, isHovering,
                           !(notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice || doneNotice != nil)) else { return }
+                    if settings.notchHapticsEnabled {
+                        // macOS has no strength setting; .alignment is the crispest pattern,
+                        // and a second pulse 45ms later makes it a firm double tap.
+                        let haptics = NSHapticFeedbackManager.defaultPerformer
+                        haptics.perform(.alignment, performanceTime: .now)
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(45))
+                            haptics.perform(.alignment, performanceTime: .now)
+                        }
+                    }
                     openSelectedMode()
                 }
             }
@@ -2153,6 +2281,7 @@ struct ClangNotchContentView: View {
                 scheduleDoneNoticeDismiss(after: 1.5)
                 return
             }
+            guard !isMenuTracking else { return }
             let delay = max(0.15, hoverExitNotBefore.timeIntervalSinceNow)
             hoverTask = Task {
                 try? await Task.sleep(for: .seconds(delay))
@@ -2628,7 +2757,7 @@ struct ClangNotchContentView: View {
     private func handlePermissionQueue(_ queue: [PermissionRequestItem]) {
         if let first = queue.first {
             guard notchVM.notchState != .open else { return }
-            if first.id != shownPermission?.id { NotchSounds.playAttention() }
+            if first.id != shownPermission?.id { NotchSounds.playAttention(for: first.sessionId) }
             showPermissionNotice = true
             shownPermission = first
             resetClosedJellyReveal()
@@ -2699,7 +2828,7 @@ struct ClangNotchContentView: View {
     /// enough there) or another dropdown holds the notch (it waits its turn).
     private func handleCompletedTurn(_ turn: CompletedTurn, _ source: DoneFlash.Source) {
         guard notchVM.notchState != .open else { return }
-        NotchSounds.playDone()
+        NotchSounds.playDone(for: turn.sessionId)
         if isSessionAppFrontmost(source, turn.sessionId) {
             showDoneFlash(source, turn: turn)
             return

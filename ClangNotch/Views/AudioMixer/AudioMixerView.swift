@@ -74,28 +74,81 @@ private struct AppVolumeRow: View {
                 Image(systemName: "app.dashed").resizable().frame(width: 22, height: 22)
                     .foregroundColor(.white.opacity(0.4))
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(app.name)
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.9))
-                    .lineLimit(1)
-                Slider(value: $gain, in: 0...1) { _ in
-                    manager.setGain(gain, for: app)
-                }
-                .controlSize(.mini)
-                .tint(accent)
+            VolumePill(name: app.name, gain: $gain, accent: accent) {
+                manager.setGain(gain, for: app)
             }
-            Text("\(Int(gain * 100))%")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundColor(gain < 0.99 ? accent : .white.opacity(0.5))
-                .frame(width: 36, alignment: .trailing)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .notchCard(cornerRadius: 8)
         .padding(.horizontal, 4)
         // Reflect external refreshes (app list re-poll keeps the model gain authoritative).
         .onChange(of: app.gain) { _, newValue in
             if abs(newValue - gain) > 0.001 { gain = newValue }
         }
+    }
+}
+
+/// Sapphire's pill slider: the app name and % sit inside the track, and the part under
+/// the fill is redrawn dark so the text flips colour exactly where the fill ends. Drag or
+/// click anywhere on it; the gain is applied when the finger lifts, as the old Slider did.
+private struct VolumePill: View {
+    let name: String
+    @Binding var gain: Float
+    let accent: Color
+    let commit: () -> Void
+
+    private let height: CGFloat = 26
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let fillWidth = width * CGFloat(gain)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.1))
+                labels(color: .white.opacity(0.85), percentColor: gain < 0.99 ? accent : .white.opacity(0.5))
+                Capsule()
+                    .fill(accent)
+                    .frame(width: max(height, fillWidth))
+                    .opacity(gain > 0.005 ? 1 : 0)
+                labels(color: .black.opacity(0.8), percentColor: .black.opacity(0.8))
+                    .mask(alignment: .leading) {
+                        Rectangle().frame(width: max(height, fillWidth))
+                    }
+                    .opacity(gain > 0.005 ? 1 : 0)
+            }
+            .contentShape(Capsule())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in gain = Float(min(max(value.location.x / width, 0), 1)) }
+                    .onEnded { _ in commit() }
+            )
+        }
+        .frame(height: height)
+        .accessibilityElement()
+        .accessibilityLabel(name)
+        .accessibilityValue("\(Int(gain * 100))%")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: gain = min(1, gain + 0.05)
+            case .decrement: gain = max(0, gain - 0.05)
+            @unknown default: return
+            }
+            commit()
+        }
+    }
+
+    private func labels(color: Color, percentColor: Color) -> some View {
+        HStack {
+            Text(name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(color)
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Text("\(Int(gain * 100))%")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(percentColor)
+        }
+        .padding(.horizontal, 10)
+        .allowsHitTesting(false)
     }
 }

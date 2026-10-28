@@ -98,7 +98,7 @@ struct BatteryView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .notchCard(cornerRadius: 12)
         .padding(.horizontal, 6)
     }
 
@@ -192,6 +192,8 @@ private struct BatteryRow: View {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 8))
                             .foregroundColor(good)
+                            // Plugging in pops the bolt in (SuperIsland bounces its charging symbol).
+                            .transition(.scale(scale: 0.2).combined(with: .opacity))
                     }
                     if pinned {
                         Image(systemName: "pin.fill")
@@ -213,6 +215,13 @@ private struct BatteryRow: View {
                     }
                 }
                 gauge
+                if let minutes = device.minutesLeft {
+                    let time = minutes >= 60 ? L("\(minutes / 60)시간 \(minutes % 60)분", "\(minutes / 60)h \(minutes % 60)m")
+                                             : L("\(minutes)분", "\(minutes)m")
+                    Text(device.charging ? L("완충까지 \(time)", "\(time) to full") : L("약 \(time) 남음", "About \(time) left"))
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.5))
+                }
                 if !device.parts.isEmpty {
                     Text(device.parts.map { "\($0.displayLabel) \($0.percent)%" }.joined(separator: "  "))
                         .font(.system(size: 10))
@@ -224,16 +233,15 @@ private struct BatteryRow: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundColor(tone)
                 .monospacedDigit()
+                .contentTransition(.numericText(value: Double(device.percent)))
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.5), value: device.charging)
+        .animation(.smooth, value: device.percent)
         .opacity(dim)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
+        .notchCard(cornerRadius: 12)
         .padding(.horizontal, 6)
     }
 

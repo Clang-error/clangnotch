@@ -896,6 +896,20 @@ final class ClaudeCodeManager: ObservableObject {
             syncStateIfSelected(sessionId)
         }
 
+        // A message typed while the turn is still running lands as a queued_command
+        // attachment, not a user line; it answers the box all the same.
+        if json["type"] as? String == "attachment",
+           let attachment = json["attachment"] as? [String: Any],
+           attachment["type"] as? String == "queued_command",
+           (attachment["origin"] as? [String: Any])?["kind"] as? String == "human",
+           var sessionState = sessionStates[sessionId],
+           sessionState.pendingInputRequests.contains(where: \.isWrapUp) {
+            sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
+            sessionStates[sessionId] = sessionState
+            syncStateIfSelected(sessionId)
+            objectWillChange.send()
+        }
+
         if let message = json["message"] as? [String: Any] {
             parseMessageForSession(message, sessionId: sessionId, lineDate: lineDate, isStale: isStale,
                                    isMeta: json["isMeta"] as? Bool == true)
@@ -1038,18 +1052,22 @@ final class ClaudeCodeManager: ObservableObject {
                                 id: toolId,
                                 toolName: toolName,
                                 argument: extractToolArgument(from: item["input"]),
-                                startTime: (isStale ? lineDate : nil) ?? Date()
+                                // The line's own time: a fast Bash's tool_use and result often land in one read.
+                                startTime: lineDate ?? Date()
                             )
                             tool.description = toolDescription
                             tool.timeout = toolTimeout
                             tool.change = ToolChange.claude(toolName: toolName, input: item["input"])
 
                             // Shown until the user's next message, even when loaded from history.
-                            if toolName == wrapUpToolName, !dismissedInputRequestIDs.contains(toolId),
-                               !sessionState.pendingInputRequests.contains(where: { $0.id == toolId }),
-                               let request = ClaudeInputRequest.wrapUp(id: toolId, input: item["input"]) {
-                                sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
-                                sessionState.pendingInputRequests.append(request)
+                            if toolName == wrapUpToolName {
+                                // A newer box, even one with no question, retires the older one.
+                                sessionState.pendingInputRequests.removeAll { $0.isWrapUp && $0.id != toolId }
+                                if !dismissedInputRequestIDs.contains(toolId),
+                                   !sessionState.pendingInputRequests.contains(where: { $0.id == toolId }),
+                                   let request = ClaudeInputRequest.wrapUp(id: toolId, input: item["input"]) {
+                                    sessionState.pendingInputRequests.append(request)
+                                }
                             }
 
                             if isStale {
@@ -1111,7 +1129,7 @@ final class ClaudeCodeManager: ObservableObject {
                     // Move tool to recentTools instead of just removing
                     if let index = sessionState.activeTools.firstIndex(where: { $0.id == toolUseId }) {
                         var tool = sessionState.activeTools.remove(at: index)
-                        tool.endTime = Date()
+                        tool.endTime = max(lineDate ?? Date(), tool.startTime)
                         // Attach current token usage to the completed tool
                         tool.inputTokens = sessionState.tokenUsage.inputTokens
                         tool.outputTokens = sessionState.tokenUsage.outputTokens

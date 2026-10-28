@@ -235,6 +235,8 @@ private struct SpeedMetricCard: View {
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
                 .monospacedDigit()
+                .contentTransition(.numericText())
+                .animation(.smooth(duration: 0.25), value: value)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 

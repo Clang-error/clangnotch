@@ -61,7 +61,10 @@ final class ClipboardManager: ObservableObject {
 
         let item = ClipboardItem(text: text, copiedAt: Date())
         items.insert(item, at: 0)
-        if items.count > maxItems { items.removeLast() }
+        if items.filter({ !$0.isPinned }).count > maxItems,
+           let oldest = items.lastIndex(where: { !$0.isPinned }) {
+            items.remove(at: oldest)
+        }
     }
 
     // MARK: - Actions
@@ -71,5 +74,19 @@ final class ClipboardManager: ObservableObject {
         pasteboard.setString(item.text, forType: .string)
         // Update lastChangeCount so our own write doesn't appear as a new item
         lastChangeCount = pasteboard.changeCount
+    }
+
+    func remove(_ item: ClipboardItem) {
+        items.removeAll { $0.id == item.id }
+    }
+
+    func togglePin(_ item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].isPinned.toggle()
+    }
+
+    /// Clears everything except pinned items.
+    func clearUnpinned() {
+        items.removeAll { !$0.isPinned }
     }
 }

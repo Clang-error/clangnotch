@@ -50,6 +50,23 @@ struct NewHighlight: ViewModifier {
     }
 }
 
+/// Blur + fade, the open-notch transition boring.notch and DynamicNotchKit use:
+/// content comes into focus instead of just fading in.
+private struct BlurFade: ViewModifier {
+    var radius: CGFloat
+    var opacity: Double
+
+    func body(content: Content) -> some View {
+        content.blur(radius: radius).opacity(opacity)
+    }
+}
+
+extension AnyTransition {
+    static func blurFade(radius: CGFloat = 8) -> AnyTransition {
+        .modifier(active: BlurFade(radius: radius, opacity: 0), identity: BlurFade(radius: 0, opacity: 1))
+    }
+}
+
 extension View {
     func popIn(_ style: PopIn.Style = .scale, delay: Double = 0) -> some View {
         modifier(PopIn(style: style, delay: delay))
@@ -79,6 +96,51 @@ struct TracingGlowOutline: View {
                     .init(color: color.opacity(0), location: 1),
                 ], center: .center, angle: .degrees(phase * 360)), lineWidth: 2.2)
                 .background(shape.strokeBorder(color.opacity(0.22), lineWidth: 1.5))
+        }
+    }
+}
+
+/// Text lit like the notch glow: a bright band sweeps across it every 3s (the glow's
+/// sweep period). With a `secondary` colour (Claude and Codex both working) the text
+/// eases from one agent's colour to the other's and back every 6s. Paused when idle.
+struct GlowSweepText: ViewModifier {
+    var active: Bool
+    var color: Color
+    var bright: Color
+    var secondary: Color? = nil
+    var secondaryBright: Color? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if active {
+            sweep(content)
+        } else {
+            content
+        }
+    }
+
+    /// Same as NotchGlowBorder's: `Color.mix(with:by:)` needs macOS 15; the target is 14.2.
+    private static func blend(_ from: Color, _ to: Color?, _ fraction: Double) -> Color {
+        guard let to, fraction > 0 else { return from }
+        guard let blended = NSColor(from).usingColorSpace(.sRGB)?
+            .blended(withFraction: fraction, of: NSColor(to)) else { return from }
+        return Color(nsColor: blended)
+    }
+
+    private func sweep(_ content: Content) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: reduceMotion)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let mix = secondary == nil ? 0 : 0.5 - 0.5 * cos(2 * .pi * t / 6)
+            let base = Self.blend(bright, secondaryBright, mix)
+            let band = Self.blend(Self.blend(color, secondary, mix), .white, 0.65)
+            let phase = reduceMotion ? 0.5 : (t.truncatingRemainder(dividingBy: 3)) / 3
+            let center = phase * 1.6 - 0.3
+            // The band's end points move, not its stops: past either end of the text the
+            // gradient just holds `base`, so the band slides fully off instead of clamping on.
+            content.foregroundStyle(LinearGradient(colors: [base, band, base],
+                                                   startPoint: UnitPoint(x: center - 0.25, y: 0.5),
+                                                   endPoint: UnitPoint(x: center + 0.25, y: 0.5)))
         }
     }
 }

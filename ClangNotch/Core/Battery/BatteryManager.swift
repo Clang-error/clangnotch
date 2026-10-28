@@ -24,6 +24,8 @@ struct BatteryDevice: Identifiable, Equatable, Codable {
     var seenAt: Date
     /// 에어팟처럼 좌/우/케이스가 따로 잡히는 경우의 내역
     let parts: [BatteryPart]
+    /// 맥 본체만: 충전 중이면 완충까지, 아니면 바닥날 때까지 남은 분. 계산 중이면 nil.
+    var minutesLeft: Int? = nil
 }
 
 @MainActor
@@ -461,10 +463,14 @@ private enum Collector {
                   let current = desc[kIOPSCurrentCapacityKey] as? Int,
                   let max = desc[kIOPSMaxCapacityKey] as? Int, max > 0
             else { continue }
+            let charging = desc[kIOPSIsChargingKey] as? Bool ?? false
+            // -1 while macOS is still estimating.
+            let minutes = desc[charging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey] as? Int ?? -1
             return [BatteryDevice(
                 id: "mac", name: "MacBook", symbol: "macbook",
-                percent: current * 100 / max, charging: desc[kIOPSIsChargingKey] as? Bool ?? false,
-                live: true, seenAt: Date(), parts: []
+                percent: current * 100 / max, charging: charging,
+                live: true, seenAt: Date(), parts: [],
+                minutesLeft: minutes > 0 ? minutes : nil
             )]
         }
         return []

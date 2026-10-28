@@ -7,11 +7,115 @@
 
 import SwiftUI
 
+/// Where usage is heading at the current rate, as CodeIsland's usage cards show it:
+/// either when the window runs out before its reset, or roughly where it ends up.
+enum UsagePace {
+    /// 0–1 spot on the bar where usage lands at reset at the current rate (the end when it
+    /// runs out first), for the tick. Only once there is a prediction: a fresh window or an
+    /// unused cap shows a plain bar.
+    static func projectedFraction(percent: Double, resetsAt: Date?, window: TimeInterval) -> Double? {
+        guard let resetsAt, summary(percent: percent, resetsAt: resetsAt, window: window) != nil else { return nil }
+        let elapsed = window - resetsAt.timeIntervalSinceNow
+        return min(percent * window / elapsed, 100) / 100
+    }
+
+    /// 여유 under 80% at reset, 약간 빠름 from 80%, 빠름 when it hits the limit before reset.
+    enum Tier {
+        case easy, brisk, fast
+
+        var label: String {
+            switch self {
+            case .easy: return L("여유", "Easy")
+            case .brisk: return L("약간 빠름", "A bit fast")
+            case .fast: return L("빠름", "Fast")
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .easy: return .green
+            case .brisk: return .yellow
+            case .fast: return .red
+            }
+        }
+    }
+
+    static func summary(percent: Double, resetsAt: Date?, window: TimeInterval) -> (tier: Tier, detail: String)? {
+        guard let resetsAt, percent >= 1, percent < 100 else { return nil }
+        let remaining = resetsAt.timeIntervalSinceNow
+        let elapsed = window - remaining
+        // Too early in the window, the rate is noise.
+        guard remaining > 0, elapsed > window * 0.05 else { return nil }
+        let timeToFull = (100 - percent) * elapsed / percent
+        if timeToFull < remaining {
+            return (.fast, L("\(duration(timeToFull)) 뒤 한도 도달", "limit in \(duration(timeToFull))"))
+        }
+        let projected = Int((percent * window / elapsed).rounded())
+        return (projected >= 80 ? .brisk : .easy, L("리셋 때 약 \(projected)%", "about \(projected)% at reset"))
+    }
+
+    private static func duration(_ seconds: TimeInterval) -> String {
+        let minutes = max(1, Int(seconds / 60))
+        if minutes < 60 { return L("\(minutes)분", "\(minutes)m") }
+        if minutes < 1_440 { return L("\(minutes / 60)시간 \(minutes % 60)분", "\(minutes / 60)h \(minutes % 60)m") }
+        return L("\(minutes / 1_440)일 \(minutes % 1_440 / 60)시간", "\(minutes / 1_440)d \(minutes % 1_440 / 60)h")
+    }
+}
+
+/// The 10pt usage bar. A small grey tick marks where usage is predicted to land at reset.
+struct UsageBar: View {
+    let percent: Double
+    let color: Color
+    var projectedFraction: Double? = nil
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.white.opacity(0.1))
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(color)
+                    .frame(width: geometry.size.width * CGFloat(min(percent, 100) / 100))
+            }
+            // An overlay, so the taller tick never changes the bar's own height.
+            .overlay(alignment: .leading) {
+                if let projectedFraction {
+                    Capsule()
+                        .fill(Color(white: 0.62))
+                        .frame(width: 2.5, height: 14)
+                        .offset(x: min(max(0, geometry.size.width * projectedFraction - 1.25), geometry.size.width - 2.5))
+                }
+            }
+            .animation(.smooth(duration: 0.5), value: percent)
+        }
+        .frame(height: 10)
+    }
+}
+
+/// The pace line under a usage bar; orange when the window runs out before it resets.
+struct UsagePaceLine: View {
+    let percent: Double
+    let resetsAt: Date?
+    let window: TimeInterval
+
+    var body: some View {
+        if let pace = UsagePace.summary(percent: percent, resetsAt: resetsAt, window: window) {
+            // The tier word takes its colour; the rest keeps orange (limit) or grey.
+            (Text(pace.tier.label).foregroundColor(pace.tier.color)
+                + Text(" · \(pace.detail)").foregroundColor(pace.tier == .fast ? .orange : .white.opacity(0.4)))
+                .font(.system(size: 10, weight: pace.tier == .fast ? .semibold : .regular))
+        }
+    }
+}
+
 /// Single usage bar row
 struct UsageBarRow: View {
     let label: String
     let data: ClaudeUsageData.LimitData
     let icon: String
+    /// Length of this window: 5 hours, or 7 days for the weekly and per-model caps.
+    var window: TimeInterval = 7 * 86_400
+    @AppStorage("usagePaceEnabled") private var paceEnabled = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -29,6 +133,8 @@ struct UsageBarRow: View {
                 Text(data.formattedPercentage)
                     .font(.caption.monospacedDigit())
                     .foregroundColor(colorForLevel(data.usageLevel))
+                    .contentTransition(.numericText(value: data.percentage))
+                    .animation(.smooth, value: data.percentage)
 
                 if let resetsAt = data.resetsAt {
                     Text("• \(data.formattedRemaining) · \(resetsAt, format: .dateTime.hour().minute())")
@@ -37,20 +143,12 @@ struct UsageBarRow: View {
                 }
             }
 
-            // Progress bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    // Background
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.white.opacity(0.1))
-
-                    // Fill
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(colorForLevel(data.usageLevel))
-                        .frame(width: geometry.size.width * CGFloat(min(data.percentage, 100) / 100))
-                }
+            UsageBar(percent: data.percentage, color: colorForLevel(data.usageLevel),
+                     projectedFraction: paceEnabled
+                        ? UsagePace.projectedFraction(percent: data.percentage, resetsAt: data.resetsAt, window: window) : nil)
+            if paceEnabled {
+                UsagePaceLine(percent: data.percentage, resetsAt: data.resetsAt, window: window)
             }
-            .frame(height: 6)
         }
     }
 
@@ -88,8 +186,9 @@ struct ClaudeUsageNotchSection: View {
             // Header: title on the left, next-poll countdown on the right.
             HStack(spacing: 4) {
                 Text(L("Claude 사용량", "Claude usage"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.55))
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundColor(.white.opacity(0.4))
                 if usageManager.usageData.limitReached {
                     // A window can sit well under 100% while a different one
                     // is what's actually blocking, so say so outright.
@@ -170,7 +269,7 @@ struct ClaudeUsageNotchSection: View {
         VStack(alignment: .leading, spacing: 8) {
             if hasData {
                 if let fiveHour = usageManager.usageData.fiveHour {
-                    UsageBarRow(label: L("5시간", "5h"), data: fiveHour, icon: "clock")
+                    UsageBarRow(label: L("5시간", "5h"), data: fiveHour, icon: "clock", window: 5 * 3_600)
                 }
                 if let sevenDay = usageManager.usageData.sevenDay {
                     UsageBarRow(label: L("7일", "7d"), data: sevenDay, icon: "calendar")

@@ -77,8 +77,20 @@ public final class AppSettings: ObservableObject {
     @AppStorage("showTodoList") public var showTodoList: Bool = true
     /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
+    /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.
+    @AppStorage("notchOpenDelay") public var notchOpenDelay: Double = 0.09
+    /// A light trackpad tap when the notch opens on hover.
+    @AppStorage("notchHapticsEnabled") public var notchHapticsEnabled: Bool = true
+    /// Minutes a question or permission may wait before its sound plays again; 0 = never.
+    @AppStorage("attentionReminderMinutes") public var attentionReminderMinutes: Int = 5
+    /// Usage cards: predicted landing tick and the pace line under each bar.
+    @AppStorage("usagePaceEnabled") public var usagePaceEnabled: Bool = true
+    /// No notch sounds while the screen is locked.
+    @AppStorage("muteSoundsWhenLocked") public var muteSoundsWhenLocked: Bool = true
     /// 0–1, on top of the system volume.
     @AppStorage("notchSoundsVolume") public var notchSoundsVolume: Double = 0.7
+    /// Newline-separated session IDs muted from the 세션 줄's context menu.
+    @AppStorage("mutedSoundSessionIDs") public var mutedSoundSessionIDs: String = ""
     /// Comma-separated `~/.ssh/config` host aliases whose Claude Code sessions are mirrored
     /// into the notch over an app-owned SSH reverse tunnel (see RemoteClaudeManager).
     @AppStorage("remoteClaudeHosts") public var remoteClaudeHosts: String = ""

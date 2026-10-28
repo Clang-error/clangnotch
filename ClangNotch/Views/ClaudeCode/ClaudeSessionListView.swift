@@ -18,6 +18,8 @@ struct ClaudeSessionListView: View {
     /// Set in the notch: a row opens its 세션 화면 instead of jumping to the app.
     let onSelect: ((SessionDetailTarget) -> Void)?
     @State private var listAppearedAt = Date()
+    /// Row order captured while the cursor is over the list, so a row never moves under it.
+    @State private var frozenOrder: [String]?
 
     init(manager: ClaudeCodeManager, codexManager: CodexManager, maxItems: Int? = nil, onOpen: @escaping () -> Void = {},
          onSelect: ((SessionDetailTarget) -> Void)? = nil) {
@@ -48,10 +50,10 @@ struct ClaudeSessionListView: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                let rows = visibleGroups.flatMap { group in
+                let rows = frozen(visibleGroups.flatMap { group in
                     group.claude.map { UnifiedWorkspaceGroup(path: group.path, claude: [$0]) }
                         + group.codex.map { UnifiedWorkspaceGroup(path: group.path, codex: [$0]) }
-                }
+                })
                 VStack(spacing: 8) {
                     ForEach(Array(rows.enumerated()), id: \.element.rowID) { index, row in
                         UnifiedWorkspaceSessionRow(
@@ -66,6 +68,15 @@ struct ClaudeSessionListView: View {
                     }
                 }
                 .onAppear { listAppearedAt = Date() }
+                // Opening a 세션 화면 removes the list without a hover-exit.
+                .onDisappear { frozenOrder = nil }
+                .onHover { inside in
+                    if inside {
+                        frozenOrder = rows.map(\.rowID)
+                    } else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { frozenOrder = nil }
+                    }
+                }
             }
         }
     }
@@ -89,6 +100,9 @@ struct ClaudeSessionListView: View {
         // busy rows every time either wrote a line. Idle ones keep most recent first, which
         // holds still because they write nothing. The path breaks ties.
         return grouped.values.sorted { lhs, rhs in
+            // Folders with a session waiting on you come first, then working ones.
+            let lhsWaiting = needsYou(lhs), rhsWaiting = needsYou(rhs)
+            if lhsWaiting != rhsWaiting { return lhsWaiting }
             let lhsActive = isActive(lhs), rhsActive = isActive(rhs)
             if lhsActive != rhsActive { return lhsActive }
             if !lhsActive {
@@ -103,6 +117,23 @@ struct ClaudeSessionListView: View {
     private func normalizedPath(_ path: String) -> String {
         guard !path.isEmpty else { return L("알 수 없음", "Unknown") }
         return URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    /// Keeps the captured order while hovering; rows that appeared since go last.
+    private func frozen(_ rows: [UnifiedWorkspaceGroup]) -> [UnifiedWorkspaceGroup] {
+        guard let frozenOrder else { return rows }
+        let rank = Dictionary(frozenOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        return rows.enumerated()
+            .sorted { (rank[$0.element.rowID] ?? Int.max, $0.offset) < (rank[$1.element.rowID] ?? Int.max, $1.offset) }
+            .map(\.element)
+    }
+
+    /// A permission or a real question waiting (a lingering next-step box doesn't count).
+    private func needsYou(_ group: UnifiedWorkspaceGroup) -> Bool {
+        group.claude.contains { session in
+            manager.sessionsConfirmedNeedingPermission.contains { $0.id == session.id }
+                || manager.sessionStates[session.id]?.pendingInputRequests.contains { !$0.isWrapUp } == true
+        } || group.codex.contains { codexManager.sessionStates[$0.id]?.pendingInputRequest != nil }
     }
 
     private func isActive(_ group: UnifiedWorkspaceGroup) -> Bool {
@@ -139,6 +170,7 @@ private struct UnifiedWorkspaceSessionRow: View {
     let onSelect: ((SessionDetailTarget) -> Void)?
     @ObservedObject var manager: ClaudeCodeManager
     @ObservedObject var codexManager: CodexManager
+    @ObservedObject private var settings = AppSettings.shared
     @State private var hovering = false
 
     private var claudeActive: Bool {
@@ -192,6 +224,10 @@ private struct UnifiedWorkspaceSessionRow: View {
         if claudeActive { return Color(red: 0.9, green: 0.4, blue: 0.1) }
         if codexActive { return Color(red: 0.2, green: 0.5, blue: 1.0) }
         return nil
+    }
+
+    private var isMuted: Bool {
+        (group.claude.map(\.id) + group.codex.map(\.id)).contains(where: NotchSounds.isMuted)
     }
 
     /// The session whose todos, context and tokens the open notch shows.
@@ -259,6 +295,12 @@ private struct UnifiedWorkspaceSessionRow: View {
                     }
                 }
                 Spacer(minLength: 0)
+                if isMuted {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .help(L("소리 꺼둔 세션", "Sounds muted"))
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
@@ -281,10 +323,19 @@ private struct UnifiedWorkspaceSessionRow: View {
                 if let id = manager.conversationId(for: session) {
                     Button(L("Claude 세션 ID 복사 (\(id.prefix(8)))", "Copy Claude Session ID (\(id.prefix(8)))")) { copyToPasteboard(id) }
                 }
+                muteButton(session.id)
             }
             ForEach(group.codex) { session in
                 Button(L("Codex 세션 ID 복사 (\(session.id.prefix(8)))", "Copy Codex Session ID (\(session.id.prefix(8)))")) { copyToPasteboard(session.id) }
+                muteButton(session.id)
             }
+        }
+    }
+
+    private func muteButton(_ sessionId: String) -> some View {
+        // `settings` is observed so the label flips right after a toggle.
+        Button(NotchSounds.isMuted(sessionId) ? L("이 세션 소리 켜기", "Unmute This Session") : L("이 세션 소리 끄기", "Mute This Session")) {
+            NotchSounds.toggleMute(sessionId)
         }
     }
 

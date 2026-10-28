@@ -23,7 +23,7 @@ public final class UICoordinator: ObservableObject {
 
     private var mouseTimer: Timer?
     private var mouseMonitors: [Any] = []
-    private var cursorOverNotch = false
+    private(set) var cursorOverNotch = false
 
     /// The notch window covers a large transparent area. A window only lets clicks fall
     /// through to apps below when `ignoresMouseEvents == true` (returning nil from
