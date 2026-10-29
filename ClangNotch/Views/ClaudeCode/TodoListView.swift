@@ -1,105 +1,55 @@
-//
-//  TodoListView.swift
-//  ClangNotch
-//
-//  Displays Claude Code's current todo list parsed from TodoWrite tool calls
-//
-
 import SwiftUI
 
+/// Current Tasks 카드: the selected Claude session's task list, in the order Claude made it.
+/// Done tasks stay, struck through, so the list reads as progress.
 struct TodoListView: View {
     let todos: [ClaudeTodoItem]
-    var maxItems: Int = 5
+    var maxItems = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(todos.prefix(maxItems))) { todo in
-                TodoItemRow(todo: todo)
-            }
-
+            ForEach(todos.prefix(maxItems)) { TodoRow(todo: $0) }
             if todos.count > maxItems {
-                Text(L("+\(todos.count - maxItems)개 더", "+\(todos.count - maxItems) more..."))
+                Text(L("+\(todos.count - maxItems)개 더", "+\(todos.count - maxItems) more"))
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.5))
-                    .padding(.leading, 16)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.leading, 18)
             }
         }
     }
 }
 
-struct TodoItemRow: View {
+private struct TodoRow: View {
     let todo: ClaudeTodoItem
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: iconName)
+            Image(systemName: symbol)
                 .font(.system(size: 9))
-                .foregroundColor(iconColor)
+                .foregroundStyle(tint)
                 .frame(width: 12)
-
             Text(todo.content)
-                .font(.system(size: 10, weight: fontWeight))
-                .foregroundColor(textColor)
-                .lineLimit(1)
+                .font(.system(size: 10, weight: todo.status == .inProgress ? .medium : .regular))
+                .foregroundStyle(.white.opacity(todo.status == .inProgress ? 0.9 : todo.status == .pending ? 0.6 : 0.45))
                 .strikethrough(todo.status == .completed)
-
-            Spacer()
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
     }
 
-    private var iconName: String {
+    private var symbol: String {
         switch todo.status {
-        case .pending:
-            return "circle"
-        case .inProgress:
-            return "circle.lefthalf.filled"
-        case .completed:
-            return "checkmark.circle.fill"
+        case .pending: "circle"
+        case .inProgress: "circle.lefthalf.filled"
+        case .completed: "checkmark.circle.fill"
         }
     }
 
-    private var iconColor: Color {
+    private var tint: Color {
         switch todo.status {
-        case .pending:
-            return .white.opacity(0.4)
-        case .inProgress:
-            return .orange
-        case .completed:
-            return .green
+        case .pending: .white.opacity(0.4)
+        case .inProgress: .orange
+        case .completed: .green
         }
     }
-
-    private var textColor: Color {
-        switch todo.status {
-        case .pending:
-            return .white.opacity(0.6)
-        case .inProgress:
-            return .white.opacity(0.9)
-        case .completed:
-            return .white.opacity(0.5)
-        }
-    }
-
-    private var fontWeight: Font.Weight {
-        todo.status == .inProgress ? .medium : .regular
-    }
-}
-
-#Preview {
-    let sampleTodos = [
-        ClaudeTodoItem(content: "Fix authentication bug", status: .completed),
-        ClaudeTodoItem(content: "Implement JSONL parser", status: .inProgress),
-        ClaudeTodoItem(content: "Add permission detection", status: .pending),
-        ClaudeTodoItem(content: "Create UI components", status: .pending),
-        ClaudeTodoItem(content: "Test multi-session support", status: .pending),
-        ClaudeTodoItem(content: "Update documentation", status: .pending)
-    ]
-
-    VStack(spacing: 20) {
-        TodoListView(todos: sampleTodos)
-            .padding()
-            .background(Color.black.opacity(0.8))
-            .cornerRadius(8)
-    }
-    .padding()
 }

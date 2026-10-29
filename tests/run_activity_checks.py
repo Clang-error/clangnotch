@@ -62,7 +62,6 @@ final class ClaudeFixture {
     func resetToolIdleTimer() {}
     func updateSessionsNeedingPermission() {}
     func captureConversation(from: [String: Any], into: inout ClaudeCodeState) {}
-    func parseTodosFromArray(_ value: [[String: Any]]) -> [ClaudeTodoItem] { [] }
     func extractToolArgument(from: Any?) -> String? { nil }
     func scanForSessions() { availableSessions = Array(remoteSessions.values) }
     func displayableUserPrompt(_ raw: String) -> String? { raw }
@@ -72,7 +71,7 @@ swift += formatter(claude, 'lineTimestampFormatters') + '\n'
 start = claude.index('    private static let attentionNotificationTypes:')
 end = claude.index('\n    ]', start) + len('\n    ]')
 swift += claude[start:end].replace('private static let', 'static let', 1) + '\n'
-for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission']:
+for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission','applyTodoTool']:
     swift += method(claude, name) + '\n'
 swift += '}\nfinal class CodexFixture {\n' + common + '''
     var state = CodexState()
@@ -132,6 +131,18 @@ swift += '''}
         let recap: [String: Any] = ["recap": "끝났습니다."]
         w.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"r", "name":"mcp__ccd_turn__wrap_up", "input": recap]]], sessionId:"s")
         precondition(!w.state.isAwaitingInput, "A recap without a question waits for nothing")
+        // Current Tasks: TaskCreate adds a task, its result names it, TaskUpdate moves it.
+        let tasks = ClaudeFixture()
+        tasks.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"c1", "name":"TaskCreate", "input":["subject":"첫 작업"]],
+                                                                   ["type":"tool_use", "id":"c2", "name":"TaskCreate", "input":["subject":"둘째 작업"]]]], sessionId:"s")
+        tasks.parseJSONLLineForSession(#"{"type":"user","toolUseResult":{"task":{"id":"1","subject":"첫 작업"}},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c1"}]}}"#, sessionId:"s")
+        tasks.parseJSONLLineForSession(#"{"type":"user","toolUseResult":{"task":{"id":"2","subject":"둘째 작업"}},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"c2"}]}}"#, sessionId:"s")
+        tasks.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"u1", "name":"TaskUpdate", "input":["taskId":"1", "status":"completed"]],
+                                                                   ["type":"tool_use", "id":"u2", "name":"TaskUpdate", "input":["taskId":"2", "status":"in_progress"]]]], sessionId:"s")
+        precondition(tasks.state.todos.map(\.content) == ["첫 작업", "둘째 작업"]
+                     && tasks.state.todos.map(\.status) == [.completed, .inProgress], "TaskCreate/TaskUpdate fill the Current Tasks list")
+        tasks.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"u3", "name":"TaskUpdate", "input":["taskId":"1", "status":"deleted"]]]], sessionId:"s")
+        precondition(tasks.state.todos.map(\.content) == ["둘째 작업"], "A deleted task leaves the list")
         let closed = ClaudeFixture()
         closed.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
         closed.dismissInputRequest(id: "box")

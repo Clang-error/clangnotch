@@ -893,6 +893,17 @@ final class ClaudeCodeManager: ObservableObject {
             objectWillChange.send()
         }
 
+        // TaskCreate's result carries the id that later TaskUpdates refer to.
+        if let task = (json["toolUseResult"] as? [String: Any])?["task"] as? [String: Any],
+           let taskId = task["id"] as? String,
+           let toolUseId = ((json["message"] as? [String: Any])?["content"] as? [[String: Any]])?
+               .first(where: { $0["type"] as? String == "tool_result" })?["tool_use_id"] as? String,
+           var sessionState = sessionStates[sessionId],
+           let index = sessionState.todos.firstIndex(where: { $0.createdBy == toolUseId }) {
+            sessionState.todos[index].taskId = taskId
+            sessionStates[sessionId] = sessionState
+        }
+
         if let message = json["message"] as? [String: Any] {
             parseMessageForSession(message, sessionId: sessionId, lineDate: lineDate, isStale: isStale,
                                    isMeta: json["isMeta"] as? Bool == true)
@@ -1024,11 +1035,9 @@ final class ClaudeCodeManager: ObservableObject {
                                 toolTimeout = input["timeout"] as? Int
                             }
 
-                            // Parse TodoWrite tool to extract todos
-                            if toolName == "TodoWrite",
-                               let input = item["input"] as? [String: Any],
-                               let todos = input["todos"] as? [[String: Any]] {
-                                sessionState.todos = parseTodosFromArray(todos)
+                            // TodoWrite sends the whole list; TaskCreate and TaskUpdate change one task.
+                            if let input = item["input"] as? [String: Any] {
+                                applyTodoTool(toolName, toolId: toolId, input: input, to: &sessionState)
                             }
 
                             var tool = ClaudeToolExecution(
@@ -1163,32 +1172,38 @@ final class ClaudeCodeManager: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Helper to parse todos array into ClaudeTodoItem array
-    private func parseTodosFromArray(_ todosArray: [[String: Any]]) -> [ClaudeTodoItem] {
-        var newTodos: [ClaudeTodoItem] = []
-
-        for todoDict in todosArray {
-            guard let content = todoDict["content"] as? String,
-                  let statusStr = todoDict["status"] as? String else {
-                continue
+    /// The Current Tasks 카드's list. Claude Code used to rewrite it whole with TodoWrite; it now
+    /// makes one task per TaskCreate and moves it with TaskUpdate (status, or "deleted").
+    private func applyTodoTool(_ toolName: String, toolId: String, input: [String: Any],
+                               to sessionState: inout ClaudeCodeState) {
+        switch toolName {
+        case "TodoWrite":
+            guard let todos = input["todos"] as? [[String: Any]] else { return }
+            sessionState.todos = todos.compactMap { todo in
+                guard let content = todo["content"] as? String else { return nil }
+                return ClaudeTodoItem(content: content,
+                                      status: ClaudeTodoItem.TodoStatus(rawValue: todo["status"] as? String ?? "") ?? .pending)
             }
-
-            let status: ClaudeTodoItem.TodoStatus
-            switch statusStr {
-            case "pending":
-                status = .pending
-            case "in_progress":
-                status = .inProgress
-            case "completed":
-                status = .completed
-            default:
-                status = .pending
+        case "TaskCreate":
+            guard let subject = input["subject"] as? String,
+                  !sessionState.todos.contains(where: { $0.createdBy == toolId }) else { return }
+            sessionState.todos.append(ClaudeTodoItem(content: subject, status: .pending, createdBy: toolId))
+        case "TaskUpdate":
+            guard let taskId = input["taskId"] as? String,
+                  let index = sessionState.todos.firstIndex(where: { $0.taskId == taskId }) else { return }
+            if input["status"] as? String == "deleted" {
+                sessionState.todos.remove(at: index)
+                return
             }
-
-            newTodos.append(ClaudeTodoItem(content: content, status: status))
+            if let status = (input["status"] as? String).flatMap(ClaudeTodoItem.TodoStatus.init(rawValue:)) {
+                sessionState.todos[index].status = status
+            }
+            if let subject = input["subject"] as? String {
+                sessionState.todos[index].content = subject
+            }
+        default:
+            break
         }
-
-        return newTodos
     }
 
     /// The NEEDS YOU 카드's X for a tool approval the notch can't see the end of.

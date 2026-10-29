@@ -137,10 +137,15 @@ struct ClaudeToolExecution: Identifiable, Equatable {
 // MARK: - Todo Item
 
 /// Claude Code todo item from TodoWrite tool
+/// One line of the Current Tasks 카드: a TodoWrite entry, or a task from TaskCreate that
+/// TaskUpdate then moves along by `taskId`.
 struct ClaudeTodoItem: Identifiable, Equatable {
     let id = UUID()
-    let content: String
-    let status: TodoStatus
+    var content: String
+    var status: TodoStatus
+    /// TaskCreate's tool_use id, until its result names the task.
+    var createdBy: String? = nil
+    var taskId: String? = nil
 
     enum TodoStatus: String {
         case pending
