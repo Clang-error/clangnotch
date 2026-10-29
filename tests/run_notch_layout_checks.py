@@ -20,6 +20,8 @@ questions = '''
     var codexInputRequest: CodexInputRequest?
     var claudeInputRequest: ClaudeInputRequest?
     var showQuestionNotice = false
+    var questionExpanded = false
+    var questionScale: CGFloat { questionExpanded ? 1.4 : 1 }
     var showPermissionNotice = false
     var claudeQuestionAnswer: (([String: Any]) -> Void)? = nil
     var askingSessionOpenTitle = "Go"
@@ -132,6 +134,7 @@ with tempfile.TemporaryDirectory(prefix="clangnotch-layout-checks-") as folder:
         str(root / "ClangNotch/Views/Notch/NotchShape.swift"),
         str(root / "ClangNotch/Views/Notch/DoneCheckmarkView.swift"),
         str(root / "ClangNotch/Views/Notch/NotchMotion.swift"),
+        str(root / "ClangNotch/Views/Notch/ThinScrollers.swift"),
         str(root / "ClangNotch/Window/NotchDetector.swift"),
         str(enum_file), str(root / "tests/NotchLayoutChecks.swift"),
         "-o", str(binary),

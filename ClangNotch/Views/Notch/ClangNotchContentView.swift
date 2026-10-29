@@ -1681,15 +1681,15 @@ struct ClangNotchContentView: View {
             if let request = codexInputRequest {
                 ScrollView(.vertical) {
                     QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue)
+                        .background(ThinScrollers())
                 }
-                .scrollIndicators(.visible)
             } else if let request = claudeInputRequest {
                 ScrollView(.vertical) {
                     QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
                                         onSubmit: claudeQuestionAnswer, scale: questionScale)
                         .id(request.id)
+                        .background(ThinScrollers())
                 }
-                .scrollIndicators(.visible)
             }
         }
         .padding(.top, 10)
