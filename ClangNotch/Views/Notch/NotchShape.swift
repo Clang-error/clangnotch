@@ -1,9 +1,8 @@
-// NotchShape.swift
-// Custom shape for the notch with animatable corner radii
-// Source: https://github.com/MrKai77/DynamicNotchKit
-
 import SwiftUI
 
+/// The notch silhouette: hangs from the top edge, flares out into the menu bar at the top
+/// corners and rounds off at the bottom. Both radii animate, which is how the closed notch
+/// grows into the open panel.
 struct NotchShape: Shape {
     var topCornerRadius: CGFloat
     var bottomCornerRadius: CGFloat
@@ -17,71 +16,26 @@ struct NotchShape: Shape {
     }
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { .init(topCornerRadius, bottomCornerRadius) }
-        set {
-            topCornerRadius = newValue.first
-            bottomCornerRadius = newValue.second
-        }
+        get { AnimatablePair(topCornerRadius, bottomCornerRadius) }
+        set { (topCornerRadius, bottomCornerRadius) = (newValue.first, newValue.second) }
     }
 
     func path(in rect: CGRect) -> Path {
+        let top = topCornerRadius, bottom = bottomCornerRadius
+        // The body's sides sit `top` in from the frame; the flares fill the gap at the top.
+        let left = rect.minX + top, right = rect.maxX - top
         var path = Path()
-
-        // Start at top-left
         path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-
-        // Top-left curve (inward)
-        path.addQuadCurve(
-            to: CGPoint(x: rect.minX + topCornerRadius, y: rect.minY + topCornerRadius),
-            control: CGPoint(x: rect.minX + topCornerRadius, y: rect.minY)
-        )
-
-        // Left edge down
-        path.addLine(to: CGPoint(x: rect.minX + topCornerRadius, y: rect.maxY - bottomCornerRadius))
-
-        // Bottom-left curve (outward)
-        path.addQuadCurve(
-            to: CGPoint(x: rect.minX + topCornerRadius + bottomCornerRadius, y: rect.maxY),
-            control: CGPoint(x: rect.minX + topCornerRadius, y: rect.maxY)
-        )
-
-        // Bottom edge
-        path.addLine(to: CGPoint(x: rect.maxX - topCornerRadius - bottomCornerRadius, y: rect.maxY))
-
-        // Bottom-right curve (outward)
-        path.addQuadCurve(
-            to: CGPoint(x: rect.maxX - topCornerRadius, y: rect.maxY - bottomCornerRadius),
-            control: CGPoint(x: rect.maxX - topCornerRadius, y: rect.maxY)
-        )
-
-        // Right edge up
-        path.addLine(to: CGPoint(x: rect.maxX - topCornerRadius, y: rect.minY + topCornerRadius))
-
-        // Top-right curve (inward)
-        path.addQuadCurve(
-            to: CGPoint(x: rect.maxX, y: rect.minY),
-            control: CGPoint(x: rect.maxX - topCornerRadius, y: rect.minY)
-        )
-
-        // Top edge back to start
+        path.addQuadCurve(to: CGPoint(x: left, y: rect.minY + top), control: CGPoint(x: left, y: rect.minY))
+        path.addLine(to: CGPoint(x: left, y: rect.maxY - bottom))
+        path.addQuadCurve(to: CGPoint(x: left + bottom, y: rect.maxY), control: CGPoint(x: left, y: rect.maxY))
+        path.addLine(to: CGPoint(x: right - bottom, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: right, y: rect.maxY - bottom), control: CGPoint(x: right, y: rect.maxY))
+        path.addLine(to: CGPoint(x: right, y: rect.minY + top))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY), control: CGPoint(x: right, y: rect.minY))
         if drawsTopEdge {
             path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
         }
-
         return path
     }
-}
-
-#Preview {
-    VStack(spacing: 20) {
-        NotchShape(topCornerRadius: 6, bottomCornerRadius: 14)
-            .fill(.black)
-            .frame(width: 200, height: 32)
-
-        NotchShape(topCornerRadius: 19, bottomCornerRadius: 24)
-            .fill(.black)
-            .frame(width: 400, height: 190)
-    }
-    .padding(20)
-    .background(Color.gray.opacity(0.3))
 }

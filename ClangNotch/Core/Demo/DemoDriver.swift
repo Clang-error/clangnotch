@@ -206,14 +206,13 @@ final class DemoDriver {
             switch script.agent {
             case .claude(let entrypoint):
                 let session = ClaudeSession(pid: 0, workspaceFolders: [script.path], ideName: "Claude",
-                                            transport: nil, runningInWindows: nil, cwd: script.path)
+                                            cwd: script.path)
                 var state = ClaudeCodeState()
                 state.sessionId = session.id
                 state.model = "claude-opus-5-5"
                 state.cwd = script.path
                 state.gitBranch = script.branch
                 state.entrypoint = entrypoint
-                state.isConnected = true
                 state.lastUpdateTime = now
                 state.tokenUsage = ClaudeTokenUsage(inputTokens: 2_400 + Int(progress * 180),
                                                     outputTokens: 900 + Int(progress * 140),
@@ -251,21 +250,19 @@ final class DemoDriver {
                 }
 
             case .codex:
-                let session = CodexSession(id: script.id, cwd: script.path, cliVersion: "1.0.0", modelProvider: "openai",
-                                           gitBranch: script.branch, gitCommit: nil, timestamp: time(0),
+                let session = CodexSession(id: script.id, cwd: script.path,
+                                           gitBranch: script.branch, timestamp: time(0),
                                            jsonlFile: URL(fileURLWithPath: "/dev/null"))
                 var state = CodexState()
                 state.sessionId = session.id
                 state.model = "gpt-6"
                 state.cwd = script.path
                 state.gitBranch = script.branch
-                state.isConnected = true
                 state.lastUpdateTime = now
                 state.lastUserPrompt = script.prompt
                 let tokens = 24_000 + Int(progress * 1_760)
                 state.tokenUsage = CodexTokenUsage(inputTokens: 14_000 + Int(progress * 900),
                                                    outputTokens: 1_200 + Int(progress * 160),
-                                                   cachedInputTokens: 9_000 + Int(progress * 700),
                                                    totalTokens: tokens, contextTokens: tokens,
                                                    modelContextWindow: 272_000)
                 func tool(_ index: Int, _ step: Step, _ begin: TimeInterval) -> CodexToolExecution {

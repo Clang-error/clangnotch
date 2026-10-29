@@ -143,7 +143,7 @@ final class NotchViewModel: ObservableObject {
     }
 
     /// Briefly expand the notch to show a notification, then return to closed state
-    func peek(duration: TimeInterval? = 2.0, additionalHeight: CGFloat = 60, width: CGFloat = questionNotchWidth) {
+    func peek(duration: TimeInterval?, additionalHeight: CGFloat = 60, width: CGFloat = questionNotchWidth) {
         guard notchState != .open else { return }
 
         peekTask?.cancel()

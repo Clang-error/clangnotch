@@ -16,8 +16,6 @@ struct ClaudeSession: Identifiable, Codable, Equatable {
     let pid: Int
     let workspaceFolders: [String]
     let ideName: String
-    let transport: String?
-    let runningInWindows: Bool?
 
     /// Real working directory of a terminal session. The project-dir name is a lossy
     /// encoding (both "/" and "_" become "-"), so `workspaceFolders` is kept in its
@@ -73,17 +71,6 @@ struct ClaudeTokenUsage: Equatable {
     var outputTokens: Int = 0
     var cacheReadInputTokens: Int = 0
     var cacheCreationInputTokens: Int = 0
-
-    var totalTokens: Int {
-        inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens
-    }
-
-    static let contextWindow = 200_000
-
-    var contextPercentage: Double {
-        guard Self.contextWindow > 0 else { return 0 }
-        return min(100, Double(totalTokens) / Double(Self.contextWindow) * 100)
-    }
 }
 
 // MARK: - Tool Execution
@@ -99,13 +86,8 @@ struct ClaudeToolExecution: Identifiable, Equatable {
 
     // New fields from JSONL
     var description: String?
-    var timeout: Int?
     /// Edit/Write's removed and added lines, for the 세션 화면.
     var change: ToolChange?
-    var inputTokens: Int?
-    var outputTokens: Int?
-    var cacheReadTokens: Int?
-    var cacheWriteTokens: Int?
 
     var durationMs: Int? {
         guard let end = endTime else { return nil }
@@ -292,7 +274,6 @@ struct ClaudeCodeState: Equatable {
 
     var todos: [ClaudeTodoItem] = []
 
-    var isConnected: Bool = false
     var lastUpdateTime: Date?
 
     /// Questions waiting for answers, separate from tool execution approval.
@@ -321,7 +302,6 @@ struct ClaudeCodeState: Equatable {
     var lastStopReason: String?
 
     // Convenience accessors
-    var contextPercentage: Double { tokenUsage.contextPercentage }
     var hasActiveTools: Bool { !activeTools.isEmpty }
     var currentToolName: String? { activeTools.first?.toolName }
 

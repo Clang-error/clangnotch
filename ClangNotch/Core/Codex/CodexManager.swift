@@ -110,9 +110,6 @@ final class CodexManager: ObservableObject {
     private var externalImportSessions: Set<String> = []
     private var sessionActivityCache: [URL: (modifiedAt: Date, fileSize: UInt64, activity: Date?)] = [:]
 
-    /// Track pending function calls for timing
-    private var pendingFunctionCalls: [String: [String: Date]] = [:]  // sessionId -> (callId -> startTime)
-
     /// When each quiet working session was last checked for a live writer (`clearEndedSessions`).
     private var endedCheckTimes: [String: Date] = [:]
 
@@ -283,7 +280,6 @@ final class CodexManager: ObservableObject {
                 if sessionState.pendingInputRequest?.isAsync != true {
                     sessionState.pendingInputRequest = nil
                 }
-                pendingFunctionCalls[session.id]?.removeAll()
                 sessionStates[session.id] = sessionState
                 if selectedSession?.id == session.id { state = sessionState }
             }
@@ -610,14 +606,9 @@ final class CodexManager: ObservableObject {
             return nil
         }
 
-        let cliVersion = payload["cli_version"] as? String ?? "unknown"
-        let modelProvider = payload["model_provider"] as? String ?? "openai"
-
         var gitBranch: String?
-        var gitCommit: String?
         if let git = payload["git"] as? [String: Any] {
             gitBranch = git["branch"] as? String
-            gitCommit = git["commit_hash"] as? String
         }
 
         var timestamp = Date()
@@ -630,10 +621,7 @@ final class CodexManager: ObservableObject {
         return CodexSession(
             id: sessionId,
             cwd: cwd,
-            cliVersion: cliVersion,
-            modelProvider: modelProvider,
             gitBranch: gitBranch,
-            gitCommit: gitCommit,
             timestamp: timestamp,
             jsonlFile: file,
             originator: payload["originator"] as? String ?? "",
@@ -674,7 +662,6 @@ final class CodexManager: ObservableObject {
         sessionState.cwd = session.cwd
         sessionState.sessionId = session.id
         sessionState.gitBranch = session.gitBranch ?? ""
-        sessionState.isConnected = true
         sessionStates[session.id] = sessionState
 
         do {
@@ -723,7 +710,6 @@ final class CodexManager: ObservableObject {
         sessionLineBuffers.removeValue(forKey: sessionId)
         sessionStates.removeValue(forKey: sessionId)
         sessionAppDestinations.removeValue(forKey: sessionId)
-        pendingFunctionCalls.removeValue(forKey: sessionId)
         endedCheckTimes.removeValue(forKey: sessionId)
         isLoadingHistoryBySession.removeValue(forKey: sessionId)
         externalImportSessions.remove(sessionId)
@@ -762,7 +748,6 @@ final class CodexManager: ObservableObject {
                 sessionState.isTurnInProgress = false
                 sessionState.isThinking = false
                 sessionState.pendingInputRequest = nil
-                pendingFunctionCalls[sessionId]?.removeAll()
             }
             sessionStates[sessionId] = sessionState
             if selectedSession?.id == sessionId { state = sessionState }
@@ -902,7 +887,6 @@ final class CodexManager: ObservableObject {
                     sessionState.isThinking = false
                     sessionState.activeTools.removeAll()
                     sessionState.pendingInputRequest = nil
-                    pendingFunctionCalls[sessionId]?.removeAll()
                 }
             }
             return
@@ -943,7 +927,6 @@ final class CodexManager: ObservableObject {
             if let info = payload["info"] as? [String: Any],
                let totalUsage = info["total_token_usage"] as? [String: Any] {
                 sessionState.tokenUsage.inputTokens = totalUsage["input_tokens"] as? Int ?? 0
-                sessionState.tokenUsage.cachedInputTokens = totalUsage["cached_input_tokens"] as? Int ?? 0
                 sessionState.tokenUsage.outputTokens = totalUsage["output_tokens"] as? Int ?? 0
                 sessionState.tokenUsage.totalTokens = totalUsage["total_tokens"] as? Int ?? 0
 
@@ -1052,7 +1035,6 @@ final class CodexManager: ObservableObject {
                 ?? payload["input"] as? String
                 ?? ""
             var argument: String?
-            var workdir: String?
 
             // Parse arguments JSON to extract useful info
             if let argsData = argumentsJson.data(using: .utf8),
@@ -1064,7 +1046,6 @@ final class CodexManager: ObservableObject {
                 } else if let path = args["path"] as? String {
                     argument = URL(fileURLWithPath: path).lastPathComponent
                 }
-                workdir = args["workdir"] as? String
             } else if !argumentsJson.isEmpty {
                 // Codex Desktop custom tools may store plain-text input instead
                 // of a JSON argument object.
@@ -1077,14 +1058,12 @@ final class CodexManager: ObservableObject {
                 argument: argument,
                 startTime: eventTimestamp
             )
-            tool.workdir = workdir
             // apply_patch arrives on its own or inside an `exec` script.
             tool.change = ToolChange.patch(argumentsJson)
 
             if !sessionState.activeTools.contains(where: { $0.id == callId }) {
                 debugLog("[Codex] Tool started: \(name) (id: \(callId.prefix(8))...) arg: \(argument ?? "-")")
                 sessionState.activeTools.append(tool)
-                pendingFunctionCalls[sessionId, default: [:]][callId] = eventTimestamp
             }
 
             if ["request_user_input", "request_user_input_async"].contains(name),
@@ -1104,15 +1083,12 @@ final class CodexManager: ObservableObject {
                 }
             }
 
-            pendingFunctionCalls[sessionId]?.removeValue(forKey: callId)
-
             if let index = sessionState.activeTools.firstIndex(where: { $0.id == callId }) {
                 var tool = sessionState.activeTools.remove(at: index)
                 tool.endTime = eventTimestamp
 
                 // Parse output for exit code
                 if let output = payload["output"] as? String {
-                    tool.output = String(output.prefix(200))
                     if output.hasPrefix("Exit code: ") {
                         let codeStr = output.dropFirst("Exit code: ".count).prefix(while: { $0.isNumber })
                         tool.exitCode = Int(codeStr)
@@ -1164,7 +1140,6 @@ final class CodexManager: ObservableObject {
                                     if sessionState.pendingInputRequest?.isAsync != true {
                                         sessionState.pendingInputRequest = nil
                                     }
-                                    pendingFunctionCalls[sessionId]?.removeAll()
                                 }
                             }
                         }

@@ -271,9 +271,7 @@ final class ClaudeCodeManager: ObservableObject {
                         var session = ClaudeSession(
                             pid: 0,  // Terminal sessions don't have a single PID
                             workspaceFolders: ["\(workspacePath)#\(sessionId)"],
-                            ideName: "Terminal",
-                            transport: nil,
-                            runningInWindows: nil
+                            ideName: "Terminal"
                         )
                         let modified = (try? jsonlFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
                         guard modified > recentThreshold
@@ -385,14 +383,6 @@ final class ClaudeCodeManager: ObservableObject {
             state = ClaudeCodeState()
             // `workspacePath`, not the raw folder: a terminal session's is "path#sessionId".
             state.cwd = session.workspacePath ?? ""
-        }
-    }
-
-    /// Manually refresh state
-    func refresh() {
-        scanForSessions()
-        if let selected = selectedSession {
-            readNewSessionDataForSession(sessionId: selected.id)
         }
     }
 
@@ -643,7 +633,6 @@ final class ClaudeCodeManager: ObservableObject {
 
         var sessionState = ClaudeCodeState()
         sessionState.cwd = session.workspacePath ?? ""
-        sessionState.isConnected = true
         sessionStates[session.id] = sessionState
 
         do {
@@ -1028,11 +1017,9 @@ final class ClaudeCodeManager: ObservableObject {
                                completedQuestionHookIDs[sessionId]?.contains(toolId) == true { continue }
 
                             var toolDescription: String?
-                            var toolTimeout: Int?
 
                             if let input = item["input"] as? [String: Any] {
                                 toolDescription = input["description"] as? String
-                                toolTimeout = input["timeout"] as? Int
                             }
 
                             // TodoWrite sends the whole list; TaskCreate and TaskUpdate change one task.
@@ -1048,7 +1035,6 @@ final class ClaudeCodeManager: ObservableObject {
                                 startTime: lineDate ?? Date()
                             )
                             tool.description = toolDescription
-                            tool.timeout = toolTimeout
                             tool.change = ToolChange.claude(toolName: toolName, input: item["input"])
 
                             // Shown until the user's next message, even when loaded from history.
@@ -1122,12 +1108,7 @@ final class ClaudeCodeManager: ObservableObject {
                     if let index = sessionState.activeTools.firstIndex(where: { $0.id == toolUseId }) {
                         var tool = sessionState.activeTools.remove(at: index)
                         tool.endTime = max(lineDate ?? Date(), tool.startTime)
-                        // Attach current token usage to the completed tool
-                        tool.inputTokens = sessionState.tokenUsage.inputTokens
-                        tool.outputTokens = sessionState.tokenUsage.outputTokens
-                        tool.cacheReadTokens = sessionState.tokenUsage.cacheReadInputTokens
-                        tool.cacheWriteTokens = sessionState.tokenUsage.cacheCreationInputTokens
-                        debugLog("[ClaudeCode] Tool completed: \(tool.toolName) (id: \(toolUseId.prefix(8))...) in:\(tool.inputTokens ?? 0) out:\(tool.outputTokens ?? 0)")
+                        debugLog("[ClaudeCode] Tool completed: \(tool.toolName) (id: \(toolUseId.prefix(8))...)")
                         sessionState.recentTools.insert(tool, at: 0)
                         if sessionState.recentTools.count > 10 {
                             sessionState.recentTools.removeLast()
@@ -1442,15 +1423,12 @@ final class ClaudeCodeManager: ObservableObject {
             pid: 0,
             workspaceFolders: ["\(json["cwd"] as? String ?? "")#\(conversationId)"],
             ideName: "SSH \(host)",
-            transport: nil,
-            runningInWindows: nil,
             remoteHost: host
         )
         var sessionState = sessionStates[session.id] ?? ClaudeCodeState()
         sessionState.sessionId = conversationId
         sessionState.cwd = json["cwd"] as? String ?? sessionState.cwd
         sessionState.entrypoint = .ssh
-        sessionState.isConnected = true
 
         let now = Date()
         // Any event after a prompt means the user answered it (a denied permission never

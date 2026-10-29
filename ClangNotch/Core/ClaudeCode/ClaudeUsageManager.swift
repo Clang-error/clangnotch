@@ -430,15 +430,7 @@ final class ClaudeUsageManager: ObservableObject {
             unchangedCount = 0
         } else {
             unchangedCount += 1
-            let newMode: UsageMonitoringMode? = {
-                switch currentMonitoringMode {
-                case .active:     return unchangedCount >= 3 ? .idleShort : nil
-                case .idleShort:  return unchangedCount >= 6 ? .idleMedium : nil
-                case .idleMedium: return unchangedCount >= 12 ? .idleLong : nil
-                case .idleLong:   return nil
-                }
-            }()
-            if let newMode { currentMonitoringMode = newMode }
+            if unchangedCount >= 20 { currentMonitoringMode = .idle }
         }
         lastUtilization = currentUtilization
     }

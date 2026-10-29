@@ -1,48 +1,34 @@
 import Foundation
 import IOKit.ps
 
+/// Whether the Mac runs on the adapter, for battery saver. IOKit calls back on every
+/// power source change, so nothing polls.
 @MainActor
 public final class PowerStateMonitor: ObservableObject {
     public static let shared = PowerStateMonitor()
 
-    @Published public private(set) var isCharging: Bool = false
+    @Published public private(set) var isCharging = true
 
     private var runLoopSource: CFRunLoopSource?
 
-    public init() {
-        updatePowerState()
-        startMonitoring()
-    }
-
-
-    private func updatePowerState() {
-        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
-
-        for source in sources {
-            if let info = IOPSGetPowerSourceDescription(snapshot, source).takeUnretainedValue() as? [String: Any] {
-                if let powerSource = info[kIOPSPowerSourceStateKey] as? String {
-                    isCharging = (powerSource == kIOPSACPowerValue)
-                    return
-                }
-            }
-        }
-        // Default to charging (plugged in) if we can't determine - safer for desktop Macs
-        isCharging = true
-    }
-
-    private func startMonitoring() {
-        let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+    private init() {
+        refresh()
+        let context = Unmanaged.passUnretained(self).toOpaque()
         runLoopSource = IOPSNotificationCreateRunLoopSource({ context in
-            guard let context = context else { return }
+            guard let context else { return }
             let monitor = Unmanaged<PowerStateMonitor>.fromOpaque(context).takeUnretainedValue()
-            Task { @MainActor in
-                monitor.updatePowerState()
-            }
-        }, context).takeRetainedValue()
-
-        if let source = runLoopSource {
-            CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+            Task { @MainActor in monitor.refresh() }
+        }, context)?.takeRetainedValue()
+        if let runLoopSource {
+            CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .defaultMode)
         }
+    }
+
+    /// A desktop Mac reports AC power too, so it never counts as on battery.
+    private func refresh() {
+        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+        let source = IOPSGetProvidingPowerSourceType(snapshot)?.takeUnretainedValue() as String?
+        let charging = source != kIOPSBatteryPowerValue
+        if charging != isCharging { isCharging = charging }
     }
 }

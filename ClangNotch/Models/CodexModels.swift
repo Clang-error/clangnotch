@@ -13,10 +13,7 @@ import Foundation
 struct CodexSession: Identifiable, Equatable {
     let id: String  // session_id from session_meta
     let cwd: String
-    let cliVersion: String
-    let modelProvider: String
     let gitBranch: String?
-    let gitCommit: String?
     let timestamp: Date
     let jsonlFile: URL
     var originator: String = ""
@@ -34,17 +31,11 @@ struct CodexSession: Identifiable, Equatable {
 struct CodexTokenUsage: Equatable {
     var inputTokens: Int = 0
     var outputTokens: Int = 0
-    var cachedInputTokens: Int = 0
     var totalTokens: Int = 0
     /// What the last turn sent and got back (`last_token_usage`) — the part sitting in the
     /// context window. `totalTokens` adds up every turn, so it outgrows the window.
     var contextTokens: Int = 0
     var modelContextWindow: Int = 200_000
-
-    var contextPercentage: Double {
-        guard modelContextWindow > 0 else { return 0 }
-        return min(100, Double(totalTokens) / Double(modelContextWindow) * 100)
-    }
 }
 
 // MARK: - Tool Execution
@@ -59,10 +50,8 @@ struct CodexToolExecution: Identifiable, Equatable {
     var isRunning: Bool { endTime == nil }
 
     // Additional info
-    var workdir: String?
     /// apply_patch's removed and added lines, for the 세션 화면.
     var change: ToolChange?
-    var output: String?
     var exitCode: Int?
 
     var durationMs: Int? {
@@ -135,7 +124,6 @@ struct CodexState: Equatable {
     var activeTools: [CodexToolExecution] = []
     var recentTools: [CodexToolExecution] = []
 
-    var isConnected: Bool = false
     var lastUpdateTime: Date?
 
     /// True when Codex is actively thinking/reasoning
@@ -151,7 +139,6 @@ struct CodexState: Equatable {
     var lastUserPrompt: String?
 
     // Convenience accessors
-    var contextPercentage: Double { tokenUsage.contextPercentage }
     var hasActiveTools: Bool { !activeTools.isEmpty }
     var currentToolName: String? { activeTools.first?.toolName }
 

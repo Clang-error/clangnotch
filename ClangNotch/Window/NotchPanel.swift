@@ -1,47 +1,29 @@
 import AppKit
 import SwiftUI
 
+/// The borderless, see-through window the notch is drawn in. It is far larger than the
+/// visible notch; `UICoordinator` lets clicks through everywhere outside
+/// `notchInteractiveSize` / `notchInteractiveShape`.
 final class NotchPanel: NSPanel {
-    /// Size of the currently-interactive notch region (top-centered). The UICoordinator
-    /// toggles `ignoresMouseEvents` based on whether the cursor is inside this region.
     var notchInteractiveSize = CGSize(width: 250, height: 40)
     var notchInteractiveShape: NotchShape?
 
-    init(contentRect: NSRect, styleMask style: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]) {
-        super.init(
-            contentRect: contentRect,
-            styleMask: style,
-            backing: .buffered,
-            defer: false
-        )
-
-        configureWindow()
-    }
-
-    private func configureWindow() {
-        // Floating panel behavior
+    init(contentRect: NSRect) {
+        super.init(contentRect: contentRect,
+                   styleMask: [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow],
+                   backing: .buffered, defer: false)
         isFloatingPanel = true
         isOpaque = false
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
         backgroundColor = .clear
+        hasShadow = false
         isMovable = false
-
+        isReleasedWhenClosed = false
+        appearance = NSAppearance(named: .darkAqua)
         // Above the menu bar, so the notch can cover it.
         level = .mainMenu + 3
-        hasShadow = false
-        isReleasedWhenClosed = false
-
-        // Force dark appearance
-        appearance = NSAppearance(named: .darkAqua)
-
         // On every Space and fixed in place while Spaces slide. Not on full-screen Spaces:
         // the notch hides there anyway (`UICoordinator.applyFullScreenVisibility`).
-        collectionBehavior = [
-            .stationary,
-            .canJoinAllSpaces,
-            .ignoresCycle,
-        ]
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
     }
 
     func setContent<Content: View>(@ViewBuilder content: () -> Content) {

@@ -153,19 +153,16 @@ enum UsageLevel {
 
 // MARK: - Refresh Mode
 
-/// Smart monitoring modes (adaptive based on activity)
+/// Smart refresh: every 5 minutes (the endpoint rate-limits anything faster), every 10 once
+/// usage has stopped moving for a while.
 enum UsageMonitoringMode: String {
-    case active = "active"           // 1 minute
-    case idleShort = "idle_short"    // 3 minutes
-    case idleMedium = "idle_medium"  // 5 minutes
-    case idleLong = "idle_long"      // 10 minutes
+    case active
+    case idle
 
     var interval: TimeInterval {
         switch self {
-        case .active: return 60
-        case .idleShort: return 180
-        case .idleMedium: return 300
-        case .idleLong: return 600
+        case .active: return 300
+        case .idle: return 600
         }
     }
 }
@@ -189,21 +186,22 @@ enum ClaudeUsageError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noData:
-            return "No data received"
+            return L("사용량 응답이 비어 있습니다", "No usage data received")
         case .noCredentials:
-            return "Claude Code login not found. Sign in with Claude Code first."
+            return L("Claude Code 로그인을 찾지 못했습니다. 먼저 Claude Code에 로그인하세요.", "Claude Code login not found. Sign in with Claude Code first.")
         case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
+            return L("네트워크 오류: ", "Network error: ") + error.localizedDescription
         case .unauthorized:
-            return "Invalid session key"
+            return L("Claude Code 로그인이 거부되었습니다. Claude Code에서 다시 로그인하세요.",
+                     "Claude Code's login was refused. Sign in again in Claude Code.")
         case .rateLimited:
-            return "Too many requests. Please wait."
+            return L("요청이 너무 많습니다. 잠시 후 다시 시도합니다.", "Too many requests. Trying again shortly.")
         case .httpError(let code):
-            return "HTTP error: \(code)"
+            return L("HTTP 오류 \(code)", "HTTP error \(code)")
         case .needsReauth:
-            return "Tap to authorize usage access"
+            return L("눌러서 사용량 읽기를 허용하세요", "Tap to authorize usage access")
         case .tokenExpired:
-            return "Claude Code token expired. Run Claude Code to renew it."
+            return L("Claude Code 토큰이 만료되었습니다. Claude Code를 실행하면 갱신됩니다.", "Claude Code token expired. Run Claude Code to renew it.")
         }
     }
 }

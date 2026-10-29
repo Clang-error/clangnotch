@@ -21,15 +21,13 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-	<key>LSUIElement</key>
-	<true/>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>ClangNotch taps app audio to let you control each app's volume from the notch.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
@@ -45,9 +43,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ClangNotch reads battery levels from your iPhone and iPad over Wi-Fi.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026. All rights reserved.</string>
-	<key>NSMainStoryboardFile</key>
-	<string></string>
+	<string>Copyright © 2026 Clang_error. MIT License.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

@@ -65,7 +65,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.contentViewController = hostingController
-        window.title = "Settings"
+        window.title = L("ClangNotch 설정", "ClangNotch Settings")
         window.setFrameAutosaveName("SettingsWindow")
         window.center()
         window.isReleasedWhenClosed = false

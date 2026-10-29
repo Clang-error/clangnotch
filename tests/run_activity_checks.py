@@ -76,7 +76,6 @@ for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSel
 swift += '}\nfinal class CodexFixture {\n' + common + '''
     var state = CodexState()
     var sessionStates = ["s": CodexState()]
-    var pendingFunctionCalls: [String: [String: Date]] = [:]
     var dismissedInputRequestIDs: Set<String> = []
     var externalImportSessions: Set<String> = []
     var sessionsDir = FileManager.default.temporaryDirectory

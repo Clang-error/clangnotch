@@ -1133,7 +1133,7 @@ struct ClangNotchContentView: View {
                             }
                         } else if hasPermissionNeeded {
                             HStack(spacing: 4) {
-                                PermissionNeededIndicatorCompact()
+                                NeedsOKDot()
                                 Text("Needs OK")
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundColor(.orange)
@@ -1532,18 +1532,6 @@ struct ClangNotchContentView: View {
                         onOpen: { notchVM.close() },
                         onSelect: { showSessionDetail($0) }
                     )
-                }
-
-            // Permission badge under the session list
-                if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsNeedingPermission.isEmpty && claudeCodeManager.sessionsConfirmedNeedingPermission.isEmpty {
-                    Button {
-                        claudeCodeManager.focusIDE()
-                    } label: {
-                        PermissionNeededBadge(toolName: claudeCodeManager.state.pendingPermissionTool)
-                            .padding(3)
-                    }
-                    .buttonStyle(NotchHoverButtonStyle(cornerRadius: 6))
-                    .help(L("에디터에서 권한 확인", "Review permission in your editor"))
                 }
 
             }

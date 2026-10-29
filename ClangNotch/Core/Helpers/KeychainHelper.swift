@@ -1,72 +1,44 @@
-//
-//  KeychainHelper.swift
-//  ClangNotch
-//
-//  Simple Keychain wrapper for secure credential storage
-//
-
 import Foundation
 import Security
 
+/// Strings in the login keychain under this app's bundle id, one account per key.
 enum KeychainHelper {
     private static let service = Bundle.main.bundleIdentifier ?? "com.clangerror.ClangNotch"
 
-    /// Save a string value to the Keychain
+    private static func query(_ key: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: key]
+    }
+
+    /// Replaces rather than updates: an item an older build of this self-signed app wrote can
+    /// make an update ask for keychain approval (see `ClaudeUsageManager.loadMirroredToken`).
+    @discardableResult
     static func save(key: String, value: String) -> Bool {
-        guard let data = value.data(using: .utf8) else { return false }
-
-        // Delete existing item first
         delete(key: key)
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
-        ]
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-        return status == errSecSuccess
+        var item = query(key)
+        item[kSecValueData as String] = Data(value.utf8)
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
     }
 
-    /// Retrieve a string value from the Keychain
     static func load(key: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
+        var item = query(key)
+        item[kSecReturnData as String] = true
+        item[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let value = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-
-        return value
+        guard SecItemCopyMatching(item as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
-    /// Delete a value from the Keychain
     @discardableResult
     static func delete(key: String) -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key
-        ]
-
-        let status = SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query(key) as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    /// Check if a key exists in the Keychain
     static func exists(key: String) -> Bool {
-        return load(key: key) != nil
+        load(key: key) != nil
     }
 }

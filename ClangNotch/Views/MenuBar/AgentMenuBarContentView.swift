@@ -203,22 +203,10 @@ struct AgentMenuBarContentView: View {
 }
 
 private struct MenuSection<Content: View>: View {
-    let title: String?
-    let content: Content
-
-    init(title: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
+    @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let title {
-                Text(title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-            }
-
             content
         }
         .padding(10)

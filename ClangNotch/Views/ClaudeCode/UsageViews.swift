@@ -1,9 +1,5 @@
-//
-//  ClaudeUsageIndicator.swift
-//  ClangNotch
-//
-//  Displays Claude API usage quota in the notch
-//
+// Usage bars and pace lines shared by the Claude and Codex 사용량 카드, the Claude 사용량 카드
+// itself, and the Claude usage settings.
 
 import SwiftUI
 
