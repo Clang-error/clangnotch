@@ -6,19 +6,30 @@ import SwiftUI
 /// Where usage is heading at the current rate, as CodeIsland's usage cards show it:
 /// either when the window runs out before its reset, or roughly where it ends up.
 ///
-/// The rate blends the window's average with the last 45 minutes, read from the readings
-/// seen since launch: a burst early in the window no longer reads as "fast" for hours, and
-/// one starting now shows up before the average catches it. Until there are 10 minutes of
-/// readings it is the plain average.
+/// The rate blends the window's average with the last 45 minutes of readings: a burst early
+/// in the window no longer reads as "fast" for hours, and one starting now shows up before
+/// the average catches it. Until there are 10 minutes of readings it is the plain average.
+/// A percentage that hasn't moved for 10 minutes means nothing is using the window now, so
+/// it stays where it is: the average alone turned 4% in a window's first 26 minutes into
+/// "about 49% at reset" with the agent idle. Readings are kept across launches.
 @MainActor
 enum UsagePace {
     private static let recentSpan: TimeInterval = 45 * 60
     private static let minimumSpan: TimeInterval = 10 * 60
     /// The recent rate's weight once a full span has been seen; the rest stays on the average.
     private static let recentWeight = 0.7
+    private static let storageKey = "usagePaceHistory"
+
+    private struct Reading: Codable {
+        let at: Date
+        let percent: Double
+    }
 
     /// Readings per window (its length and reset), kept only when the percentage moved.
-    private static var history: [String: [(at: Date, percent: Double)]] = [:]
+    private static var history: [String: [Reading]] = {
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: [Reading]].self, from: data)) ?? [:]
+    }()
 
     /// Percent per second.
     private static func rate(percent: Double, resetsAt: Date, window: TimeInterval, elapsed: TimeInterval) -> Double {
@@ -27,12 +38,18 @@ enum UsagePace {
         let key = "\(Int(window))-\(Int(resetsAt.timeIntervalSince1970 / 300))"
         let now = Date()
         var readings = history[key] ?? []
-        if readings.last?.percent != percent { readings.append((now, percent)) }
-        readings.removeAll { now.timeIntervalSince($0.at) > window }
-        history[key] = readings
-        if history.count > 8, let stale = history.keys.first(where: { $0 != key }) { history[stale] = nil }
+        if readings.last?.percent != percent {
+            readings.append(Reading(at: now, percent: percent))
+            readings.removeAll { now.timeIntervalSince($0.at) > window }
+            history[key] = readings
+            if history.count > 8, let stale = history.keys.first(where: { $0 != key }) { history[stale] = nil }
+            if let data = try? JSONEncoder().encode(history) {
+                UserDefaults.standard.set(data, forKey: storageKey)
+            }
+        }
 
         guard let first = readings.first, now.timeIntervalSince(first.at) >= minimumSpan else { return average }
+        if let last = readings.last, now.timeIntervalSince(last.at) >= minimumSpan { return 0 }
         let span = min(recentSpan, now.timeIntervalSince(first.at))
         // The percentage as of `span` ago: the last reading at or before then.
         let then = readings.last { $0.at <= now.addingTimeInterval(-span) }?.percent ?? first.percent
