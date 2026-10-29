@@ -14,6 +14,8 @@ final class MenuBarController: NSObject {
     private var animationFrames: [NSImage] = []
     private var animationIndex = 0
     private var frameCache: [String: [NSImage]] = [:]
+    /// The still glyph on the button, so a session list refresh doesn't redraw it.
+    private var staticIconKey: String?
 
     // Working-state palettes; each flows left to right while that agent runs.
     private static let claudeColors = [NSColor(srgbRed: 1.0, green: 0.62, blue: 0.18, alpha: 1), NSColor(srgbRed: 1.0, green: 0.31, blue: 0.48, alpha: 1)]
@@ -22,8 +24,8 @@ final class MenuBarController: NSObject {
     // Idle is the same notch in a mid grey: a thin outline vanished next to the white
     // template icons around it. Colour alone separates idle from the flowing states.
     private static let idleGray = NSColor(white: 0.75, alpha: 1)
-    private static let frameCount = 20
-    private static let frameInterval: TimeInterval = 0.1
+    private static let frameCount = 10
+    private static let frameInterval: TimeInterval = 0.2
 
     func setup() {
         updateMenuBarVisibility()
@@ -89,6 +91,7 @@ final class MenuBarController: NSObject {
 
         if let button = statusItem?.button {
             button.image = Self.notchGlyph(colors: [Self.idleGray])
+            staticIconKey = "idle"
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -122,6 +125,7 @@ final class MenuBarController: NSObject {
             button.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Keyboard Locked")?
                 .withSymbolConfiguration(lockConfig)
             button.contentTintColor = nil
+            staticIconKey = "lock"
             return
         }
 
@@ -129,7 +133,10 @@ final class MenuBarController: NSObject {
         if TetherPlaceMonitor.shared.activePlaceName != nil {
             stopAnimation()
             button.contentTintColor = nil
-            button.image = Self.notchGlyph(colors: [.systemRed])
+            if staticIconKey != "red" {
+                button.image = Self.notchGlyph(colors: [.systemRed])
+                staticIconKey = "red"
+            }
             return
         }
 
@@ -141,7 +148,10 @@ final class MenuBarController: NSObject {
         switch activity {
         case .idle:
             stopAnimation()
-            button.image = Self.notchGlyph(colors: [Self.idleGray])
+            if staticIconKey != "idle" {
+                button.image = Self.notchGlyph(colors: [Self.idleGray])
+                staticIconKey = "idle"
+            }
         case .working(let claude, let codex, _):
             let key: String
             let colors: [NSColor]
@@ -149,16 +159,21 @@ final class MenuBarController: NSObject {
             else if claude { key = "claude"; colors = Self.claudeColors }
             else if codex { key = "codex"; colors = Self.codexColors }
             else { key = "other"; colors = [.systemGreen] }
+            staticIconKey = nil
             startAnimation(key: key, colors: colors)
         case .needsPermission, .awaitingAnswer:
             stopAnimation()
-            button.image = Self.notchGlyph(colors: [.systemRed])
+            if staticIconKey != "red" {
+                button.image = Self.notchGlyph(colors: [.systemRed])
+                staticIconKey = "red"
+            }
         }
     }
 
-    /// Frames are rendered once per palette and only swapped afterwards, so a tick costs one
-    /// image assignment. 10 fps reads as a smooth drift at 18 pt. Deliberately not paused by
-    /// battery saver: the user wants the motion to stay.
+    /// Frames are rendered once per palette and only swapped afterwards, but each swap still
+    /// makes the menu bar redraw its copies of the button: at 10 fps that was the app's largest
+    /// CPU cost while an agent worked. 5 fps over the same 2 s loop (2026-10-29). Deliberately
+    /// not paused by battery saver: the user wants the motion to stay.
     private func startAnimation(key: String, colors: [NSColor]) {
         if animationKey == key, animationTimer != nil { return }
         stopAnimation()

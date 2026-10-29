@@ -84,38 +84,6 @@ struct ClaudeTokenUsage: Equatable {
         guard Self.contextWindow > 0 else { return 0 }
         return min(100, Double(totalTokens) / Double(Self.contextWindow) * 100)
     }
-
-    struct ModelPricing {
-        let inputPerMillion: Double
-        let outputPerMillion: Double
-        let cacheReadPerMillion: Double
-        let cacheWritePerMillion: Double
-    }
-
-    static let opusPricing = ModelPricing(
-        inputPerMillion: 15.0,
-        outputPerMillion: 75.0,
-        cacheReadPerMillion: 1.50,
-        cacheWritePerMillion: 18.75
-    )
-
-    static let sonnetPricing = ModelPricing(
-        inputPerMillion: 3.0,
-        outputPerMillion: 15.0,
-        cacheReadPerMillion: 0.30,
-        cacheWritePerMillion: 3.75
-    )
-
-    func estimatedCost(model: String) -> Double {
-        let pricing = model.contains("opus") ? Self.opusPricing : Self.sonnetPricing
-
-        let inputCost = Double(inputTokens) / 1_000_000 * pricing.inputPerMillion
-        let outputCost = Double(outputTokens) / 1_000_000 * pricing.outputPerMillion
-        let cacheReadCost = Double(cacheReadInputTokens) / 1_000_000 * pricing.cacheReadPerMillion
-        let cacheWriteCost = Double(cacheCreationInputTokens) / 1_000_000 * pricing.cacheWritePerMillion
-
-        return inputCost + outputCost + cacheReadCost + cacheWriteCost
-    }
 }
 
 // MARK: - Tool Execution

@@ -11,7 +11,6 @@ public final class UICoordinator: ObservableObject {
 
     private var notchPanel: NotchPanel?
     private var menuBarController: MenuBarController?
-    private var cancellables = Set<AnyCancellable>()
 
     private init() {
         observeFullScreen()

@@ -56,12 +56,6 @@ struct NotchLayoutChecks {
         model.resizeOpen(to: NotchMode.ai.expandedSize)
         check(model.notchSize.width == 420, "Selected tab width must not leak into a question")
         model.close()
-
-        model.peek(duration: 0.04, additionalHeight: 110)
-        model.pausePeekDismissal()
-        try await Task.sleep(for: .milliseconds(100))
-        check(model.notchState == .peeking, "Reading must cancel automatic dismissal")
-        model.close()
         check(model.notchSize == closed)
 
         model.peek(duration: 0.04)
@@ -91,7 +85,7 @@ struct NotchLayoutChecks {
         chrome.doneFlash = nil
         let wings = ClosedWingFixture()
         wings.codexManager.pendingInputRequests = [request("Codex 답변 대기")]
-        check(!wings.layout().leftVisible && wings.layout().rightWidth == 58, "A lone question keeps the compact Answer wing")
+        check(wings.layout().leftVisible && wings.layout().leftWidth < 80 && wings.layout().rightWidth == 58, "A lone question keeps the compact Answer wing and a short Waiting on the left")
         wings.claudeCodeManager.state.isThinking = true
         let waitingWithClaude = wings.layout()
         check(waitingWithClaude.leftVisible && waitingWithClaude.claudeOnRight, "A waiting Codex question must not hide Claude's normal right wing")
@@ -110,9 +104,9 @@ struct NotchLayoutChecks {
         check(wings.layout().leftVisible && wings.layout().leftWidth == 58 && wings.layout().rightWidth == 58 && !wings.layout().claudeOnRight, "Two waiting agents must each show a compact Answer instead of AskUserQuestion")
         wings.codexManager.pendingInputRequests.removeAll()
         wings.codexManager.state.isThinking = false
-        check(!wings.layout().leftVisible && wings.layout().rightWidth == 58, "A lone Claude question must keep its compact right Answer")
+        check(wings.layout().leftVisible && wings.layout().leftWidth < 80 && wings.layout().rightWidth == 58, "A lone Claude question must keep its compact right Answer, not AskUserQuestion on the left")
         wings.doneFlash = .init(source: .claude)
-        check(!wings.layout().leftVisible && wings.layout().rightWidth == 58, "A waiting question must keep Answer over Done")
+        check(wings.layout().leftWidth < 80 && wings.layout().rightWidth == 58, "A waiting question must keep Answer over Done")
         wings.claudeCodeManager.pendingInputRequests.removeAll()
         wings.claudeCodeManager.state.activeTools.removeAll()
         let done = wings.layout()

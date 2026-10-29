@@ -35,7 +35,6 @@ struct CodexTokenUsage: Equatable {
     var inputTokens: Int = 0
     var outputTokens: Int = 0
     var cachedInputTokens: Int = 0
-    var reasoningOutputTokens: Int = 0
     var totalTokens: Int = 0
     /// What the last turn sent and got back (`last_token_usage`) — the part sitting in the
     /// context window. `totalTokens` adds up every turn, so it outgrows the window.
@@ -45,29 +44,6 @@ struct CodexTokenUsage: Equatable {
     var contextPercentage: Double {
         guard modelContextWindow > 0 else { return 0 }
         return min(100, Double(totalTokens) / Double(modelContextWindow) * 100)
-    }
-
-    // OpenAI pricing (GPT-4 Turbo estimates)
-    struct ModelPricing {
-        let inputPerMillion: Double
-        let outputPerMillion: Double
-        let cachedPerMillion: Double
-    }
-
-    static let gpt4Pricing = ModelPricing(
-        inputPerMillion: 10.0,
-        outputPerMillion: 30.0,
-        cachedPerMillion: 2.5
-    )
-
-    func estimatedCost(model: String) -> Double {
-        let pricing = Self.gpt4Pricing
-
-        let inputCost = Double(inputTokens) / 1_000_000 * pricing.inputPerMillion
-        let outputCost = Double(outputTokens) / 1_000_000 * pricing.outputPerMillion
-        let cachedCost = Double(cachedInputTokens) / 1_000_000 * pricing.cachedPerMillion
-
-        return inputCost + outputCost + cachedCost
     }
 }
 
@@ -167,9 +143,6 @@ struct CodexState: Equatable {
 
     /// A started turn remains active across gaps in JSONL output.
     var isTurnInProgress: Bool = false
-
-    /// Last reasoning text
-    var lastReasoningText: String?
 
     /// Interactive question waiting for an answer in Codex
     var pendingInputRequest: CodexInputRequest?

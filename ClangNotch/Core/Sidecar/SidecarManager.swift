@@ -25,6 +25,8 @@ final class SidecarManager: ObservableObject {
     private var refreshInFlight = false
     private var running = false
     private var generation = 0
+    /// The tab went away mid-connect: stop once that connect is confirmed or fails.
+    private var stopWhenIdle = false
 
     init(client: SidecarClientProtocol = SidecarClient(), operationTimeout: TimeInterval = 20) {
         self.client = client
@@ -32,6 +34,7 @@ final class SidecarManager: ObservableObject {
     }
 
     func start() {
+        stopWhenIdle = false
         guard !running else { return }
         running = true
         if DemoMode.isActive {
@@ -45,7 +48,13 @@ final class SidecarManager: ObservableObject {
         }
     }
 
+    /// Stops now, or after the connect or disconnect still being confirmed.
+    func stopWhenNotBusy() {
+        if busyDeviceID == nil { stop() } else { stopWhenIdle = true }
+    }
+
     func stop() {
+        stopWhenIdle = false
         running = false
         generation += 1
         timer?.invalidate()
@@ -106,6 +115,7 @@ final class SidecarManager: ObservableObject {
         requestAccepted = false
         busyDeviceID = nil
         busyTarget = nil
+        if stopWhenIdle { stop() }
     }
 
     func refresh() {

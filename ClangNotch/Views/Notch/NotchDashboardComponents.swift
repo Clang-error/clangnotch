@@ -3,7 +3,6 @@ import SwiftUI
 enum NotchPalette {
     static let accent = Color(red: 0.57, green: 0.88, blue: 0.77)
     static let background = Color(red: 0.045, green: 0.055, blue: 0.065)
-    static let surface = Color(red: 0.075, green: 0.085, blue: 0.10)
 }
 
 extension View {

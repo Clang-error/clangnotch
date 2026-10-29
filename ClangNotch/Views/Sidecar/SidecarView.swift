@@ -40,6 +40,9 @@ struct SidecarView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             withAnimation(Self.spring) { displays = ArrangedDisplay.current() }
         }
+        // Only this tab shows the iPads, so stop asking for them once it's gone, unless a
+        // connect or disconnect is still being confirmed.
+        .onDisappear { manager.stopWhenNotBusy() }
     }
 
     static let spring = Animation.spring(response: 0.4, dampingFraction: 0.86)

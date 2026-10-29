@@ -65,7 +65,7 @@ final class NotchViewModel: ObservableObject {
         closedPresentationWidth = measuredWidth
 
         if hasMeasuredClosedPresentation {
-            withAnimation(.timingCurve(0.22, 0.7, 0.25, 1, duration: 0.30).delay(0.05)) {
+            withAnimation(closedWingResizeAnimation) {
                 notchSize = CGSize(width: measuredWidth, height: closedNotchSize.height)
             }
         } else {
@@ -103,13 +103,10 @@ final class NotchViewModel: ObservableObject {
         withAnimation(animationSpring) { notchSize = size }
     }
 
-    /// Reading a question must not race the notification's auto-close timer.
-    func pausePeekDismissal() {
-        peekTask?.cancel()
-    }
-
     /// How the notch is collapsing right now; the view animates its size with the same curve.
     private(set) var closeAnimation = notchCloseAnimation
+    /// How long that collapse takes.
+    private(set) var closeDuration = notchCloseDuration
 
     func close() {
         peekTask?.cancel()
@@ -125,6 +122,7 @@ final class NotchViewModel: ObservableObject {
     private func collapseToClosed(animation: Animation = notchCloseAnimation, duration: TimeInterval = notchCloseDuration) {
         let wasExpanded = notchState != .closed
         closeAnimation = animation
+        closeDuration = duration
         withAnimation(animation) {
             notchSize = CGSize(width: closedPresentationWidth, height: closedNotchSize.height)
             notchState = .closed

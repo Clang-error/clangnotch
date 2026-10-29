@@ -74,6 +74,16 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
 
         settingsWindow = window
+        // A closed window kept its whole SwiftUI view tree alive, still following every
+        // manager it observes, until the next open replaced it.
+        var closeObserver: NSObjectProtocol?
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self, weak window] _ in
+            if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+            window?.contentViewController = nil
+            if self?.settingsWindow === window { self?.settingsWindow = nil }
+        }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }

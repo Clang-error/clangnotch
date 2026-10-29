@@ -9,14 +9,50 @@ import SwiftUI
 
 /// Where usage is heading at the current rate, as CodeIsland's usage cards show it:
 /// either when the window runs out before its reset, or roughly where it ends up.
+///
+/// The rate blends the window's average with the last 45 minutes, read from the readings
+/// seen since launch: a burst early in the window no longer reads as "fast" for hours, and
+/// one starting now shows up before the average catches it. Until there are 10 minutes of
+/// readings it is the plain average.
+@MainActor
 enum UsagePace {
+    private static let recentSpan: TimeInterval = 45 * 60
+    private static let minimumSpan: TimeInterval = 10 * 60
+    /// The recent rate's weight once a full span has been seen; the rest stays on the average.
+    private static let recentWeight = 0.7
+
+    /// Readings per window (its length and reset), kept only when the percentage moved.
+    private static var history: [String: [(at: Date, percent: Double)]] = [:]
+
+    /// Percent per second.
+    private static func rate(percent: Double, resetsAt: Date, window: TimeInterval, elapsed: TimeInterval) -> Double {
+        let average = percent / elapsed
+        // Resets drift by a few seconds between readings; five minutes still tells windows apart.
+        let key = "\(Int(window))-\(Int(resetsAt.timeIntervalSince1970 / 300))"
+        let now = Date()
+        var readings = history[key] ?? []
+        if readings.last?.percent != percent { readings.append((now, percent)) }
+        readings.removeAll { now.timeIntervalSince($0.at) > window }
+        history[key] = readings
+        if history.count > 8, let stale = history.keys.first(where: { $0 != key }) { history[stale] = nil }
+
+        guard let first = readings.first, now.timeIntervalSince(first.at) >= minimumSpan else { return average }
+        let span = min(recentSpan, now.timeIntervalSince(first.at))
+        // The percentage as of `span` ago: the last reading at or before then.
+        let then = readings.last { $0.at <= now.addingTimeInterval(-span) }?.percent ?? first.percent
+        let recent = max(0, percent - then) / span
+        let weight = recentWeight * span / recentSpan
+        return weight * recent + (1 - weight) * average
+    }
+
     /// 0–1 spot on the bar where usage lands at reset at the current rate (the end when it
     /// runs out first), for the tick. Only once there is a prediction: a fresh window or an
     /// unused cap shows a plain bar.
     static func projectedFraction(percent: Double, resetsAt: Date?, window: TimeInterval) -> Double? {
         guard let resetsAt, summary(percent: percent, resetsAt: resetsAt, window: window) != nil else { return nil }
-        let elapsed = window - resetsAt.timeIntervalSinceNow
-        return min(percent * window / elapsed, 100) / 100
+        let remaining = resetsAt.timeIntervalSinceNow
+        let rate = rate(percent: percent, resetsAt: resetsAt, window: window, elapsed: window - remaining)
+        return min(percent + rate * remaining, 100) / 100
     }
 
     /// 여유 under 80% at reset, 약간 빠름 from 80%, 빠름 when it hits the limit before reset.
@@ -46,11 +82,12 @@ enum UsagePace {
         let elapsed = window - remaining
         // Too early in the window, the rate is noise.
         guard remaining > 0, elapsed > window * 0.05 else { return nil }
-        let timeToFull = (100 - percent) * elapsed / percent
-        if timeToFull < remaining {
+        let rate = rate(percent: percent, resetsAt: resetsAt, window: window, elapsed: elapsed)
+        if rate > 0, (100 - percent) / rate < remaining {
+            let timeToFull = (100 - percent) / rate
             return (.fast, L("\(duration(timeToFull)) 뒤 한도 도달", "limit in \(duration(timeToFull))"))
         }
-        let projected = Int((percent * window / elapsed).rounded())
+        let projected = Int((percent + rate * remaining).rounded())
         return (projected >= 80 ? .brisk : .easy, L("리셋 때 약 \(projected)%", "about \(projected)% at reset"))
     }
 

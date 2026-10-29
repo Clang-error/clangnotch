@@ -32,7 +32,6 @@ final class KeyboardLockManager: ObservableObject {
     static let shared = KeyboardLockManager()
 
     @Published private(set) var isLocked = false
-    @Published private(set) var blockedKeyCount = 0
     @Published private(set) var hasAccessibilityPermission = AXIsProcessTrusted()
 
     private var eventTap: CFMachPort?
@@ -66,7 +65,6 @@ final class KeyboardLockManager: ObservableObject {
             debugLog("[KeyboardLock] lock() failed — could not create event tap")
             return
         }
-        blockedKeyCount = 0
         isLocked = true
         debugLog("[KeyboardLock] locked")
     }
@@ -75,7 +73,7 @@ final class KeyboardLockManager: ObservableObject {
         guard isLocked else { return }
         stopTap()
         isLocked = false
-        debugLog("[KeyboardLock] unlocked (\(blockedKeyCount) keys were blocked)")
+        debugLog("[KeyboardLock] unlocked")
     }
 
     /// Triggers the system Accessibility permission prompt (only shows once per app).
@@ -157,20 +155,5 @@ final class KeyboardLockManager: ObservableObject {
         }
         eventTap = nil
         runLoopSource = nil
-    }
-
-    /// Runs on the main run loop (the tap's source is attached to it), so this is
-    /// always on the main thread even though the C callback isn't actor-isolated.
-    fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        // macOS disables a tap if its callback is slow or misbehaves — re-enable
-        // immediately or the block silently stops working.
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
-            return Unmanaged.passUnretained(event)
-        }
-        if type == .keyDown {
-            blockedKeyCount += 1
-        }
-        return nil
     }
 }

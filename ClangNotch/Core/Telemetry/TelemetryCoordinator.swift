@@ -92,13 +92,8 @@ public final class TelemetryCoordinator: ObservableObject {
     private var activeCodexToolCalls: [String: (name: String, startTime: Date)] = [:] // call_id -> active tool
     private var activeCodexResponseStart: Date?
 
-    private var cancellables = Set<AnyCancellable>()
-
     // Claude Code specific tracking
     private var pendingClaudeToolCalls: [String: ToolCall] = [:] // call_id -> active tool
-    private var claudeSessionId: String?
-    private var claudeAccountUuid: String?
-    private var claudeUserEmail: String?
 
     // Idle detection for completion
     private var idleDetectionTask: Task<Void, Never>?
@@ -169,7 +164,6 @@ public final class TelemetryCoordinator: ObservableObject {
         // Mark as active if not already
         if !isAgentActive {
             isAgentActive = true
-            // print("[Telemetry] Agent became active")
         }
 
         // Cancel any pending completion timers - we have new activity
@@ -229,7 +223,6 @@ public final class TelemetryCoordinator: ObservableObject {
         activeCodexResponseStart = nil
 
         isAgentActive = false
-        // print("[Telemetry] Agent finished (\(reason))")
 
         // Create a completion tool call to show in UI
         toolCallTracker.recordCompletedToolCall(
@@ -285,48 +278,23 @@ public final class TelemetryCoordinator: ObservableObject {
     }
 
     private func handleLogs(_ data: Data) {
-        logRawPayload(data, route: "logs")
         do {
             let records = try decoder.decodeLogs(data)
-            // print("[Telemetry] Received \(records.count) log records")
             for record in records {
-                // print("[Telemetry] Record body: \(record.body ?? "nil"), attrs: \(record.attributes.keys.joined(separator: ", "))")
                 handleLogRecord(record)
             }
         } catch {
-            // print("[Telemetry] OTLP log decode error: \(error)")
         }
     }
 
     private func handleMetrics(_ data: Data) {
-        logRawPayload(data, route: "metrics")
         do {
             let points = try decoder.decodeMetrics(data)
-            // print("[Telemetry] Received \(points.count) metric points")
             for point in points {
-                // print("[Telemetry] Metric: \(point.name) = \(point.value)")
                 handleMetricPoint(point)
             }
         } catch {
-            // print("[Telemetry] OTLP metric decode error: \(error)")
         }
-    }
-
-    private func logRawPayload(_ data: Data, route: String) {
-        let sampleSize = min(data.count, 256)
-        let sample = data.prefix(sampleSize).base64EncodedString()
-        let scanSize = min(data.count, 4096)
-        let scanText = String(decoding: data.prefix(scanSize), as: UTF8.self).lowercased()
-        let sourceHint: String
-        if scanText.contains("codex") {
-            sourceHint = "codex"
-        } else if scanText.contains("claude") || scanText.contains("anthropic") {
-            sourceHint = "claude"
-        } else {
-            sourceHint = "unknown"
-        }
-
-        // print("[Telemetry] Raw \(route) payload bytes=\(data.count) source=\(sourceHint) base64_prefix=\(sample)")
     }
 
     private func handleMetricPoint(_ point: TelemetryMetricPoint) {
@@ -357,8 +325,6 @@ public final class TelemetryCoordinator: ObservableObject {
             tokenCache[cacheKey] = point.value
             sessionTokenTotal = Int(tokenCache.values.reduce(0, +))
         }
-
-        // print("[Telemetry] Token: \(typeAttr) = \(Int(point.value)) | total: \(sessionTokenTotal) | cache: \(sessionCacheTokens)")
     }
 
     private func handleClaudeCodeMetric(_ point: TelemetryMetricPoint) {
@@ -377,43 +343,36 @@ public final class TelemetryCoordinator: ObservableObject {
                 tokenCache[cacheKey] = point.value
                 sessionTokenTotal = Int(tokenCache.values.reduce(0, +))
             }
-            // print("[Telemetry] Claude token (\(typeAttr)): \(Int(point.value)) | total: \(sessionTokenTotal) | cache: \(sessionCacheTokens)")
             return
         }
 
         // Cost usage: claude_code.cost.usage
         if nameKey.contains("cost") {
-            // print("[Telemetry] Claude cost: $\(String(format: "%.4f", point.value)) ")
             return
         }
 
         // Session count: claude_code.session.count
         if nameKey.contains("session") {
-            // print("[Telemetry] Claude sessions: \(Int(point.value))")
             return
         }
 
         // Lines of code: claude_code.lines_of_code.count
         if nameKey.contains("lines_of_code") {
-            // print("[Telemetry] Claude lines of code (\(typeAttr)): \(Int(point.value))")
             return
         }
 
         // Commits: claude_code.commit.count
         if nameKey.contains("commit") {
-            // print("[Telemetry] Claude commits: \(Int(point.value))")
             return
         }
 
         // Pull requests: claude_code.pull_request.count
         if nameKey.contains("pull_request") {
-            // print("[Telemetry] Claude PRs: \(Int(point.value))")
             return
         }
 
         // Active time: claude_code.active_time.total
         if nameKey.contains("active_time") {
-            // print("[Telemetry] Claude active time: \(point.value)s")
             // active_time is often sent near end of work - use it for completion detection
             handleActiveTimeReceived()
             return
@@ -421,12 +380,10 @@ public final class TelemetryCoordinator: ObservableObject {
 
         // Code edit decisions: claude_code.code_edit_tool.decision
         if nameKey.contains("code_edit") || nameKey.contains("decision") {
-            // print("[Telemetry] Claude edit decision: \(Int(point.value))")
             return
         }
 
         // Generic fallback
-        // print("[Telemetry] Claude metric: \(point.name) = \(point.value)")
     }
 
     private func handleLogRecord(_ record: TelemetryLogRecord) {
@@ -442,19 +399,6 @@ public final class TelemetryCoordinator: ObservableObject {
         }
 
         guard let eventName else { return }
-
-        // print("[Telemetry] Event: '\(eventName)'")
-
-        // Extract Claude Code specific metadata
-        if let sessionId = attributes.stringValue(for: ["session.id", "session_id"]) {
-            claudeSessionId = sessionId
-        }
-        if let accountUuid = attributes.stringValue(for: ["user.account_uuid", "account_uuid"]) {
-            claudeAccountUuid = accountUuid
-        }
-        if let email = attributes.stringValue(for: ["user.email", "email"]) {
-            claudeUserEmail = email
-        }
 
         // Check for Claude Code specific events first
         if let claudeEvent = ClaudeCodeEventType.from(eventName) {
@@ -511,7 +455,7 @@ public final class TelemetryCoordinator: ObservableObject {
             handleCodexSseEvent(attributes: attributes, endTime: endTime, source: source)
 
         case .userPrompt:
-            handleCodexUserPrompt(attributes: attributes, endTime: endTime)
+            break
 
         case .toolDecision:
             handleCodexToolDecision(attributes: attributes, endTime: endTime, source: source)
@@ -546,10 +490,6 @@ public final class TelemetryCoordinator: ObservableObject {
             tokens: nil,
             source: source
         )
-
-        if let error = errorMessage {
-            // print("[Telemetry] Codex API error: \(error)")
-        }
     }
 
     private func handleCodexSseEvent(attributes: [String: TelemetryAttributeValue], endTime: Date, source: TelemetrySource) {
@@ -628,8 +568,6 @@ public final class TelemetryCoordinator: ObservableObject {
                 source: source
             )
         }
-
-        // print("[Telemetry] Codex SSE (\(eventKind)): tool=\(displayName), tokens=\(totalTokens)")
     }
 
     /// Parse Codex SSE event.kind to extract meaningful display name
@@ -746,19 +684,10 @@ public final class TelemetryCoordinator: ObservableObject {
         return false
     }
 
-    private func handleCodexUserPrompt(attributes: [String: TelemetryAttributeValue], endTime: Date) {
-        let promptLength = attributes.intValue(for: ["prompt_length"]) ?? 0
-        // Note: actual prompt content is redacted by default in Codex
-        // print("[Telemetry] Codex user prompt: \(promptLength) chars")
-    }
-
     private func handleCodexToolDecision(attributes: [String: TelemetryAttributeValue], endTime: Date, source: TelemetrySource) {
         let toolName = attributes.stringValue(for: ["tool_name"]) ?? "unknown"
         let callId = attributes.stringValue(for: ["call_id"]) ?? UUID().uuidString
         let decision = attributes.stringValue(for: ["decision"]) ?? "unknown"
-        let decisionSource = attributes.stringValue(for: ["source"]) ?? "unknown"
-
-        // print("[Telemetry] Codex tool decision: \(toolName) -> \(decision) (source: \(decisionSource))")
 
         // Only track approved tools (they will get a result event later)
         if decision.lowercased() == "approve" || decision.lowercased() == "approved" {
@@ -779,7 +708,6 @@ public final class TelemetryCoordinator: ObservableObject {
     }
 
     private func handleCodexToolResult(attributes: [String: TelemetryAttributeValue], endTime: Date) {
-        let toolName = attributes.stringValue(for: ["tool_name"]) ?? "unknown"
         let callId = attributes.stringValue(for: ["call_id"]) ?? UUID().uuidString
         let durationMs = attributes.intValue(for: ["duration_ms"])
         let success = attributes.boolValue(for: ["success"]) ?? true
@@ -800,8 +728,6 @@ public final class TelemetryCoordinator: ObservableObject {
             tokens: nil,
             endTime: endTime
         )
-
-        // print("[Telemetry] Codex tool result: \(toolName) success=\(success) duration=\(durationMs ?? 0)ms")
     }
 
     // MARK: - Claude Code Event Handling
@@ -818,7 +744,7 @@ public final class TelemetryCoordinator: ObservableObject {
             handleClaudeApiError(attributes: attributes, endTime: endTime, source: source)
 
         case .userPrompt:
-            handleClaudeUserPrompt(attributes: attributes, endTime: endTime)
+            break
 
         case .toolDecision:
             handleClaudeToolDecision(attributes: attributes, endTime: endTime, source: source)
@@ -876,12 +802,9 @@ public final class TelemetryCoordinator: ObservableObject {
             costUsd: costUsd,
             source: source
         )
-
-        // print("[Telemetry] Claude API: in=\(inputTokens ?? 0) out=\(outputTokens ?? 0) cost=$\(String(format: "%.4f", costUsd ?? 0))")
     }
 
     private func handleClaudeApiError(attributes: [String: TelemetryAttributeValue], endTime: Date, source: TelemetrySource) {
-        let errorMessage = attributes.stringValue(for: ["error.message", "error", "message"])
         let statusCode = attributes.intValue(for: ["http.response.status_code", "status_code"])
         let durationMs = attributes.intValue(for: ["duration_ms"])
 
@@ -902,14 +825,6 @@ public final class TelemetryCoordinator: ObservableObject {
             tokens: nil,
             source: source
         )
-
-        // print("[Telemetry] Claude API error: \(errorMessage ?? "unknown") status=\(statusCode ?? 0)")
-    }
-
-    private func handleClaudeUserPrompt(attributes: [String: TelemetryAttributeValue], endTime: Date) {
-        let promptLength = attributes.intValue(for: ["prompt_length", "length"]) ?? 0
-        // Note: actual prompt content is typically not sent for privacy
-        // print("[Telemetry] Claude user prompt: \(promptLength) chars")
     }
 
     private func handleClaudeToolDecision(attributes: [String: TelemetryAttributeValue], endTime: Date, source: TelemetrySource) {
@@ -918,9 +833,6 @@ public final class TelemetryCoordinator: ObservableObject {
         let toolName = attributes.stringValue(for: ["tool_name", "tool.name", "name"]) ?? "unknown"
         let callId = attributes.stringValue(for: ["call_id", "tool_call_id", "id"]) ?? UUID().uuidString
         let decision = attributes.stringValue(for: ["decision", "status"]) ?? "unknown"
-        let decisionSource = attributes.stringValue(for: ["source", "decision_source"]) ?? "unknown"
-
-        // print("[Telemetry] Claude tool decision: \(toolName) -> \(decision) (source: \(decisionSource))")
 
         let approved = decision.lowercased() == "approve" || decision.lowercased() == "approved" || decision.lowercased() == "accept"
 
@@ -942,7 +854,6 @@ public final class TelemetryCoordinator: ObservableObject {
 
     private func handleClaudeToolResult(attributes: [String: TelemetryAttributeValue], endTime: Date, source: TelemetrySource) {
         recordActivity()
-        let toolName = attributes.stringValue(for: ["tool_name", "tool.name", "name"]) ?? "unknown"
         let callId = attributes.stringValue(for: ["call_id", "tool_call_id", "id"]) ?? UUID().uuidString
         let success = attributes.boolValue(for: ["success", "is_success"]) ?? true
         let tokens = attributes.intValue(for: ["token_count", "tokens"])
@@ -956,8 +867,6 @@ public final class TelemetryCoordinator: ObservableObject {
             tokens: tokens,
             endTime: endTime
         )
-
-        // print("[Telemetry] Claude tool result: \(toolName) success=\(success)")
     }
 
     /// Handle generic Claude Code events that don't match specific types
@@ -975,21 +884,16 @@ public final class TelemetryCoordinator: ObservableObject {
         // Handle specific event patterns
         if normalizedEvent.contains("session") {
             // Session events - just log
-            // print("[Telemetry] Claude session event: \(eventName)")
             return
         }
 
         if normalizedEvent.contains("cost") {
             // Cost tracking events
-            if let cost = attributes.doubleValue(for: ["cost", "amount", "value"]) {
-                // print("[Telemetry] Claude cost: $\(String(format: "%.4f", cost))")
-            }
             return
         }
 
         if normalizedEvent.contains("lines_of_code") || normalizedEvent.contains("commit") || normalizedEvent.contains("pull_request") {
             // Activity metrics - log but don't create tool calls
-            // print("[Telemetry] Claude activity: \(eventName)")
             return
         }
 

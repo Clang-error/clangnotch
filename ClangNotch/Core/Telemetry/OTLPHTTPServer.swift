@@ -272,6 +272,8 @@ final class HookReply: @unchecked Sendable {
         lock.lock()
         guard !isDone else { lock.unlock(); return }
         isDone = true
+        // The handler captures this reply; dropping it breaks the cycle once answered.
+        onClose = nil
         lock.unlock()
         deliver(body)
     }

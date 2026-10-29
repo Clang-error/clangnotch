@@ -23,6 +23,14 @@ struct AudioApp: Identifiable {
     var id: pid_t { pid }
 }
 
+/// Icons are looked up again on every refresh; compare what the row shows instead.
+extension AudioApp: Equatable {
+    static func == (lhs: AudioApp, rhs: AudioApp) -> Bool {
+        lhs.pid == rhs.pid && lhs.processObjectID == rhs.processObjectID
+            && lhs.bundleID == rhs.bundleID && lhs.name == rhs.name && lhs.gain == rhs.gain
+    }
+}
+
 /// One active per-app volume session: taps a process (muting it at the source) and plays
 /// a gain-adjusted copy to the default output. Only alive while gain < 1.0.
 final class TapSession {
@@ -155,7 +163,9 @@ final class AudioMixerManager: ObservableObject {
     private func updateMicWarning() {
         let outBT = Self.defaultDevice(kAudioHardwarePropertyDefaultOutputDevice)
             .map { Self.transportType($0) == kAudioDeviceTransportTypeBluetooth } ?? false
-        micHolder = outBT ? Self.micCapturingAppName() : nil
+        let holder = outBT ? Self.micCapturingAppName() : nil
+        // Unchanged values still publish and rebuild the whole notch every 2s.
+        if micHolder != holder { micHolder = holder }
     }
 
     func setGain(_ gain: Float, for app: AudioApp) {
@@ -242,7 +252,8 @@ final class AudioMixerManager: ObservableObject {
             s.stop(); sessions[pid] = nil
             SoftwareVolume.shared.apply()
         }
-        apps = list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let sorted = list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        if sorted != apps { apps = sorted }
     }
 
     private static func shortName(_ bundleID: String) -> String {

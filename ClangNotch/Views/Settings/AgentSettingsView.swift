@@ -259,7 +259,8 @@ struct NotchSettingsTab: View {
                               L("iPad를 보조 화면으로 바로 연결", "Connect an iPad as a second display"),
                               isOn: $settings.enableSidecar)
                     .onChange(of: settings.enableSidecar) { _, on in
-                        if on { SidecarManager.shared.start() } else { SidecarManager.shared.stop() }
+                        // The Sidecar tab starts it when shown.
+                        if !on { SidecarManager.shared.stop() }
                     }
                 SettingToggle(L("배터리 잔량", "Battery levels"),
                               L("Mac·블루투스 기기·iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),

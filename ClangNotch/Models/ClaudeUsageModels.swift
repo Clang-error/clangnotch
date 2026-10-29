@@ -173,13 +173,9 @@ enum UsageMonitoringMode: String {
 // MARK: - Errors
 
 enum ClaudeUsageError: LocalizedError {
-    case invalidURL
     case noData
-    case sessionExpired
-    case cloudflareBlocked
     case noCredentials
     case networkError(Error)
-    case decodingError(Error)
     case unauthorized
     case rateLimited
     case httpError(statusCode: Int)
@@ -192,20 +188,12 @@ enum ClaudeUsageError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL:
-            return "Invalid API URL"
         case .noData:
             return "No data received"
-        case .sessionExpired:
-            return "Session expired. Please update your session key."
-        case .cloudflareBlocked:
-            return "Request blocked by Cloudflare"
         case .noCredentials:
             return "Claude Code login not found. Sign in with Claude Code first."
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
-        case .decodingError(let error):
-            return "Failed to parse response: \(error.localizedDescription)"
         case .unauthorized:
             return "Invalid session key"
         case .rateLimited:

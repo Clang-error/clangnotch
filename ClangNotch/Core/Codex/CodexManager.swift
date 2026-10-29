@@ -41,9 +41,7 @@ final class CodexManager: ObservableObject {
     /// Per-session state tracking
     @Published private(set) var sessionStates: [String: CodexState] = [:]
 
-    /// When any session last finished a turn normally (task_complete); drives the closed-notch Done.
-    @Published private(set) var lastTurnCompletedAt: Date?
-    /// What that turn ended with, for the 완료 드롭다운.
+    /// The last turn any session finished normally (task_complete); drives the closed-notch Done and the 완료 드롭다운.
     @Published private(set) var lastCompletedTurn: CompletedTurn?
 
     var pendingInputRequests: [CodexInputRequest] {
@@ -223,7 +221,8 @@ final class CodexManager: ObservableObject {
         sessions.sort { $0.timestamp > $1.timestamp }
 
         debugLog("[Codex] Total sessions found: \(sessions.count)")
-        availableSessions = sessions
+        // A rescan that found the same sessions must not publish and rebuild the notch.
+        if availableSessions != sessions { availableSessions = sessions }
 
         // Auto-select first session if none selected
         if selectedSession == nil && sessions.count == 1 {
@@ -937,7 +936,6 @@ final class CodexManager: ObservableObject {
             // Aborted or rejected turns aren't done; replayed history isn't news.
             if eventType == "task_complete", payload["error"] == nil,
                isLoadingHistoryBySession[sessionId] != true {
-                lastTurnCompletedAt = Date()
                 let started = payload["started_at"] as? Double, completed = payload["completed_at"] as? Double
                 lastCompletedTurn = CompletedTurn(sessionId: sessionId, answer: payload["last_agent_message"] as? String ?? "",
                                                   elapsed: started.flatMap { start in completed.map { $0 - start } })
@@ -949,7 +947,6 @@ final class CodexManager: ObservableObject {
                 sessionState.tokenUsage.inputTokens = totalUsage["input_tokens"] as? Int ?? 0
                 sessionState.tokenUsage.cachedInputTokens = totalUsage["cached_input_tokens"] as? Int ?? 0
                 sessionState.tokenUsage.outputTokens = totalUsage["output_tokens"] as? Int ?? 0
-                sessionState.tokenUsage.reasoningOutputTokens = totalUsage["reasoning_output_tokens"] as? Int ?? 0
                 sessionState.tokenUsage.totalTokens = totalUsage["total_tokens"] as? Int ?? 0
 
                 if let lastUsage = info["last_token_usage"] as? [String: Any] {
@@ -974,7 +971,6 @@ final class CodexManager: ObservableObject {
             sessionState.isTurnInProgress = true
             sessionState.isThinking = true
             if let text = payload["text"] as? String {
-                sessionState.lastReasoningText = text
                 debugLog("[Codex] Reasoning: \(text.prefix(50))...")
             }
 
@@ -1331,6 +1327,5 @@ extension CodexManager {
 
     func demoComplete(_ turn: CompletedTurn) {
         lastCompletedTurn = turn
-        lastTurnCompletedAt = Date()
     }
 }

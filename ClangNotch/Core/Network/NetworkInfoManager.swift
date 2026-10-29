@@ -57,7 +57,9 @@ final class NetworkInfoManager: NSObject, ObservableObject {
     /// macOS 14+ hides the SSID behind Location Services — CoreWLAN just returns nil
     /// without it. Re-reads what we're allowed to read; never prompts on its own.
     func refresh() {
-        authorization = location.authorizationStatus
+        // Runs on every app switch; unchanged values must not publish and rebuild the notch.
+        let status = location.authorizationStatus
+        if authorization != status { authorization = status }
         readCurrent()
     }
 
@@ -105,10 +107,13 @@ final class NetworkInfoManager: NSObject, ObservableObject {
         let interface = CWWiFiClient.shared().interface()
         let wanted = AppSettings.shared.enableNetworkName
         let authorized = hasLocationAccess
-        ssid = (wanted && authorized) ? interface?.ssid() : nil
+        let newSSID = (wanted && authorized) ? interface?.ssid() : nil
+        if ssid != newSSID { ssid = newSSID }
 
-        ssidBlocked = wanted && !authorized && interface?.powerOn() == true
-        name = ssid ?? serviceName() ?? L("알 수 없음", "Unknown")
+        let blocked = wanted && !authorized && interface?.powerOn() == true
+        if ssidBlocked != blocked { ssidBlocked = blocked }
+        let newName = newSSID ?? serviceName() ?? L("알 수 없음", "Unknown")
+        if name != newName { name = newName }
     }
 
     /// System Settings can update Location Services without invoking the delegate

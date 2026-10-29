@@ -13,6 +13,9 @@ struct NotchGlowBorder: View {
 
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var powerMonitor = PowerStateMonitor.shared
+    /// Hidden for full screen, the panel is only transparent; the glow kept redrawing.
+    @ObservedObject private var ui = UICoordinator.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Battery saver: 15 FPS on battery, 25 FPS when charging or disabled
     private var frameInterval: Double {
@@ -57,7 +60,7 @@ struct NotchGlowBorder: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: frameInterval)) { timeline in
+        TimelineView(.animation(minimumInterval: frameInterval, paused: reduceMotion || !ui.isVisible)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             // Phase of the travelling highlight, 0...1 over `sweepPeriod`.
             let period = tracesOutline ? outlinePeriod : sweepPeriod
@@ -75,31 +78,42 @@ struct NotchGlowBorder: View {
             if tracesOutline {
                 outlineTrace(phase: phase, glowColor: phaseGlowColor, brightColor: phaseBrightColor)
             } else {
-            NotchShape(
-                topCornerRadius: topCornerRadius,
-                bottomCornerRadius: bottomCornerRadius,
-                drawsTopEdge: false
-            )
-            .stroke(
-                // Swept horizontally rather than by angle: an AngularGradient spreads colour
-                // by angle from the centre, so on the wide bar the notch becomes once its
-                // wings extend, the long top and bottom edges collapse into a couple of
-                // narrow angle bands while the short left and right ends soak up most of the
-                // sweep — the highlight stops travelling and just pools at one end.
-                LinearGradient(
-                    stops: [
-                        .init(color: Color.clear, location: 0.0),
-                        .init(color: phaseGlowColor.opacity(0.3), location: 0.2),
-                        .init(color: phaseGlowColor, location: 0.4),
-                        .init(color: phaseBrightColor, location: 0.5),
-                        .init(color: phaseGlowColor, location: 0.6),
-                        .init(color: phaseGlowColor.opacity(0.3), location: 0.8),
-                        .init(color: Color.clear, location: 1.0),
-                    ],
-                    startPoint: UnitPoint(x: bandStart, y: 0.5),
-                    endPoint: UnitPoint(x: bandStart + bandWidth, y: 0.5)
-                ),
-                lineWidth: 2.5
+            // Swept horizontally rather than by angle: an AngularGradient spreads colour
+            // by angle from the centre, so on the wide bar the notch becomes once its
+            // wings extend, the long top and bottom edges collapse into a couple of
+            // narrow angle bands while the short left and right ends soak up most of the
+            // sweep — the highlight stops travelling and just pools at one end.
+            // The band is a fixed gradient slid along under the outline instead of a stroke
+            // whose gradient end points move: moving end points re-rasterised the gradient
+            // on the CPU every frame (2026-10-29).
+            GeometryReader { proxy in
+                let width = proxy.size.width
+                Rectangle()
+                    .fill(LinearGradient(
+                        stops: [
+                            .init(color: Color.clear, location: 0.0),
+                            .init(color: phaseGlowColor.opacity(0.3), location: 0.2),
+                            .init(color: phaseGlowColor, location: 0.4),
+                            .init(color: phaseBrightColor, location: 0.5),
+                            .init(color: phaseGlowColor, location: 0.6),
+                            .init(color: phaseGlowColor.opacity(0.3), location: 0.8),
+                            .init(color: Color.clear, location: 1.0),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ))
+                    // Taller than the outline so the stroke's outer half along the bottom is covered.
+                    .frame(width: width * bandWidth, height: proxy.size.height + 6)
+                    .offset(x: bandStart * width)
+                    .frame(width: width, height: proxy.size.height, alignment: .leading)
+            }
+            .mask(
+                NotchShape(
+                    topCornerRadius: topCornerRadius,
+                    bottomCornerRadius: bottomCornerRadius,
+                    drawsTopEdge: false
+                )
+                .stroke(lineWidth: 2.5)
             )
             .shadow(color: phaseGlowColor.opacity(0.7), radius: 8)
             .shadow(color: phaseGlowColor.opacity(0.4), radius: 16)
@@ -300,12 +314,15 @@ struct ClosedNotchToolTransitionWipe: View {
     }
 }
 
-/// Keeps the tool capsule fixed while a source-colored highlight reveals the
+/// 날개 알약: the tool name over a thin running line in the agent's colour (picked
+/// 2026-10-29 over upstream's grey capsule). A source-colored highlight still reveals the
 /// next command from leading to trailing.
 struct ClosedToolTransitionLabel: View {
     let label: String
     let foregroundOpacity: Double
     let glowColor: Color
+    /// Waiting on the user: the line holds still.
+    var isPaused = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var wipeProgress: CGFloat = 1
@@ -320,7 +337,7 @@ struct ClosedToolTransitionLabel: View {
             .truncationMode(.tail)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color.white.opacity(0.08), in: Capsule())
+            .background(ClosedToolTrack(color: glowColor, isPaused: isPaused))
             .contentTransition(.opacity)
             .animation(.easeInOut(duration: 0.18), value: label)
             .overlay {
@@ -371,5 +388,40 @@ struct ClosedToolTransitionLabel: View {
             guard !Task.isCancelled else { return }
             showWipe = false
         }
+    }
+}
+
+/// The line under the 날개 알약, with a segment running along it every 1.4s; still under Reduce Motion.
+/// Paused, the segment stops where the running one was: the phase comes from the clock, so
+/// the paused track (a new view once the wing switches to "Waiting") reads the same spot.
+private struct ClosedToolTrack: View {
+    let color: Color
+    var isPaused = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Taken when the view is created, so a track that starts paused has it from its first frame.
+    @State private var frozenPhase = ClosedToolTrack.phase(at: Date())
+
+    private static func phase(at date: Date) -> Double {
+        date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: reduceMotion || isPaused)) { timeline in
+            // Near either end the segment is mostly clipped; a stopped one stays whole.
+            let phase = isPaused ? min(max(frozenPhase, 0.26), 0.74) : Self.phase(at: timeline.date)
+            GeometryReader { proxy in
+                let width = proxy.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.1))
+                    Capsule().fill(color)
+                        .frame(width: width * 0.35)
+                        .offset(x: -width * 0.35 + phase * width * 1.35)
+                }
+                .frame(height: 1.5)
+                .clipShape(Capsule())
+                .frame(maxHeight: .infinity, alignment: .bottom)
+            }
+        }
+        .onChange(of: isPaused) { _, paused in if paused { frozenPhase = Self.phase(at: Date()) } }
     }
 }

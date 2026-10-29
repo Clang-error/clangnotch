@@ -99,10 +99,15 @@ struct ClangNotchContentView: View {
     @State private var glowSettleTask: Task<Void, Never>?
     /// Whether the current resize started from the closed notch.
     @State private var glowExpandsFromClosed = false
+    /// Fades the surface out as a collapse lands on an idle notch.
+    @State private var idleLandingOpacity: Double = 1
 
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
     private var sizeAnimation: Animation {
-        notchVM.notchState == .closed ? notchVM.closeAnimation : (reduceMotion ? animationSpring : notchOpenSpring)
+        guard notchVM.notchState == .closed else { return reduceMotion ? animationSpring : notchOpenSpring }
+        // A collapse keeps its own curve until it lands; after that the size only changes
+        // for the wings, which must match `closedWingResizeAnimation` on the wing content.
+        return notchVM.isSettlingClosed ? notchVM.closeAnimation : closedWingResizeAnimation
     }
     private var modeSwitchAnimation: Animation {
         reduceMotion ? .easeOut(duration: 0.12) : .interactiveSpring(response: 0.3, dampingFraction: 0.86)
@@ -500,7 +505,11 @@ struct ClangNotchContentView: View {
                     // final size, ahead of the still-resizing surface; fade it in after.
                     .opacity(isGlowSettled || tetherGlowGrowsWithSurface ? 1 : 0)
             }
-            .onChange(of: notchVM.notchState) { oldState, _ in
+            .opacity(idleLandingOpacity)
+            .onChange(of: notchVM.notchState) { oldState, newState in
+                // Dropdown <-> open panel keeps the same outline-tracing glow, which resizes
+                // with the surface; hiding it there only blinked it out for half a second.
+                guard (oldState == .closed) != (newState == .closed) else { return }
                 glowSettleTask?.cancel()
                 var hide = Transaction(animation: nil)
                 hide.disablesAnimations = true
@@ -508,9 +517,12 @@ struct ClangNotchContentView: View {
                     isGlowSettled = false
                     glowExpandsFromClosed = oldState == .closed
                 }
+                // A collapse lands when its own curve ends; waiting the open spring's 450ms
+                // there left the closed notch without its glow for a moment.
+                let wait = newState == .closed ? notchVM.closeDuration : 0.45
                 glowSettleTask = Task {
                     // The open spring is still settling at 300ms; a glow drawn then rides the bounce.
-                    try? await Task.sleep(for: .milliseconds(450))
+                    try? await Task.sleep(for: .seconds(wait))
                     guard !Task.isCancelled else { return }
                     withAnimation(.easeIn(duration: 0.2)) { isGlowSettled = true }
                 }
@@ -629,8 +641,32 @@ struct ClangNotchContentView: View {
                     // A collapse from the panel lands on the notch and clears there instead.
                     if wasActive && !isActive && !notchVM.isSettlingClosed {
                         triggerClosedJellyDismiss()
+                    } else if wasActive && !isActive {
+                        // The closed surface is a little larger than the camera housing, so
+                        // a collapse that lands on an idle notch left a black rim there until
+                        // the surface cleared. Fade it out with the collapse, done before it lands.
+                        withAnimation(.easeOut(duration: notchVM.closeDuration * 0.7)) {
+                            idleLandingOpacity = 0
+                        }
                     } else if isActive {
                         cancelClosedJellyDismiss()
+                        var transaction = Transaction(animation: nil)
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { idleLandingOpacity = 1 }
+                    }
+                }
+                .onChange(of: notchVM.isSettlingClosed) { _, settling in
+                    // A collapse that landed on an idle notch skipped the dismiss above, so its
+                    // wide layout would make the next entrance grow the black surface behind
+                    // an already-full-size glow. Reset it now, while the surface is clear.
+                    guard !settling else { return }
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        idleLandingOpacity = 1
+                        if !baseNotchActive, notchVM.notchState == .closed {
+                            notchVM.resetClosedPresentationAfterDismiss()
+                        }
                     }
                 }
                 .onChange(of: claudeCodeManager.pendingInputRequests, initial: true) { old, requests in
@@ -745,7 +781,6 @@ struct ClangNotchContentView: View {
             // Restores the T world session and starts its keep-alive without waiting for a card.
             Task { await TWorldSession.shared.prepare() }
             if settings.enableAudioMixer { audioMixer.start() }
-            if settings.enableSidecar { sidecarManager.start() }
             // 배터리 부족 알림은 탭을 열지 않아도 울려야 하므로 기동 시부터 감시한다.
             if settings.enableBattery { batteryManager.startMonitoring() }
             tetherMonitor.start()
@@ -857,14 +892,16 @@ struct ClangNotchContentView: View {
         let hasCurrentTool = currentToolName != nil
 
         // A lone question waiting on an answer is announced by the right wing's
-        // "Answer". Repeating its tool name on the left says nothing new and is what
-        // blows the bar up: "AskUserQuestion" alone claims 120pt, and since both wings
-        // must claim the same width to stay centred, that is 240pt of empty black bar.
+        // "Answer". Its tool name on the left would say nothing new and blow the bar up:
+        // "AskUserQuestion" alone claims 120pt, and since both wings must claim the same
+        // width to stay centred, that is 240pt of empty black bar. The left wing shows a
+        // short "Waiting" with the 날개 알약 line stopped instead.
         let isQuestionWait = isClaudeQuestionWait || isCodexQuestionWait
         // Keep Codex on the left and working Claude on the right, as when both work.
         let showsCodexQuestionOnLeft = isCodexQuestionWait && isSimultaneousClaudeCodex
         let showsClaudeQuestionOnRight = isClaudeQuestionWait && isSimultaneousClaudeCodex
         let showsQuestionOnRight = showsClaudeQuestionOnRight || (isQuestionWait && !isSimultaneousClaudeCodex)
+        let showsQuestionWaitOnLeft = isQuestionWait && !isSimultaneousClaudeCodex
 
         // A finished turn takes both wings for a moment, but never over something that
         // waits on the user (Locked, Answer, Needs OK).
@@ -874,6 +911,7 @@ struct ClangNotchContentView: View {
         let showLeftWing = showsDone
             || ((hasCurrentTool || isThinking) && (!isQuestionWait || isSimultaneousClaudeCodex))
             || showsCodexQuestionOnLeft
+            || showsQuestionWaitOnLeft
 
         let measuredTextWidth: (String, CGFloat, NSFont.Weight) -> CGFloat = { text, size, weight in
             ceil((text as NSString).size(withAttributes: [
@@ -892,17 +930,19 @@ struct ClangNotchContentView: View {
         // Long commands still stop at the previous compact cap and truncate there.
         // With Claude and Codex both running, each wing takes one agent: Codex on the
         // left (the glow sweep starts blue), Claude on the right.
-        let sourceLabel = isSimultaneousClaudeCodex
-            ? (currentCodexTool?.toolName ?? "Thinking...")
-            : (currentToolName ?? "Thinking...")
+        let sourceLabel = showsQuestionWaitOnLeft ? "Waiting"
+            : isSimultaneousClaudeCodex
+            ? (currentCodexTool?.toolName ?? "Thinking")
+            : (currentToolName ?? "Thinking")
         let closedLabel = closedDisplayedLabel.isEmpty ? sourceLabel : closedDisplayedLabel
         let labelCapsuleWidth = min(124, measuredTextWidth(closedLabel, 10, .medium) + 12)
         let showsClaudeIcon = (hasCurrentTool || isThinking) && isClaudeActive && !isCodexActive
         let showsCodexIcon = (hasCurrentTool || isThinking) && isCodexActive
         let leftWingWidth: CGFloat = showsDone ? 12 + 6 + measuredTextWidth("Done", 10, .medium)
             : showsCodexQuestionOnLeft ? 58
+            : showsQuestionWaitOnLeft ? 12 + 6 + labelCapsuleWidth
             : (showLeftWing ? (showsClaudeIcon || showsCodexIcon ? 12 : 8) + 6 + labelCapsuleWidth : 0)
-        let simultaneousClaudeLabel = currentClaudeTool?.toolName ?? "Thinking..."
+        let simultaneousClaudeLabel = currentClaudeTool?.toolName ?? "Thinking"
         let showsSimultaneousClaudeWing = isSimultaneousClaudeCodex && !isClaudeQuestionWait
             && (isCodexQuestionWait || !hasPermissionNeeded) && !showsDone
 
@@ -985,6 +1025,12 @@ struct ClangNotchContentView: View {
                 // back the width the wings last claimed instead of leaving an empty wide bar.
                 .onAppear {
                     notchVM.updateClosedPresentationWidth(notchVM.closedNotchSize.width)
+                    // Forget the last tool name so the next entrance sizes to its own label
+                    // instead of the old one, then resizing and wiping again.
+                    closedLabelTransitionTask?.cancel()
+                    closedLabelTransitionTask = nil
+                    pendingClosedLabel = nil
+                    closedDisplayedLabel = ""
                 }
         } else {
             HStack(spacing: 0) {
@@ -1007,6 +1053,25 @@ struct ClangNotchContentView: View {
                                     .font(.system(size: 9, weight: .medium))
                             }
                             .foregroundColor(.blue)
+                        } else if showsQuestionWaitOnLeft {
+                            let waitColor = isCodexQuestionWait ? codexIndicatorColor : claudeGlowColor
+                            Group {
+                                if isCodexQuestionWait {
+                                    Image("ChatGPTIcon")
+                                        .resizable()
+                                        .foregroundColor(.white)
+                                } else {
+                                    Image("ClaudeIcon")
+                                        .resizable()
+                                }
+                            }
+                            .frame(width: 12, height: 12)
+                            ClosedToolTransitionLabel(
+                                label: closedLabel,
+                                foregroundOpacity: 0.7,
+                                glowColor: waitColor,
+                                isPaused: true
+                            )
                         } else if showsDone, let doneFlash {
                             if doneFlash.source == .claude {
                                 Image("ClaudeIcon")
@@ -1059,7 +1124,6 @@ struct ClangNotchContentView: View {
                     // only the right-side stats hug the physical notch.
                     .foregroundColor(showsTetherWings ? errorBrightColor : nil)
                     .frame(width: leftContentWidth, alignment: .leading)
-                    .animation(animationSpring, value: leftContentWidth)
                     .padding(.leading, 8)
                 }
 
@@ -1214,6 +1278,8 @@ struct ClangNotchContentView: View {
             }
             .opacity(closedJellyContentOpacity)
             .animation(.easeInOut(duration: 0.18), value: closedDisplayedLabel)
+            // Same curve as the surface, so the content moves with the black edge.
+            .animation(closedWingResizeAnimation, value: totalWidth)
         }
     }
 

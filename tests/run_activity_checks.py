@@ -53,7 +53,6 @@ final class ClaudeFixture {
     var completedQuestionHookIDs: [String: Set<String>] = [:]
     var completedTurnMessageIDs: [String: String] = [:]
     var dismissedInputRequestIDs: Set<String> = []
-    var lastTurnCompletedAt: Date?
     var lastCompletedTurn: CompletedTurn?
     let questionToolName = "AskUserQuestion"
     let wrapUpToolName = "mcp__ccd_turn__wrap_up"
@@ -86,7 +85,6 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     var sessionWatchers: [String: Bool] = [:]
     var sessionActivityCache: [URL: (modifiedAt: Date, fileSize: UInt64, activity: Date?)] = [:]
     var rateLimits = CodexRateLimits()
-    var lastTurnCompletedAt: Date?
     var lastCompletedTurn: CompletedTurn?
     func clearEndedSessions() {}
     func loadLatestRateLimits(from: URL) {}
@@ -166,20 +164,20 @@ swift += '''}
             c.parseMessageForSession(["role":"assistant", "stop_reason":terminal, "content":[["type":"text", "text":"done"]]], sessionId:"s")
             precondition(!c.state.isActive && c.state.lastStopReason == terminal)
         }
-        c.lastTurnCompletedAt = nil
+        c.lastCompletedTurn = nil
         c.parseMessageForSession(["id":"m1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"thinking"]]], sessionId:"s")
-        precondition(c.lastTurnCompletedAt == nil, "A thinking line of the final message is not the end yet")
+        precondition(c.lastCompletedTurn == nil, "A thinking line of the final message is not the end yet")
         c.parseMessageForSession(["id":"m1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"done"]]], sessionId:"s")
-        precondition(c.lastTurnCompletedAt != nil, "The final answer text closes the turn")
-        c.lastTurnCompletedAt = nil
+        precondition(c.lastCompletedTurn != nil, "The final answer text closes the turn")
+        c.lastCompletedTurn = nil
         c.parseMessageForSession(["id":"m1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"more"]]], sessionId:"s")
-        precondition(c.lastTurnCompletedAt == nil, "One message announces Done once")
+        precondition(c.lastCompletedTurn == nil, "One message announces Done once")
         c.isLoadingHistoryBySession["s"] = true
         c.parseMessageForSession(["id":"m2", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"old"]]], sessionId:"s")
         c.isLoadingHistoryBySession["s"] = nil
-        precondition(c.lastTurnCompletedAt == nil, "Replayed history must not announce Done")
+        precondition(c.lastCompletedTurn == nil, "Replayed history must not announce Done")
         c.parseMessageForSession(["id":"m3", "role":"assistant", "stop_reason":"max_tokens", "content":[["type":"text", "text":"cut"]]], sessionId:"s")
-        precondition(c.lastTurnCompletedAt == nil, "Only end_turn counts as a normal finish")
+        precondition(c.lastCompletedTurn == nil, "Only end_turn counts as a normal finish")
         c.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"t2", "name":"Bash"]]], sessionId:"s")
         c.parseMessageForSession(["role":"user", "content":[["type":"tool_result", "tool_use_id":"t2"]]], sessionId:"s")
         c.parseJSONLLineForSession(#"{"type":"api-request-blob","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash"}]}}"#, sessionId:"s")
@@ -285,12 +283,12 @@ swift += '''}
         x.parseResponseItem(["type":"message", "role":"assistant", "phase":"final_answer", "content":[["type":"output_text", "text":"waiting"]]], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
         x.parseEventMsg(["type":"task_complete"], sessionState:&xs, sessionId:"s", rateLimitTimestamp:Date())
         precondition(xs.pendingInputRequest != nil && !xs.isActive, "Async questions outlive the sending turn")
-        precondition(x.lastTurnCompletedAt != nil, "task_complete announces Done")
-        x.lastTurnCompletedAt = nil
+        precondition(x.lastCompletedTurn != nil, "task_complete announces Done")
+        x.lastCompletedTurn = nil
         var aborted = CodexState()
         x.parseEventMsg(["type":"turn_aborted"], sessionState:&aborted, sessionId:"s", rateLimitTimestamp:Date())
         x.parseEventMsg(["type":"task_complete", "error":["codex_error_info":"usage_limit_exceeded"]], sessionState:&aborted, sessionId:"s", rateLimitTimestamp:Date())
-        precondition(x.lastTurnCompletedAt == nil, "Aborted or rejected turns are not Done")
+        precondition(x.lastCompletedTurn == nil, "Aborted or rejected turns are not Done")
         func reply(_ call: String, indices: [Int]) throws -> [String: Any] {
             let answers: [[String: Any]] = try indices.map { index in
                 let key = String(data: try JSONSerialization.data(withJSONObject: ["request_user_input_async", call, index]), encoding: .utf8)!

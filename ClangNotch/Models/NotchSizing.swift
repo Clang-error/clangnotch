@@ -33,6 +33,10 @@ let notchCloseAnimation = Animation.timingCurve(0.25, 0.8, 0.35, 1, duration: no
 let dropdownFoldDuration: TimeInterval = 0.45
 let dropdownFoldAnimation = Animation.timingCurve(0.4, 0, 0.2, 1, duration: dropdownFoldDuration)
 
+/// The closed wings growing or shrinking for a new label. The black surface, the glow and
+/// the wing content all use this one curve, so the content never lands before its edge.
+let closedWingResizeAnimation = Animation.timingCurve(0.22, 0.7, 0.25, 1, duration: 0.3)
+
 /// Opening and dropping a dropdown overshoot a little and settle — the notch feels springy
 /// going out and stays tidy coming back (`notchCloseAnimation`).
 let notchOpenSpring = Animation.spring(response: 0.5, dampingFraction: 0.72)

@@ -52,9 +52,7 @@ final class ClaudeCodeManager: ObservableObject {
     /// Questions are tracked separately in `pendingInputRequests`.
     @Published private(set) var sessionsConfirmedNeedingPermission: [ClaudeSession] = []
 
-    /// When any session last finished a turn normally (end_turn); drives the closed-notch Done.
-    @Published private(set) var lastTurnCompletedAt: Date?
-    /// What that turn ended with, for the 완료 드롭다운.
+    /// The last turn any session finished normally (end_turn); drives the closed-notch Done and the 완료 드롭다운.
     @Published private(set) var lastCompletedTurn: CompletedTurn?
 
     var sessionsAwaitingInput: [ClaudeSession] {
@@ -322,7 +320,8 @@ final class ClaudeCodeManager: ObservableObject {
         }
 
         debugLog("[ClaudeCode] Total sessions found: \(sessions.count)")
-        availableSessions = sessions
+        // A rescan that found the same sessions must not publish and rebuild the notch.
+        if availableSessions != sessions { availableSessions = sessions }
 
         if let selected = selectedSession {
             if let current = sessions.first(where: { $0.id == selected.id }) {
@@ -1167,7 +1166,6 @@ final class ClaudeCodeManager: ObservableObject {
                let messageId = message["id"] as? String,
                completedTurnMessageIDs[sessionId] != messageId {
                 completedTurnMessageIDs[sessionId] = messageId
-                lastTurnCompletedAt = Date()
                 let answer = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
                 lastCompletedTurn = CompletedTurn(sessionId: sessionId, answer: answer.joined(separator: "\n"),
                                                   elapsed: turnStart.map { Date().timeIntervalSince($0) })
@@ -1512,7 +1510,6 @@ final class ClaudeCodeManager: ObservableObject {
             let turnStart = sessionState.turnStartTime
             sessionState.turnStartTime = nil
             sessionState.lastStopReason = "end_turn"
-            lastTurnCompletedAt = now
             lastCompletedTurn = CompletedTurn(sessionId: session.id, answer: json["last_assistant_message"] as? String ?? "",
                                               elapsed: turnStart.map { now.timeIntervalSince($0) })
         case "Notification":
@@ -1663,6 +1660,5 @@ extension ClaudeCodeManager {
 
     func demoComplete(_ turn: CompletedTurn) {
         lastCompletedTurn = turn
-        lastTurnCompletedAt = Date()
     }
 }
