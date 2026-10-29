@@ -9,8 +9,12 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-claude.gif" width="49%" alt="Claude Code 작업 중 → 완료">
-  <img src="assets/demo-codex.gif" width="49%" alt="Codex 작업 중 → 완료">
+  <img src="assets/demo-both.gif" width="100%" alt="Claude Code와 Codex가 함께 작업: 질문에 노치에서 답하고 완료까지">
+</p>
+
+<p align="center">
+  <img src="assets/demo-claude.gif" width="49%" alt="Claude Code 작업 중 → 질문 → 완료">
+  <img src="assets/demo-codex.gif" width="49%" alt="Codex 작업 중 → 질문 → 완료">
 </p>
 
 ---
