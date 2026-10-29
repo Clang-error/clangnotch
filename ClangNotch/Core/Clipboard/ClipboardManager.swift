@@ -19,7 +19,7 @@ final class ClipboardManager: ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
-        guard timer == nil else { return }
+        guard timer == nil, !DemoMode.isActive else { return }
         lastChangeCount = pasteboard.changeCount
         timer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
@@ -70,6 +70,7 @@ final class ClipboardManager: ObservableObject {
     // MARK: - Actions
 
     func copyToClipboard(_ item: ClipboardItem) {
+        guard !DemoMode.isActive else { return }
         pasteboard.clearContents()
         pasteboard.setString(item.text, forType: .string)
         // Update lastChangeCount so our own write doesn't appear as a new item
@@ -88,5 +89,14 @@ final class ClipboardManager: ObservableObject {
     /// Clears everything except pinned items.
     func clearUnpinned() {
         items.removeAll { !$0.isPinned }
+    }
+}
+
+// MARK: - Demo
+
+extension ClipboardManager {
+    /// `--demo`: made-up history; the real pasteboard is never read or written.
+    func demoApply(_ items: [ClipboardItem]) {
+        self.items = items
     }
 }

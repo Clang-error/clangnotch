@@ -34,6 +34,11 @@ final class SidecarManager: ObservableObject {
     func start() {
         guard !running else { return }
         running = true
+        if DemoMode.isActive {
+            devices = [SidecarDeviceInfo(id: UUID(uuidString: "00000000-0000-0000-0000-00000000DE11")!,
+                                         name: "iPad Pro", isConnected: true)]
+            return
+        }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -51,6 +56,17 @@ final class SidecarManager: ObservableObject {
     func toggle(_ device: SidecarDeviceInfo) {
         guard running, busyDeviceID == nil,
               let current = devices.first(where: { $0.id == device.id }) else { return }
+        if DemoMode.isActive {
+            busyDeviceID = current.id
+            busyTarget = !current.isConnected
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1.5))
+                guard let self, let index = self.devices.firstIndex(where: { $0.id == current.id }) else { return }
+                self.devices[index].isConnected.toggle()
+                self.clearBusy()
+            }
+            return
+        }
         let target = !current.isConnected
         let requestID = UUID()
         operationID = requestID

@@ -10,7 +10,7 @@ struct BatteryView: View {
                 ForEach(manager.lowPriorityDevices) { low in
                     lowBatteryBadgeRow(low)
                 }
-                if !BatteryManager.hasIOSTools { iosToolsRow }
+                if !BatteryManager.hasIOSTools && !DemoMode.isActive { iosToolsRow }
                 if manager.devices.isEmpty {
                     emptyState
                 } else {

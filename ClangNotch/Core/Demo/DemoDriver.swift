@@ -1,12 +1,13 @@
-import Foundation
+import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both]`: the notch runs on
-/// made-up Claude Code and Codex sessions for screen recordings. Nothing real is read, so
-/// no project name, path or prompt from this Mac can end up in a video.
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools]`: the notch runs
+/// on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard, volume,
+/// battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
+/// project name, path, device or copied text from this Mac can end up in a video.
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both }
+    enum Scene: String { case claude, codex, both, tools }
 
     static var scene: Scene {
         let args = CommandLine.arguments
@@ -40,6 +41,10 @@ final class DemoDriver {
     func start() {
         guard task == nil else { return }
         TelemetryCoordinator.shared.demoMarkRunning()
+        if DemoMode.scene == .tools {
+            applyTools()
+            return
+        }
         let scripts = Self.scripts(for: DemoMode.scene)
         task = Task { [weak self] in
             var loop = 0
@@ -154,6 +159,7 @@ final class DemoDriver {
         switch scene {
         case .claude: return [orbit, lumen]
         case .codex: return [atlas, prism]
+        case .tools: return []
         case .both:
             var claude = orbit
             claude.end = 31
@@ -308,5 +314,54 @@ final class DemoDriver {
             fiveHour: .init(percentage: 46 + max(0, min(t, 40) - 2) * 0.25, resetsAt: now.addingTimeInterval(2 * 3600 + 10 * 60)),
             sevenDay: .init(percentage: 31, resetsAt: now.addingTimeInterval(3 * 86_400 + 9 * 3600)),
             opus: nil, sonnet: nil, fable: nil, fetchedAt: now))
+    }
+
+    // MARK: - Tools
+
+    private func applyTools() {
+        let now = Date()
+        // The notch may open on the agents tab first; its usage cards shouldn't read "sign in".
+        CodexManager.shared.demoApply(sessions: [], states: [:], rateLimits: CodexRateLimits(
+            primary: CodexRateLimitWindow(usedPercent: 34, windowMinutes: 300, resetsAt: now.addingTimeInterval(3 * 3600 + 20 * 60)),
+            secondary: CodexRateLimitWindow(usedPercent: 21, windowMinutes: 7 * 24 * 60, resetsAt: now.addingTimeInterval(4 * 86_400)),
+            planType: "pro"))
+        ClaudeUsageManager.shared.demoApply(ClaudeUsageData(
+            fiveHour: .init(percentage: 46, resetsAt: now.addingTimeInterval(2 * 3600 + 10 * 60)),
+            sevenDay: .init(percentage: 31, resetsAt: now.addingTimeInterval(3 * 86_400 + 9 * 3600)),
+            opus: nil, sonnet: nil, fable: nil, fetchedAt: now))
+        ClipboardManager.shared.demoApply([
+            ClipboardItem(text: "npm run build && npm run preview", copiedAt: now.addingTimeInterval(-3 * 3600), isPinned: true),
+            ClipboardItem(text: "git checkout -b feat/billing-tax", copiedAt: now.addingTimeInterval(-40)),
+            ClipboardItem(text: "Invoice totals now include regional tax.", copiedAt: now.addingTimeInterval(-6 * 60)),
+            ClipboardItem(text: "https://github.com/Clang-error/clangnotch", copiedAt: now.addingTimeInterval(-18 * 60)),
+            ClipboardItem(text: "#FF9F0A", copiedAt: now.addingTimeInterval(-52 * 60)),
+            ClipboardItem(text: "pnpm test billing --watch", copiedAt: now.addingTimeInterval(-2 * 3600)),
+        ])
+
+        func app(_ pid: pid_t, _ bundleID: String, _ name: String, _ path: String, _ gain: Float) -> AudioApp {
+            AudioApp(pid: pid, processObjectID: 0, bundleID: bundleID, name: name,
+                     icon: NSWorkspace.shared.icon(forFile: path), gain: gain)
+        }
+        AudioMixerManager.shared.demoApply([
+            app(90_001, "com.apple.Music", "Music", "/System/Applications/Music.app", 0.8),
+            app(90_002, "com.apple.Safari", "Safari", "/Applications/Safari.app", 1.0),
+            app(90_003, "com.apple.podcasts", "Podcasts", "/System/Applications/Podcasts.app", 0.45),
+            app(90_004, "com.apple.FaceTime", "FaceTime", "/System/Applications/FaceTime.app", 1.0),
+        ])
+
+        func device(_ id: String, _ name: String, _ symbol: String, _ percent: Int, charging: Bool = false,
+                    parts: [BatteryPart] = [], minutesLeft: Int? = nil) -> BatteryDevice {
+            BatteryDevice(id: id, name: name, symbol: symbol, percent: percent, charging: charging, live: true,
+                          seenAt: now, parts: parts, minutesLeft: minutesLeft)
+        }
+        BatteryManager.shared.demoApply([
+            device("mac", "MacBook Pro", "macbook", 82, minutesLeft: 344),
+            device("demo-iphone", "iPhone", "iphone", 64),
+            device("demo-ipad", "iPad Pro", "ipad", 91, charging: true),
+            device("demo-airpodspro", "AirPods Pro", "airpodspro", 74,
+                   parts: [BatteryPart(label: "L", percent: 78), BatteryPart(label: "R", percent: 74),
+                           BatteryPart(label: "케이스", percent: 55)]),
+            device("demo-airpodsmax", "AirPods Max", "airpodsmax", 46),
+        ])
     }
 }

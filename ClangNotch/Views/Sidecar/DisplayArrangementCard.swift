@@ -11,7 +11,15 @@ struct ArrangedDisplay: Identifiable, Equatable {
     let isMain: Bool
 
     static func current() -> [ArrangedDisplay] {
-        NSScreen.screens.compactMap { screen in
+        // Demo: a MacBook with a monitor above it and an iPad on Sidecar to its right.
+        if DemoMode.isActive {
+            return [
+                ArrangedDisplay(id: 1, frame: CGRect(x: 0, y: 0, width: 1512, height: 982), isSidecar: false, isBuiltin: true, isMain: true),
+                ArrangedDisplay(id: 2, frame: CGRect(x: -524, y: -1440, width: 2560, height: 1440), isSidecar: false, isBuiltin: false, isMain: false),
+                ArrangedDisplay(id: 3, frame: CGRect(x: 1512, y: 0, width: 1366, height: 1024), isSidecar: true, isBuiltin: false, isMain: false),
+            ]
+        }
+        return NSScreen.screens.compactMap { screen in
             guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
             else { return nil }
             return ArrangedDisplay(id: id, frame: CGDisplayBounds(id),
@@ -197,7 +205,7 @@ struct DisplayArrangementCard: View {
 
     /// Puts `id` at (0, 0), which makes it the main screen, and shifts the rest to match.
     private nonisolated static func makeMain(_ id: CGDirectDisplayID, in layout: [ArrangedDisplay]) {
-        guard let target = layout.first(where: { $0.id == id })?.frame.origin else { return }
+        guard !DemoMode.isActive, let target = layout.first(where: { $0.id == id })?.frame.origin else { return }
         var config: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&config) == .success else { return }
         for display in layout {
@@ -210,6 +218,7 @@ struct DisplayArrangementCard: View {
     /// The main screen is whichever sits at (0, 0), so moving it directly would hand the menu
     /// bar to another screen (seen 2026-10-15). It stays put and the others move the other way.
     private nonisolated static func move(_ id: CGDirectDisplayID, to origin: CGPoint, in layout: [ArrangedDisplay]) {
+        guard !DemoMode.isActive else { return }
         var config: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&config) == .success else { return }
         if CGDisplayIsMain(id) != 0 {

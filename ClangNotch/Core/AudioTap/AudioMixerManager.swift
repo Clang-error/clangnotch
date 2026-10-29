@@ -124,6 +124,7 @@ final class AudioMixerManager: ObservableObject {
     private init() {}
 
     func start() {
+        guard !DemoMode.isActive else { return }
         refresh()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -158,6 +159,11 @@ final class AudioMixerManager: ObservableObject {
     }
 
     func setGain(_ gain: Float, for app: AudioApp) {
+        // Demo apps aren't real processes: only the slider moves.
+        if DemoMode.isActive {
+            if let i = apps.firstIndex(where: { $0.pid == app.pid }) { apps[i].gain = gain }
+            return
+        }
         var g = savedGains
         if gain >= 0.99 { g[app.bundleID] = nil } else { g[app.bundleID] = gain }
         savedGains = g
@@ -347,5 +353,14 @@ final class AudioMixerManager: ObservableObject {
         var dev = AudioObjectID(0); var sz = UInt32(MemoryLayout<AudioObjectID>.size)
         guard AudioObjectGetPropertyData(sys, &a, 0, nil, &sz, &dev) == noErr else { return nil }
         return strProp(dev, kAudioDevicePropertyDeviceUID)
+    }
+}
+
+// MARK: - Demo
+
+extension AudioMixerManager {
+    /// `--demo`: made-up apps with no audio taps behind them.
+    func demoApply(_ apps: [AudioApp]) {
+        self.apps = apps
     }
 }

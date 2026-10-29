@@ -83,6 +83,7 @@ final class BatteryManager: ObservableObject {
 
     /// 앱 기동 시 호출 — 탭을 열지 않아도 알림 감시는 계속된다.
     func startMonitoring() {
+        guard !DemoMode.isActive else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             Task { @MainActor in
                 self.log("notif auth granted=\(granted) error=\(error?.localizedDescription ?? "none")")
@@ -108,7 +109,7 @@ final class BatteryManager: ObservableObject {
 
     /// 맥 + 연결된 블루투스만 읽는다. system_profiler와 iOS 조회는 느린 주기 몫이다.
     func refreshFast() {
-        guard !isFastRefreshing else { return }
+        guard !isFastRefreshing, !DemoMode.isActive else { return }
         isFastRefreshing = true
         Task.detached(priority: .utility) {
             let found = Collector.bluetooth(connectedOnly: true) + Collector.mac()
@@ -133,10 +134,10 @@ final class BatteryManager: ObservableObject {
     }
 
     /// Battery 탭이 보일 때 — 촘촘히 갱신.
-    func start() { setPolling(activeInterval) }
+    func start() { if !DemoMode.isActive { setPolling(activeInterval) } }
 
     /// 탭이 닫혀도 감시는 멈추지 않고 주기만 늘린다.
-    func stop() { setPolling(idleInterval) }
+    func stop() { if !DemoMode.isActive { setPolling(idleInterval) } }
 
     private func setPolling(_ seconds: TimeInterval) {
         guard interval != seconds else { return }
@@ -708,5 +709,15 @@ private final class BluetoothEvents: NSObject {
     @objc private func disconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         notification.unregister()
         onChange()
+    }
+}
+
+// MARK: - Demo
+
+extension BatteryManager {
+    /// `--demo`: made-up devices in place of this Mac's own (and its cached ones).
+    func demoApply(_ devices: [BatteryDevice]) {
+        self.devices = devices
+        lastUpdated = Date()
     }
 }

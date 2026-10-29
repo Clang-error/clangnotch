@@ -96,6 +96,12 @@ final class NetworkInfoManager: NSObject, ObservableObject {
     }
 
     private func readCurrent() {
+        if DemoMode.isActive {
+            ssid = "Studio Wi-Fi"
+            ssidBlocked = false
+            name = "Studio Wi-Fi"
+            return
+        }
         let interface = CWWiFiClient.shared().interface()
         let wanted = AppSettings.shared.enableNetworkName
         let authorized = hasLocationAccess

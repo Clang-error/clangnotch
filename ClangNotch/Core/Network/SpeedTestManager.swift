@@ -62,7 +62,9 @@ final class SpeedTestManager: ObservableObject {
         errorMessage = nil
         finishedAt = nil
         liveMbps = 0
-        runTask = Task { [weak self] in await self?.run() }
+        runTask = Task { [weak self] in
+            if DemoMode.isActive { await self?.runDemo() } else { await self?.run() }
+        }
     }
 
     func cancel() {
@@ -317,5 +319,34 @@ private final class SpeedProbe: NSObject, URLSessionDataDelegate, @unchecked Sen
         continuation = nil
         session.finishTasksAndInvalidate()
         cont?.resume(returning: result)
+    }
+}
+
+// MARK: - Demo
+
+extension SpeedTestManager {
+    /// `--demo`: the dial climbs through made-up numbers; nothing goes over the network.
+    fileprivate func runDemo() async {
+        phase = .ping
+        try? await Task.sleep(for: .milliseconds(700))
+        latencyMs = 12
+        phase = .download
+        for step in 1...24 {
+            guard !Task.isCancelled else { return }
+            liveMbps = 486 * (1 - pow(0.86, Double(step))) + Double(step % 3) * 6
+            try? await Task.sleep(for: .milliseconds(110))
+        }
+        downloadMbps = 482
+        liveMbps = 0
+        phase = .upload
+        for step in 1...18 {
+            guard !Task.isCancelled else { return }
+            liveMbps = 214 * (1 - pow(0.82, Double(step))) + Double(step % 2) * 4
+            try? await Task.sleep(for: .milliseconds(110))
+        }
+        uploadMbps = 211
+        liveMbps = 0
+        finishedAt = Date()
+        phase = .finished
     }
 }
