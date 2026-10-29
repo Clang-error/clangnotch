@@ -6,15 +6,18 @@ import SwiftUI
 /// Where usage is heading at the current rate, as CodeIsland's usage cards show it:
 /// either when the window runs out before its reset, or roughly where it ends up.
 ///
-/// The rate blends the window's average with the last 45 minutes of readings: a burst early
-/// in the window no longer reads as "fast" for hours, and one starting now shows up before
-/// the average catches it. Until there are 10 minutes of readings it is the plain average.
-/// A percentage that hasn't moved for 10 minutes means nothing is using the window now, so
-/// it stays where it is: the average alone turned 4% in a window's first 26 minutes into
-/// "about 49% at reset" with the agent idle. Readings are kept across launches.
+/// The rate blends the window's average with its recent readings (the last 15% of the
+/// window: 45 minutes of 5 hours, about a day of a week): a burst early in the window no
+/// longer reads as "fast" for hours, and one starting now shows up before the average
+/// catches it. Until there are 10 minutes of readings it is the plain average.
+/// In a window of a day or less, a percentage that hasn't moved for 10 minutes means nothing
+/// is using it now, so it stays where it is: the average alone turned 4% in a 5-hour window's
+/// first 26 minutes into "about 49% at reset" with the agent idle. A weekly window doesn't
+/// get that rule: it moves a point an hour or so even in steady use, and the rule flipped its
+/// forecast between ~100% and the current value. Readings are kept across launches.
 @MainActor
 enum UsagePace {
-    private static let recentSpan: TimeInterval = 45 * 60
+    private static let recentShare = 0.15
     private static let minimumSpan: TimeInterval = 10 * 60
     /// The recent rate's weight once a full span has been seen; the rest stays on the average.
     private static let recentWeight = 0.7
@@ -35,7 +38,9 @@ enum UsagePace {
     private static func rate(percent: Double, resetsAt: Date, window: TimeInterval, elapsed: TimeInterval) -> Double {
         let average = percent / elapsed
         // Resets drift by a few seconds between readings; five minutes still tells windows apart.
-        let key = "\(Int(window))-\(Int(resetsAt.timeIntervalSince1970 / 300))"
+        // Rounded, not truncated: Claude's weekly reset reads 23:59:59.5 one time and 00:00:00
+        // the next, which truncation split across two keys at the boundary.
+        let key = "\(Int(window))-\(Int((resetsAt.timeIntervalSince1970 / 300).rounded()))"
         let now = Date()
         var readings = history[key] ?? []
         if readings.last?.percent != percent {
@@ -49,7 +54,8 @@ enum UsagePace {
         }
 
         guard let first = readings.first, now.timeIntervalSince(first.at) >= minimumSpan else { return average }
-        if let last = readings.last, now.timeIntervalSince(last.at) >= minimumSpan { return 0 }
+        if window <= 86_400, let last = readings.last, now.timeIntervalSince(last.at) >= minimumSpan { return 0 }
+        let recentSpan = window * recentShare
         let span = min(recentSpan, now.timeIntervalSince(first.at))
         // The percentage as of `span` ago: the last reading at or before then.
         let then = readings.last { $0.at <= now.addingTimeInterval(-span) }?.percent ?? first.percent
