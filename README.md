@@ -50,6 +50,10 @@ Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same s
 
 Each one is a tab in the open notch, and each can be turned off in Settings.
 
+<p align="center">
+  <img src="assets/demo-tools.gif" width="80%" alt="Clipboard, per-app volume, batteries, speed test, Sidecar and display arrangement tabs">
+</p>
+
 - Clipboard history (text only, kept in memory)
 - Per-app volume
 - iPad Sidecar controls
