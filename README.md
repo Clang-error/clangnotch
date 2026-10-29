@@ -1,75 +1,81 @@
 <p align="center">
-  <img src="icon.png" width="128" alt="ClangNotch 아이콘">
+  <img src="icon.png" width="128" alt="ClangNotch icon">
 </p>
 
 <h1 align="center">ClangNotch</h1>
 
 <p align="center">
-  Claude Code와 Codex가 일하는 걸 맥 노치에서.
+  English · <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
-  <img src="assets/demo-both.gif" width="100%" alt="Claude Code와 Codex가 함께 작업: 질문에 노치에서 답하고 완료까지">
+  Watch Claude Code and Codex work, right in your Mac's notch.
 </p>
 
 <p align="center">
-  <img src="assets/demo-claude.gif" width="49%" alt="Claude Code 작업 중 → 질문 → 완료">
-  <img src="assets/demo-codex.gif" width="49%" alt="Codex 작업 중 → 질문 → 완료">
+  <img src="assets/demo-both.gif" width="100%" alt="Claude Code and Codex working together: answering a question from the notch, then done">
+</p>
+
+<p align="center">
+  <img src="assets/demo-claude.gif" width="49%" alt="Claude Code working → question → done">
+  <img src="assets/demo-codex.gif" width="49%" alt="Codex working → question → done">
 </p>
 
 ---
 
-ClangNotch는 노치에 붙어서 코딩 에이전트가 지금 무슨 도구를 돌리는지,응답이 끝났는지, 내 답을 기다리는지 보여 줍니다. Claude Code와 Codex가 원래 남기는 세션 파일을 읽기 때문에 따로 설정하지 않아도됩니다.
+ClangNotch sits in the notch and shows what your coding agents are doing: which tool is running, whether a reply has finished, and whether one is waiting on you. It reads the session files Claude Code and Codex already write, so there's nothing to set up.
 
 
-## 설치
+## Install
 
-[Releases](../../releases)에서 `ClangNotch.dmg`를 받아 응용 프로그램 폴더로 끌어다 놓습니다.
+Download `ClangNotch.dmg` from [Releases](../../releases) and drag it into your Applications folder.
 
-공증을 받지 않은 앱이라 처음 실행할 때 macOS가 막습니다. **시스템 설정 → 개인정보 보호 및 보안**에서 **그래도 열기**를 누르면 됩니다.
+The app isn't notarized, so macOS blocks it the first time. Open **System Settings → Privacy & Security** and click **Open Anyway**.
 
-macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위쪽에 같은 모양으로 뜹니다.
+Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same shape at the top of the screen.
 
-## 기능
+## Features
 
-**에이전트**
+**Agents**
 
-- Claude Code(CLI, 데스크톱 앱, VS Code)와 Codex(CLI, 데스크톱 앱)의 실시간 상태. `~/.claude/projects`와 `~/.codex/sessions`를 읽음
-- 닫힌 노치에 지금 도는 도구 표시, 턴이 끝나면 체크 표시와 함께 Done
-- 권한 요청과 `AskUserQuestion` 질문에 노치에서 바로 답하기
-- 폴더별 세션 목록. 세션을 누르면 단계별 진행과 파일 변경 내용이 보임
-- Claude와 Codex의 5시간·주간 사용량
-- SSH 서버에서 도는 Claude Code 세션(역방향 터널)
-- SSH 서버에서 도는 Codex는 아직 구현하지 않았음
+- Live status for Claude Code (CLI, desktop app, VS Code) and Codex (CLI, desktop app), read from `~/.claude/projects` and `~/.codex/sessions`
+- The closed notch shows the tool that's running, then Done with a checkmark when a turn ends
+- Answer permission requests and `AskUserQuestion` questions from the notch
+- Sessions grouped by folder. Click one to see each step and the file changes
+- 5-hour and weekly usage for Claude and Codex
+- Claude Code sessions running on an SSH server (over a reverse tunnel)
+- Codex on an SSH server isn't supported yet
 
-**도구**
+**Tools**
 
-펼친 노치의 탭으로 하나씩 들어 있고, 설정에서 끌 수 있습니다.
+Each one is a tab in the open notch, and each can be turned off in Settings.
 
-- 클립보드 기록(텍스트만, 메모리에만 보관)
-- 앱별 볼륨 제어
-- iPad 사이드카 조절
-- 다중디스플레이 정렬 빠른접근
-- 맥, 블루투스 기기, 아이폰·아이패드 배터리
-- 속도 측정과 네트워크 정보
-- 키보드 잠금
+- Clipboard history (text only, kept in memory)
+- Per-app volume
+- iPad Sidecar controls
+- Quick access to multi-display arrangement
+- Battery for your Mac, Bluetooth devices, iPhone and iPad
+- Speed test and network info
+- Keyboard lock
 
-볼륨·밝기 키를 누르면 시스템 표시 대신 ClangNotch 조절창이 뜹니다.
+The volume and brightness keys show ClangNotch's own slider instead of the system one.
 
-## 권한
+The app's interface is in Korean by default. Switch it to English in **Settings → General → Display language**.
 
-| 권한 | 쓰는 곳 |
+## Permissions
+
+| Permission | Used for |
 |---|---|
-| 손쉬운 사용 | 볼륨·밝기 키, 키보드 잠금, 시스템 표시 옮기기 |
-| 알림 | 배터리 부족 알림 |
-| 위치 | Wi-Fi 이름 읽기(macOS가 위치 권한 없이는 안 알려 줌) |
-| 오디오 캡처 | 앱별 볼륨 |
+| Accessibility | Volume and brightness keys, keyboard lock, moving the system overlay |
+| Notifications | Low battery alerts |
+| Location | Reading the Wi-Fi name (macOS won't share it without location access) |
+| Audio capture | Per-app volume |
 
-노치에서 승인하기를 쓰면 `~/.claude/settings.json`과 `~/.codex/hooks.json`에 훅이 추가되고, 원래 파일은 백업해 둡니다. Codex는 새 훅을 `/hooks`에서 한 번 신뢰해야 실행합니다.
+Approving from the notch adds hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, and backs up the original files first. Codex only runs a new hook after you trust it once in `/hooks`.
 
-아이폰·아이패드 배터리를 보려면 [libimobiledevice](https://libimobiledevice.org)가 필요합니다. Battery 탭의 설치 버튼을 누르면 터미널에서 `brew install libimobiledevice`를 실행합니다.
+iPhone and iPad battery needs [libimobiledevice](https://libimobiledevice.org). The install button in the Battery tab runs `brew install libimobiledevice` in Terminal.
 
-## 빌드
+## Build
 
 ```bash
 git clone https://github.com/Clang-error/clangnotch.git
@@ -77,8 +83,8 @@ cd clangnotch
 xcodebuild -project ClangNotch.xcodeproj -scheme ClangNotch -configuration Release build
 ```
 
-빌드 전에 프로젝트의 Signing 설정에서 본인 개발 팀으로 바꿔 주세요.
+Before building, set the project's Signing team to your own.
 
-## 라이선스
+## License
 
 [MIT](LICENSE)
