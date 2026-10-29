@@ -156,8 +156,31 @@ struct NotchSettingsTab: View {
                 SettingToggle(L("열릴 때 햅틱", "Haptic on open"),
                               L("노치가 펼쳐질 때 트랙패드가 가볍게 톡 칩니다.", "A light trackpad tap when the notch opens."),
                               isOn: $settings.notchHapticsEnabled)
+                SettingToggle(L("끝날 때 햅틱", "Haptic when done"),
+                              L("세션이 작업을 끝내면 트랙패드가 톡 칩니다. 소리를 끈 세션은 빼요.", "A trackpad tap when a session finishes; muted sessions skipped."),
+                              isOn: $settings.doneHapticsEnabled)
+                if settings.notchHapticsEnabled || settings.doneHapticsEnabled {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(L("햅틱 세기", "Haptic strength"))
+                            Spacer()
+                            Text("\(settings.notchHapticStrength)")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: Binding(get: { Double(settings.notchHapticStrength) },
+                                              set: { settings.notchHapticStrength = Int($0.rounded()) }),
+                               in: 1...8, step: 1)
+                            .onChange(of: settings.notchHapticStrength) { _, strength in
+                                TrackpadHaptics.tap(strength: strength)
+                            }
+                        Text(L("옮길 때마다 그 세기로 한 번 울립니다.", "Taps once at each step so you can feel it."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } header: {
-                Text(L("열기", "Opening"))
+                Text(L("열기와 햅틱", "Opening and haptics"))
             }
 
             Section {

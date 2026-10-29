@@ -81,6 +81,10 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchOpenDelay") public var notchOpenDelay: Double = 0.09
     /// A light trackpad tap when the notch opens on hover.
     @AppStorage("notchHapticsEnabled") public var notchHapticsEnabled: Bool = true
+    /// The same tap when a session finishes its turn; muted sessions stay quiet.
+    @AppStorage("doneHapticsEnabled") public var doneHapticsEnabled: Bool = true
+    /// 1 (lightest) … 8 (firmest); 7 and 8 repeat the firmest tap.
+    @AppStorage("notchHapticStrength") public var notchHapticStrength: Int = 8
     /// Minutes a question or permission may wait before its sound plays again; 0 = never.
     @AppStorage("attentionReminderMinutes") public var attentionReminderMinutes: Int = 5
     /// Usage cards: predicted landing tick and the pace line under each bar.

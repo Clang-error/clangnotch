@@ -2258,14 +2258,7 @@ struct ClangNotchContentView: View {
                     guard notchVM.notchState != .open, isHovering,
                           !(notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice || doneNotice != nil)) else { return }
                     if settings.notchHapticsEnabled {
-                        // macOS has no strength setting; .alignment is the crispest pattern,
-                        // and a second pulse 45ms later makes it a firm double tap.
-                        let haptics = NSHapticFeedbackManager.defaultPerformer
-                        haptics.perform(.alignment, performanceTime: .now)
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(45))
-                            haptics.perform(.alignment, performanceTime: .now)
-                        }
+                        TrackpadHaptics.tap(strength: settings.notchHapticStrength)
                     }
                     openSelectedMode()
                 }
@@ -2829,6 +2822,9 @@ struct ClangNotchContentView: View {
     private func handleCompletedTurn(_ turn: CompletedTurn, _ source: DoneFlash.Source) {
         guard notchVM.notchState != .open else { return }
         NotchSounds.playDone(for: turn.sessionId)
+        if settings.doneHapticsEnabled, !NotchSounds.isMuted(turn.sessionId) {
+            TrackpadHaptics.tap(strength: settings.notchHapticStrength)
+        }
         if isSessionAppFrontmost(source, turn.sessionId) {
             showDoneFlash(source, turn: turn)
             return
