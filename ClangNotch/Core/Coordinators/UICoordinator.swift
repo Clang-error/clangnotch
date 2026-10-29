@@ -165,9 +165,6 @@ public final class UICoordinator: ObservableObject {
             ClangNotchContentView()
         }
 
-        // Add to the notch space for proper layering
-        panel.addToNotchSpace()
-
         // Show the panel
         panel.orderFrontRegardless()
 

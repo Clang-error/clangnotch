@@ -27,7 +27,7 @@ final class NotchPanel: NSPanel {
         backgroundColor = .clear
         isMovable = false
 
-        // Window level above menu bar
+        // Above the menu bar, so the notch can cover it.
         level = .mainMenu + 3
         hasShadow = false
         isReleasedWhenClosed = false
@@ -35,9 +35,9 @@ final class NotchPanel: NSPanel {
         // Force dark appearance
         appearance = NSAppearance(named: .darkAqua)
 
-        // Collection behavior for all spaces
+        // On every Space and fixed in place while Spaces slide. Not on full-screen Spaces:
+        // the notch hides there anyway (`UICoordinator.applyFullScreenVisibility`).
         collectionBehavior = [
-            .fullScreenAuxiliary,
             .stationary,
             .canJoinAllSpaces,
             .ignoresCycle,
@@ -46,11 +46,6 @@ final class NotchPanel: NSPanel {
 
     func setContent<Content: View>(@ViewBuilder content: () -> Content) {
         contentView = NSHostingView(rootView: content())
-    }
-
-    /// Add this window to the notch space for proper layering
-    func addToNotchSpace() {
-        NotchSpaceManager.shared.notchSpace.windows.insert(self)
     }
 
     override var canBecomeKey: Bool { false }
