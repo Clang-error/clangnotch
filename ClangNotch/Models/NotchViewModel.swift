@@ -103,6 +103,12 @@ final class NotchViewModel: ObservableObject {
         withAnimation(animationSpring) { notchSize = size }
     }
 
+    /// Resizes a dropdown in place; unlike `peek` it may pass `maximumPeekHeight`.
+    func resizePeek(to size: CGSize) {
+        guard notchState == .peeking else { return }
+        withAnimation(animationSpring) { notchSize = size }
+    }
+
     /// How the notch is collapsing right now; the view animates its size with the same curve.
     private(set) var closeAnimation = notchCloseAnimation
     /// How long that collapse takes.

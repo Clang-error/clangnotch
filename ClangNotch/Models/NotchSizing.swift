@@ -19,6 +19,14 @@ let sessionDetailNotchSize: CGSize = .init(width: 720, height: openNotchSize.hei
 /// The 권한·완료 드롭다운: commands, paths and answers need more room than the 420pt notices.
 let permissionNotchWidth: CGFloat = 520
 let maximumPeekHeight: CGFloat = 340
+/// The 질문 드롭다운 after its 확대 버튼: about half the screen across and three fifths down,
+/// so a Claude question with long options reads without scrolling.
+@MainActor
+func expandedQuestionSize(screen: NSScreen? = NotchDetector.notchScreen) -> CGSize {
+    let frame = screen?.frame.size ?? CGSize(width: 1512, height: 982)
+    return CGSize(width: min(1100, (frame.width * 0.55).rounded()),
+                  height: min(700, (frame.height * 0.62).rounded()))
+}
 // The inward shoulder consumes 19pt before the 16pt content margin.
 let expandedNotchInset: CGFloat = 35
 
@@ -48,7 +56,8 @@ let openHeaderHeight: CGFloat = 56
 /// Window size (includes shadow padding)
 // The transparent hosting window also accommodates closed wings and shadows.
 // Its size must not determine the visible surface or the click-through region.
-let windowSize: CGSize = .init(width: 760, height: openNotchSize.height + shadowPadding)
+// Wide and tall enough for the largest surface, `expandedQuestionSize`.
+let windowSize: CGSize = .init(width: 1140, height: 700 + shadowPadding)
 
 /// Corner radius for open/closed states
 let cornerRadiusInsets = (

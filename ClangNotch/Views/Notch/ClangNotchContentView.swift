@@ -55,6 +55,8 @@ struct ClangNotchContentView: View {
     @State private var showStartupGlow = false
     @State private var startupGlowTask: Task<Void, Never>?
     @State private var showQuestionNotice = false
+    /// The 질문 드롭다운 grown with its 확대 버튼 (Claude questions only).
+    @State private var questionExpanded = false
     @State private var codexInputRequest: CodexInputRequest?
     @State private var claudeInputRequest: ClaudeInputRequest?
     /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
@@ -385,6 +387,15 @@ struct ClangNotchContentView: View {
             // Conditional insertion here made the open header lay out from one side first.
             .frame(width: notchVM.notchSize.width,
                    height: isExpanded ? notchVM.notchSize.height : nil, alignment: .top)
+            .overlay(alignment: .bottomTrailing) {
+                if showsQuestionResizeHandle {
+                    CornerResizeHandle(cornerRadius: cornerRadiusInsets.opened.bottom) { toggleQuestionExpanded() }
+                        // In the surface's own corner: its sides sit the top corner radius in.
+                        .padding(.trailing, cornerRadiusInsets.opened.top)
+                        .help(questionExpanded ? L("작게", "Smaller") : L("크게", "Larger"))
+                        .transition(.opacity)
+                }
+            }
             .contentShape(
                 NotchShape(
                     topCornerRadius: topCornerRadius,
@@ -1591,20 +1602,23 @@ struct ClangNotchContentView: View {
         codexInputRequest == nil ? .orange : codexGlowColor
     }
 
+    /// Type size in the 질문 드롭다운: larger once it is enlarged, so the extra room reads.
+    private var questionScale: CGFloat { questionExpanded ? 1.4 : 1 }
+
     private var questionHeader: some View {
         HStack(spacing: 10) {
             Circle()
                 .fill(questionNoticeColor)
-                .frame(width: 12, height: 12)
+                .frame(width: 12 * questionScale, height: 12 * questionScale)
                 .shadow(color: questionNoticeColor.opacity(0.6), radius: 4)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Waiting for Your Answer")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13 * questionScale, weight: .semibold))
                     .foregroundColor(.white)
 
                 Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
-                    .font(.system(size: 11))
+                    .font(.system(size: 11 * questionScale))
                     .foregroundColor(.white.opacity(0.7))
             }
 
@@ -1614,7 +1628,7 @@ struct ClangNotchContentView: View {
                 goToAskingSession()
             } label: {
                 Label(askingSessionOpenTitle, systemImage: "arrow.up.forward.app")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 10 * questionScale, weight: .medium))
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
             }
@@ -1623,7 +1637,7 @@ struct ClangNotchContentView: View {
             .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
 
             Button { dismissQuestionNotice() } label: {
-                Image(systemName: "xmark").font(.system(size: 10))
+                Image(systemName: "xmark").font(.system(size: 10 * questionScale))
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
@@ -1672,13 +1686,29 @@ struct ClangNotchContentView: View {
             } else if let request = claudeInputRequest {
                 ScrollView(.vertical) {
                     QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
-                                        onSubmit: claudeQuestionAnswer)
+                                        onSubmit: claudeQuestionAnswer, scale: questionScale)
                         .id(request.id)
                 }
                 .scrollIndicators(.visible)
             }
         }
         .padding(.top, 10)
+    }
+
+    /// The 질문 드롭다운's 크기 손잡이: only Claude questions can be answered here, so only
+    /// they get the room for it.
+    private var showsQuestionResizeHandle: Bool {
+        notchVM.notchState == .peeking && showQuestionNotice && !showPermissionNotice
+            && claudeInputRequest.map { !$0.isWrapUp } == true
+    }
+
+    private func toggleQuestionExpanded() {
+        questionExpanded.toggle()
+        if questionExpanded {
+            notchVM.resizePeek(to: expandedQuestionSize())
+        } else if let request = claudeInputRequest {
+            triggerClaudeInputNotice(request)
+        }
     }
 
     struct CodexUsageNotchSection: View {
@@ -1818,6 +1848,8 @@ struct ClangNotchContentView: View {
         /// terminal (it looked like one before and did nothing). `openTitle` names where.
         var openTitle: String? = nil
         var onOpen: (() -> Void)? = nil
+        /// The enlarged 질문 드롭다운 draws everything this much bigger.
+        var scale: CGFloat = 1
         @State private var picks: [Int: Set<Int>] = [:]
 
         /// One single-choice question needs no Send: the tap is the answer.
@@ -1830,14 +1862,14 @@ struct ClangNotchContentView: View {
         }
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 10 * scale) {
                 ForEach(Array(questions.enumerated()), id: \.offset) { index, question in
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 5 * scale) {
                         Text(question.multiSelect ? L("\(question.header) · 복수 선택", "\(question.header) · multiple choice") : question.header)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10 * scale, weight: .semibold))
                             .foregroundColor(accentColor)
                         Text(question.question)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11 * scale, weight: .medium))
                             .foregroundColor(.white)
                         ForEach(Array(question.options.enumerated()), id: \.offset) { optionIndex, option in
                             if onSubmit != nil {
@@ -1861,7 +1893,7 @@ struct ClangNotchContentView: View {
 
                 if questions.isEmpty {
                     Text(L("질문 내용은 \(sourceName)에서 확인해 주세요.", "See \(sourceName) for the question."))
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * scale))
                         .foregroundColor(.white.opacity(0.7))
                 }
                 HStack {
@@ -1869,7 +1901,7 @@ struct ClangNotchContentView: View {
                         Button(action: onOpen) {
                             Label(openTitle ?? L("\(sourceName)에서 응답", "Answer in \(sourceName)"),
                                   systemImage: "arrow.up.right.square")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11 * scale, weight: .semibold))
                                 .foregroundColor(accentColor)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
@@ -1881,14 +1913,14 @@ struct ClangNotchContentView: View {
                         Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
                                               : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
                               systemImage: "arrow.up.right.square")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 10 * scale, weight: .medium))
                             .foregroundColor(accentColor.opacity(0.8))
                     }
                     Spacer(minLength: 0)
                     if onSubmit != nil, !answersOnTap {
                         Button(action: submit) {
                             Text(L("보내기", "Send"))
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 11 * scale, weight: .semibold))
                                 .foregroundColor(canSend ? .black : .white.opacity(0.4))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 5)
@@ -1904,13 +1936,13 @@ struct ClangNotchContentView: View {
         }
 
         private func optionText(_ option: AgentInputOption) -> some View {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2 * scale) {
                 Text(option.label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10 * scale, weight: .semibold))
                     .foregroundColor(.white.opacity(0.9))
                 if !option.description.isEmpty {
                     Text(option.description)
-                        .font(.system(size: 10))
+                        .font(.system(size: 10 * scale))
                         .foregroundColor(.white.opacity(0.6))
                 }
             }
@@ -1919,18 +1951,18 @@ struct ClangNotchContentView: View {
         private func optionButton(_ option: AgentInputOption, picked: Bool, multiSelect: Bool,
                                   action: @escaping () -> Void) -> some View {
             Button(action: action) {
-                HStack(alignment: .top, spacing: 7) {
+                HStack(alignment: .top, spacing: 7 * scale) {
                     Image(systemName: multiSelect ? (picked ? "checkmark.square.fill" : "square")
                                                   : (picked ? "largecircle.fill.circle" : "circle"))
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * scale))
                         .foregroundColor(picked ? accentColor : .white.opacity(0.45))
                         .padding(.top, 1)
                     optionText(option)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .padding(.horizontal, 8 * scale)
+                .padding(.vertical, 6 * scale)
+                .background(RoundedRectangle(cornerRadius: 7 * scale, style: .continuous)
                     .fill(picked ? accentColor.opacity(0.16) : Color.white.opacity(0.05)))
                 .contentShape(Rectangle())
             }
@@ -2224,6 +2256,8 @@ struct ClangNotchContentView: View {
     }
 
     private func triggerClaudeInputNotice(_ request: ClaudeInputRequest) {
+        // A new question starts at the usual size.
+        if request.id != claudeInputRequest?.id { questionExpanded = false }
         claudeInputRequest = request
         codexInputRequest = nil
 
@@ -2253,6 +2287,11 @@ struct ClangNotchContentView: View {
         // The 권한 드롭다운 has a deadline; the question shows once it's gone.
         guard !showPermissionNotice else { return }
         resetClosedJellyReveal()
+        // A re-fit (answer buttons arriving) keeps a dropdown the user made bigger.
+        if questionExpanded, sourceName == "Claude", notchVM.notchState == .peeking {
+            notchVM.resizePeek(to: expandedQuestionSize())
+            return
+        }
         notchVM.peek(duration: nil, additionalHeight: additionalHeight, width: openNotchSize.width)
     }
 
@@ -2300,6 +2339,7 @@ struct ClangNotchContentView: View {
 
     private func dismissQuestionNotice() {
         showQuestionNotice = false
+        questionExpanded = false
         if notchVM.notchState == .peeking {
             restorePeek()
         }
