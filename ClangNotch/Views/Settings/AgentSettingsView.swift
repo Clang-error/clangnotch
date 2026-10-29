@@ -27,10 +27,15 @@ public struct AgentSettingsView: View {
                 .tabItem {
                     Label(L("텔레메트리", "Telemetry"), systemImage: "waveform.path.ecg")
                 }
+
+            AboutSettingsTab(settings: settings)
+                .tabItem {
+                    Label(L("정보", "About"), systemImage: "info.circle")
+                }
         }
         // Rebuilds every tab when the language changes; the picker lives on the first tab.
         .id(settings.settingsLanguage)
-        .frame(width: 480, height: 560)
+        .frame(width: 600, height: 560)
     }
 }
 
@@ -62,7 +67,6 @@ private struct SettingToggle: View {
 
 struct AppGeneralSettingsTab: View {
     @ObservedObject var settings: AppSettings
-    @ObservedObject private var updates = UpdateChecker.shared
     @State private var launchAtLogin = LoginItem.isEnabled
 
     var body: some View {
@@ -99,6 +103,61 @@ struct AppGeneralSettingsTab: View {
                               isOn: $settings.batterySaverEnabled)
             } header: {
                 Text(L("성능", "Performance"))
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+// MARK: - About
+
+struct AboutSettingsTab: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject private var updates = UpdateChecker.shared
+    @State private var copied = false
+
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 6) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 96, height: 96)
+                        // The icon file is a full square (macOS 26 masks it itself); give it
+                        // the same continuous rounded corners here.
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    Text("ClangNotch")
+                        .font(.title2.weight(.semibold))
+                    // Click to copy, for bug reports.
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(version, forType: .string)
+                        copied = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.2))
+                            copied = false
+                        }
+                    } label: {
+                        Text(copied ? L("복사됨", "Copied") : L("버전 \(version)", "Version \(version)"))
+                            .monospacedDigit()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help(L("눌러서 복사", "Click to copy"))
+                    Text(L("개발자 Clang_error", "Developer: Clang_error"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
             }
 
             Section {
