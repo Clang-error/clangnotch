@@ -1475,7 +1475,8 @@ struct ClangNotchContentView: View {
 
     private var usageOverview: some View {
         VStack(spacing: 12) {
-            if settings.showSourceClaudeCode {
+            // The demo's Codex-only scene has no Claude card at all.
+            if settings.showSourceClaudeCode && !(DemoMode.isActive && DemoMode.scene == .codex) {
                 NotchSection {
                     if settings.enableClaudeUsage {
                         ClaudeUsageNotchSection()
@@ -2898,6 +2899,8 @@ struct ClangNotchContentView: View {
 
     /// App-level: the session's terminal or editor is the frontmost app.
     private func isSessionAppFrontmost(_ source: DoneFlash.Source, _ sessionId: String) -> Bool {
+        // Demo sessions have no app of their own; whatever is in front isn't theirs.
+        guard !DemoMode.isActive else { return false }
         guard let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
         return sessionDestination(source, sessionId)?.bundleIdentifiers.contains(front) == true
     }

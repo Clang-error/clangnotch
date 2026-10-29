@@ -144,6 +144,11 @@ final class PermissionRequestCenter: ObservableObject {
     /// `answers` maps each question's text to its option label, or to a list of labels
     /// for a multi-select question — Claude Code takes them as the tool's own input.
     func answerQuestion(sessionId: String, answers: [String: Any]) {
+        if DemoMode.isActive {
+            answerableQuestionSessions.remove(sessionId)
+            DemoDriver.shared.answer(sessionId: sessionId)
+            return
+        }
         guard let held = heldQuestions[sessionId] else { return }
         var input = held.input
         input["answers"] = answers
@@ -223,5 +228,14 @@ final class PermissionRequestCenter: ObservableObject {
             if let value = input[key] as? String { return value }
         }
         return input.values.compactMap { $0 as? String }.first ?? ""
+    }
+}
+
+// MARK: - Demo
+
+extension PermissionRequestCenter {
+    /// `--demo`: the demo's Claude question can be answered from the notch, as if its hook were held.
+    func demoSetAnswerable(_ sessionIds: Set<String>) {
+        if answerableQuestionSessions != sessionIds { answerableQuestionSessions = sessionIds }
     }
 }

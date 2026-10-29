@@ -111,6 +111,7 @@ final class ClaudeUsageManager: ObservableObject {
 
     /// Start automatic refresh polling.
     func startRefreshing() {
+        guard !DemoMode.isActive else { return }
         stopRefreshing()
         Task { await fetchUsage(interactive: false) }
         scheduleNextRefresh()
@@ -672,5 +673,16 @@ enum ClaudeOAuthToken {
         } catch {
             return false
         }
+    }
+}
+
+// MARK: - Demo
+
+extension ClaudeUsageManager {
+    /// `--demo`: made-up quota numbers, so the card shows without a network call.
+    func demoApply(_ usage: ClaudeUsageData) {
+        usageData = usage
+        isConfigured = true
+        lastError = nil
     }
 }

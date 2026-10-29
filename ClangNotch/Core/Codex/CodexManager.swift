@@ -371,7 +371,7 @@ final class CodexManager: ObservableObject {
     // MARK: - Session Scanning
 
     private func startSessionScanning() {
-        guard sessionScanTimer == nil else { return }
+        guard sessionScanTimer == nil, !DemoMode.isActive else { return }
         if let port = UInt16(exactly: AppSettings.shared.telemetryOtlpPort) {
             do {
                 try PermissionHooks.install(in: codexDir.appendingPathComponent("hooks.json"), port: port, maxTime: 35)
@@ -393,7 +393,7 @@ final class CodexManager: ObservableObject {
     /// The local Codex App Server returns the same authenticated account bucket
     /// used by Codex Desktop, without spending any model usage.
     private func startRateLimitRefreshing() {
-        guard rateLimitRefreshTimer == nil else { return }
+        guard rateLimitRefreshTimer == nil, !DemoMode.isActive else { return }
         refreshRateLimitsNow()
         rateLimitRefreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -1314,5 +1314,23 @@ final class CodexManager: ObservableObject {
         for sessionId in Array(sessionWatchers.keys) {
             stopWatchingSession(id: sessionId)
         }
+    }
+}
+
+// MARK: - Demo
+
+extension CodexManager {
+    /// `--demo`: every session comes from `DemoDriver` instead of a rollout file.
+    func demoApply(sessions: [CodexSession], states: [String: CodexState], rateLimits: CodexRateLimits) {
+        availableSessions = sessions
+        sessionStates = states
+        selectedSession = sessions.first
+        state = sessions.first.flatMap { states[$0.id] } ?? CodexState()
+        self.rateLimits = rateLimits
+    }
+
+    func demoComplete(_ turn: CompletedTurn) {
+        lastCompletedTurn = turn
+        lastTurnCompletedAt = Date()
     }
 }

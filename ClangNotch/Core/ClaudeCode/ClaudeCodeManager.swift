@@ -445,6 +445,8 @@ final class ClaudeCodeManager: ObservableObject {
     // MARK: - Session Scanning
 
     private func startSessionScanning() {
+        // The demo never reads real transcripts or touches ~/.claude/settings.json.
+        guard !DemoMode.isActive else { return }
         if AppSettings.shared.enableClaudeCodeJSONL,
            let port = UInt16(exactly: AppSettings.shared.telemetryOtlpPort) {
             do {
@@ -1645,5 +1647,22 @@ final class ClaudeCodeManager: ObservableObject {
         if let prompt = input["prompt"] as? String { return String(prompt.prefix(50)) }
 
         return nil
+    }
+}
+
+// MARK: - Demo
+
+extension ClaudeCodeManager {
+    /// `--demo`: every session comes from `DemoDriver` instead of a transcript.
+    func demoApply(sessions: [ClaudeSession], states: [String: ClaudeCodeState]) {
+        availableSessions = sessions
+        sessionStates = states
+        selectedSession = sessions.first
+        state = sessions.first.flatMap { states[$0.id] } ?? ClaudeCodeState()
+    }
+
+    func demoComplete(_ turn: CompletedTurn) {
+        lastCompletedTurn = turn
+        lastTurnCompletedAt = Date()
     }
 }

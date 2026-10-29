@@ -1137,3 +1137,12 @@ private extension Dictionary where Key == String, Value == TelemetryAttributeVal
         return nil
     }
 }
+
+// MARK: - Demo
+
+extension TelemetryCoordinator {
+    /// `--demo`: the header reads "Listening" without binding the real instance's port.
+    func demoMarkRunning() {
+        state = .running
+    }
+}

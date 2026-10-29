@@ -9,6 +9,16 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
 
         if TWorldCommand.runIfRequested() { return }
 
+        // Recording mode: only the notch and the scripted sessions. No telemetry server
+        // (the real instance owns port 4318), no hooks, no update checks.
+        if DemoMode.isActive {
+            Task { @MainActor in
+                UICoordinator.shared.setupUI()
+                DemoDriver.shared.start()
+            }
+            return
+        }
+
         Task { @MainActor in
             UICoordinator.shared.setupUI()
         }
