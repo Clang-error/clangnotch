@@ -1,12 +1,9 @@
 import Foundation
 import Network
-import zlib
 
-
-final class OTLPHTTPServer {
+/// Plain HTTP on 127.0.0.1 for the hook curls: one request per connection, `Content-Length` bodies.
+final class HookHTTPServer {
     enum Route {
-        case logs
-        case metrics
         case claudeHook
         case permissionHook
         case other
@@ -23,7 +20,7 @@ final class OTLPHTTPServer {
     var onError: ((String) -> Void)?
 
     private var listener: NWListener?
-    private let queue = DispatchQueue(label: "com.clangerror.ClangNotch.otlp.server", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.clangerror.ClangNotch.hook.server", qos: .userInitiated)
     private var activeHandlers: [ObjectIdentifier: HTTPConnectionHandler] = [:]
 
     func start(port: UInt16) throws {
@@ -45,7 +42,7 @@ final class OTLPHTTPServer {
 
     private func handleConnection(_ connection: NWConnection) {
         let handler = HTTPConnectionHandler(connection: connection) { [weak self] request in
-            debugLog("[OTLP] Received request: \(request.route), body size: \(request.body.count)")
+            debugLog("[Hooks] Received request: \(request.route), body size: \(request.body.count)")
             self?.onRequest?(request)
         } onError: { [weak self] message in
             self?.onError?(message)
@@ -62,21 +59,20 @@ final class OTLPHTTPServer {
 
 private final class HTTPConnectionHandler {
     private let connection: NWConnection
-    private let onRequest: (OTLPHTTPServer.Request) -> Void
+    private let onRequest: (HookHTTPServer.Request) -> Void
     private let onError: (String) -> Void
     private let onComplete: (HTTPConnectionHandler) -> Void
 
     private var buffer = Data()
     private var headerParsed = false
     private var contentLength: Int = 0
-    private var route: OTLPHTTPServer.Route = .other
-    private var contentEncoding: String?
+    private var route: HookHTTPServer.Route = .other
     private var didFinish = false
     private var heldReply: HookReply?
 
     init(
         connection: NWConnection,
-        onRequest: @escaping (OTLPHTTPServer.Request) -> Void,
+        onRequest: @escaping (HookHTTPServer.Request) -> Void,
         onError: @escaping (String) -> Void,
         onComplete: @escaping (HTTPConnectionHandler) -> Void
     ) {
@@ -100,7 +96,7 @@ private final class HTTPConnectionHandler {
             }
 
             if let error {
-                self.onError("OTLP HTTP receive error: \(error)")
+                self.onError("Hook HTTP receive error: \(error)")
                 self.finish()
                 return
             }
@@ -128,15 +124,14 @@ private final class HTTPConnectionHandler {
 
         let body = Data(buffer.prefix(contentLength))
         buffer.removeSubrange(0..<contentLength)
-        let decodedBody = decodeBodyIfNeeded(body)
         if route == .permissionHook {
             // Held open: the answer comes from the notch, or nothing after its time limit.
             let reply = HookReply { [weak self] body in self?.sendResponseAndFinish(status: 200, body: body) }
             heldReply = reply
-            onRequest(.init(route: route, body: decodedBody, reply: reply))
+            onRequest(.init(route: route, body: body, reply: reply))
             return
         }
-        onRequest(.init(route: route, body: decodedBody))
+        onRequest(.init(route: route, body: body))
         sendResponseAndFinish(status: 200)
     }
 
@@ -164,9 +159,6 @@ private final class HTTPConnectionHandler {
             if trimmed.lowercased().hasPrefix("content-length:") {
                 let value = trimmed.split(separator: ":").dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespaces)
                 contentLength = Int(value) ?? 0
-            } else if trimmed.lowercased().hasPrefix("content-encoding:") {
-                let value = trimmed.split(separator: ":").dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespaces)
-                contentEncoding = value.lowercased()
             }
         }
     }
@@ -181,70 +173,13 @@ private final class HTTPConnectionHandler {
         }
         connection.send(content: response, completion: .contentProcessed { [weak self] error in
             if let error {
-                self?.onError("OTLP HTTP send error: \(error)")
+                self?.onError("Hook HTTP send error: \(error)")
             }
             self?.finish()
         })
     }
 
-    private func decodeBodyIfNeeded(_ data: Data) -> Data {
-        if shouldGunzip(data), let inflated = gunzip(data) {
-            return inflated
-        }
-        return data
-    }
-
-    private func shouldGunzip(_ data: Data) -> Bool {
-        if contentEncoding?.contains("gzip") == true {
-            return true
-        }
-        return data.starts(with: [0x1f, 0x8b])
-    }
-
-    private func gunzip(_ data: Data) -> Data? {
-        var stream = z_stream()
-        var status = inflateInit2_(&stream, 47, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
-        guard status == Z_OK else { return nil }
-        defer { inflateEnd(&stream) }
-
-        return data.withUnsafeBytes { rawBuffer in
-            guard let baseAddress = rawBuffer.bindMemory(to: Bytef.self).baseAddress else { return nil }
-            stream.next_in = UnsafeMutablePointer<Bytef>(mutating: baseAddress)
-            stream.avail_in = UInt32(data.count)
-
-            var output = Data()
-            let chunkSize = 64 * 1024
-            var buffer = [UInt8](repeating: 0, count: chunkSize)
-
-            while true {
-                status = buffer.withUnsafeMutableBytes { bufferPtr in
-                    stream.next_out = bufferPtr.bindMemory(to: Bytef.self).baseAddress
-                    stream.avail_out = UInt32(chunkSize)
-                    return inflate(&stream, Z_NO_FLUSH)
-                }
-
-                let produced = chunkSize - Int(stream.avail_out)
-                if produced > 0 {
-                    output.append(buffer, count: produced)
-                }
-
-                if status == Z_STREAM_END {
-                    return output
-                }
-                if status != Z_OK {
-                    return nil
-                }
-            }
-        }
-    }
-
-    private static func route(for path: String) -> OTLPHTTPServer.Route {
-        if path.hasSuffix("/v1/logs") {
-            return .logs
-        }
-        if path.hasSuffix("/v1/metrics") {
-            return .metrics
-        }
+    private static func route(for path: String) -> HookHTTPServer.Route {
         if path.hasSuffix("/claude-hook") {
             return .claudeHook
         }

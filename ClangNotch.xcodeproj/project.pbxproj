@@ -6,11 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		4F49B1C02F0C300000FAB5C7 /* OpenTelemetryProtocolExporterHTTP in Frameworks */ = {isa = PBXBuildFile; productRef = 4F49B1BF2F0C300000FAB5C7 /* OpenTelemetryProtocolExporterHTTP */; };
-		4F49B1C22F0C300000FAB5C7 /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = 4F49B1C12F0C300000FAB5C7 /* SwiftProtobuf */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		4F49B1A92F0C2FB900FAB5C7 /* ClangNotch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClangNotch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -28,8 +23,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4F49B1C02F0C300000FAB5C7 /* OpenTelemetryProtocolExporterHTTP in Frameworks */,
-				4F49B1C22F0C300000FAB5C7 /* SwiftProtobuf in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,10 +64,6 @@
 				4F49B1AB2F0C2FB900FAB5C7 /* ClangNotch */,
 			);
 			name = ClangNotch;
-			packageProductDependencies = (
-				4F49B1BF2F0C300000FAB5C7 /* OpenTelemetryProtocolExporterHTTP */,
-				4F49B1C12F0C300000FAB5C7 /* SwiftProtobuf */,
-			);
 			productName = ClangNotch;
 			productReference = 4F49B1A92F0C2FB900FAB5C7 /* ClangNotch.app */;
 			productType = "com.apple.product-type.application";
@@ -103,10 +92,6 @@
 			);
 			mainGroup = 4F49B1A02F0C2FB900FAB5C7;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				4F49B1BD2F0C300000FAB5C7 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */,
-				4F49B1BE2F0C300000FAB5C7 /* XCRemoteSwiftPackageReference "swift-protobuf" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4F49B1AA2F0C2FB900FAB5C7 /* Products */;
 			projectDirPath = "";
@@ -344,37 +329,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		4F49B1BD2F0C300000FAB5C7 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/open-telemetry/opentelemetry-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
-		4F49B1BE2F0C300000FAB5C7 /* XCRemoteSwiftPackageReference "swift-protobuf" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-protobuf";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.28.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		4F49B1BF2F0C300000FAB5C7 /* OpenTelemetryProtocolExporterHTTP */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4F49B1BD2F0C300000FAB5C7 /* XCRemoteSwiftPackageReference "opentelemetry-swift" */;
-			productName = OpenTelemetryProtocolExporterHTTP;
-		};
-		4F49B1C12F0C300000FAB5C7 /* SwiftProtobuf */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4F49B1BE2F0C300000FAB5C7 /* XCRemoteSwiftPackageReference "swift-protobuf" */;
-			productName = SwiftProtobuf;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4F49B1A12F0C2FB900FAB5C7 /* Project object */;
 }

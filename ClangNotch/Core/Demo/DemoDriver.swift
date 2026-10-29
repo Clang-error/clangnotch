@@ -40,7 +40,6 @@ final class DemoDriver {
 
     func start() {
         guard task == nil else { return }
-        TelemetryCoordinator.shared.demoMarkRunning()
         if DemoMode.scene == .tools {
             applyTools()
             return

@@ -92,7 +92,7 @@ final class RemoteClaudeManager: ObservableObject {
     }
 
     private func openTunnel(_ host: String, remoteHome: String) {
-        let port = AppSettings.shared.telemetryOtlpPort
+        let port = AppSettings.shared.hookPort
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         process.arguments = Self.baseOptions + [

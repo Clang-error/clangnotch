@@ -1,7 +1,6 @@
 import SwiftUI
 
 public struct AgentSettingsView: View {
-    @EnvironmentObject var telemetryCoordinator: TelemetryCoordinator
     @StateObject private var settings = AppSettings.shared
 
     public init() {}
@@ -21,11 +20,6 @@ public struct AgentSettingsView: View {
             AgentsSettingsTab(settings: settings)
                 .tabItem {
                     Label(L("에이전트", "Agents"), systemImage: "brain")
-                }
-
-            TelemetryStatusTab(settings: settings, telemetryCoordinator: telemetryCoordinator)
-                .tabItem {
-                    Label(L("텔레메트리", "Telemetry"), systemImage: "waveform.path.ecg")
                 }
 
             AboutSettingsTab(settings: settings)
@@ -85,10 +79,6 @@ struct AppGeneralSettingsTab: View {
                     .onChange(of: launchAtLogin) { _, newValue in
                         LoginItem.setEnabled(newValue)
                     }
-                SettingToggle(L("실행할 때 알림 수신기 켜기", "Start the alert receiver on launch"),
-                              L("권한·질문 드롭다운과 원격 SSH 세션이 이걸로 들어옵니다. 끄면 오지 않습니다.",
-                                "Permission and question dropdowns and remote SSH sessions arrive through it."),
-                              isOn: $settings.telemetryAutoStart)
                 SettingToggle(L("메뉴 막대 아이콘 표시", "Show menu bar icon"),
                               L("세션 수·키보드 잠금·설정을 메뉴 막대에서 열기", "Sessions, keyboard lock and settings from the menu bar"),
                               isOn: $settings.showMenuBarItem)
@@ -334,7 +324,6 @@ struct NotchSettingsTab: View {
 struct AgentsSettingsTab: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject private var remote = RemoteClaudeManager.shared
-    @ObservedObject private var telemetry = TelemetryCoordinator.shared
 
     /// One switch per agent: showing it in the notch and reading its session logs go together.
     private var claudeEnabled: Binding<Bool> {
@@ -374,19 +363,10 @@ struct AgentsSettingsTab: View {
                               L("지금 속도로 쓰면 리셋 때 몇 %일지 사용량 막대에 회색 눈금과 한 줄로 보여 줍니다.",
                                 "Shows where usage lands at reset at the current pace, as a grey tick and a line under each usage bar."),
                               isOn: $settings.usagePaceEnabled)
-                Toggle(L("토큰 수 표시", "Show token count"), isOn: $settings.showNotchTokenCount)
                 SettingToggle(L("컨텍스트 막대 표시", "Show context bar"),
                               L("세션 화면 맨 위에 컨텍스트가 얼마나 찼는지 한 줄로 보여 줍니다. 크기(200k·1M 등)는 세션마다 알아서 잡습니다.",
                                 "A thin line atop the session view showing how full its context is. The window size is detected per session."),
                               isOn: $settings.showContextProgress)
-                Stepper(value: $settings.recentToolCallsLimit, in: 5...50, step: 5) {
-                    HStack {
-                        Text(L("보관할 최근 툴 호출 수", "Recent tool calls to keep"))
-                        Spacer()
-                        Text("\(settings.recentToolCallsLimit)")
-                            .foregroundStyle(.secondary)
-                    }
-                }
             } header: {
                 Text(L("공통 · Claude Code · Codex", "Shared · Claude Code · Codex"))
             }
@@ -418,10 +398,6 @@ struct AgentsSettingsTab: View {
                 ForEach(remote.statuses.keys.sorted(), id: \.self) { host in
                     LabeledContent(host, value: remote.statuses[host] ?? "")
                 }
-                if telemetry.state != .running {
-                    Text(L("텔레메트리 수신기가 꺼져 있어 원격 이벤트를 받을 수 없습니다.", "The telemetry receiver is off, so remote events can't arrive."))
-                        .foregroundStyle(.orange)
-                }
             } header: {
                 Text(L("Claude Code · 원격 (SSH)", "Claude Code · Remote (SSH)"))
             }
@@ -437,73 +413,6 @@ struct AgentsSettingsTab: View {
     }
 }
 
-// MARK: - Telemetry
-
-struct TelemetryStatusTab: View {
-    @ObservedObject var settings: AppSettings
-    @ObservedObject var telemetryCoordinator: TelemetryCoordinator
-
-    var body: some View {
-        Form {
-            Section {
-                HStack {
-                    Text(L("OTLP HTTP 포트", "OTLP HTTP Port"))
-                    Spacer()
-                    TextField(L("포트", "Port"), value: $settings.telemetryOtlpPort, format: .number)
-                        .frame(width: 80)
-                        .multilineTextAlignment(.trailing)
-                }
-            } header: {
-                Text(L("수신기", "Receiver"))
-            }
-
-            Section {
-                Toggle(L("알 수 없음", "Unknown"), isOn: $settings.showSourceUnknown)
-            } header: {
-                Text(L("출처", "Sources"))
-            }
-
-            Section {
-                HStack {
-                    TelemetryStatusIndicatorView(state: telemetryCoordinator.state)
-                    Text(stateText)
-                        .font(.system(size: 12))
-
-                    Spacer()
-
-                    if telemetryCoordinator.state == .running {
-                        Button(L("중지", "Stop")) {
-                            Task { await telemetryCoordinator.stop() }
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.red)
-                    } else if telemetryCoordinator.state == .stopped {
-                        Button(L("시작", "Start")) {
-                            Task { await telemetryCoordinator.start() }
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.green)
-                    }
-                }
-            } header: {
-                Text(L("상태", "Status"))
-            }
-        }
-        .formStyle(.grouped)
-        .padding()
-    }
-
-    private var stateText: String {
-        switch telemetryCoordinator.state {
-        case .stopped: return L("중지됨", "Stopped")
-        case .starting: return L("시작 중", "Starting")
-        case .running: return L("수신 중", "Listening")
-        case .error(let message): return L("오류: ", "Error: ") + message
-        }
-    }
-}
-
 #Preview {
     AgentSettingsView()
-        .environmentObject(TelemetryCoordinator.shared)
 }

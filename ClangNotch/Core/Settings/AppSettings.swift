@@ -5,15 +5,11 @@ import SwiftUI
 public final class AppSettings: ObservableObject {
     public static let shared = AppSettings()
 
-    @AppStorage("recentToolCallsLimit") public var recentToolCallsLimit: Int = 10
-    @AppStorage("forceNotchMode") public var forceNotchMode: Bool = true  // Force notch UI for testing
-    @AppStorage("telemetryOtlpPort") public var telemetryOtlpPort: Int = 4318
-    @AppStorage("telemetryAutoStart") public var telemetryAutoStart: Bool = true
+    /// `HookReceiver`'s port. The key predates the receiver, so a changed port carries over.
+    @AppStorage("telemetryOtlpPort") public var hookPort: Int = 4318
     @AppStorage("showMenuBarItem") public var showMenuBarItem: Bool = false
-    @AppStorage("showNotchTokenCount") public var showNotchTokenCount: Bool = true
     @AppStorage("showSourceCodex") public var showSourceCodex: Bool = true
     @AppStorage("showSourceClaudeCode") public var showSourceClaudeCode: Bool = true
-    @AppStorage("showSourceUnknown") public var showSourceUnknown: Bool = false
 
     // Clipboard history (NSPasteboard polling, text-only, memory-only)
     @AppStorage("enableClipboardHistory") public var enableClipboardHistory: Bool = true
@@ -108,7 +104,7 @@ public final class AppSettings: ObservableObject {
     // Claude Usage Quota Tracking
     @AppStorage("enableClaudeUsage") public var enableClaudeUsage: Bool = false
     @AppStorage("claudeUsageRefreshMode") public var claudeUsageRefreshMode: String = "smart"  // "smart" or "fixed"
-    @AppStorage("claudeUsageRefreshInterval") public var claudeUsageRefreshInterval: Int = 180  // seconds
+    @AppStorage("claudeUsageRefreshInterval") public var claudeUsageRefreshInterval: Int = 300  // seconds
 
     /// App copy language — settings window, notch and menu bar popover: "ko" (default) or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.

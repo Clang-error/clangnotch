@@ -35,7 +35,6 @@ enum NotchMode: String, CaseIterable, Identifiable {
 }
 
 struct ClangNotchContentView: View {
-    @EnvironmentObject var telemetryCoordinator: TelemetryCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var notchVM = NotchViewModel()
     @StateObject private var settings = AppSettings.shared
@@ -53,15 +52,8 @@ struct ClangNotchContentView: View {
     @State private var hoverTask: Task<Void, Never>?
     @State private var hoverExitNotBefore = Date.distantPast
     @State private var isMenuTracking = false
-    @State private var sessionStart = Date()
-    @State private var showActivityGlow = false
-    @State private var glowTask: Task<Void, Never>?
-    @State private var clearTask: Task<Void, Never>?
-    @State private var visibleToolCalls: [ToolCall] = []
     @State private var showStartupGlow = false
     @State private var startupGlowTask: Task<Void, Never>?
-    @State private var showErrorGlow = false
-    @State private var errorGlowTask: Task<Void, Never>?
     @State private var showQuestionNotice = false
     @State private var codexInputRequest: CodexInputRequest?
     @State private var claudeInputRequest: ClaudeInputRequest?
@@ -78,7 +70,6 @@ struct ClangNotchContentView: View {
     @State private var doneNoticeTask: Task<Void, Never>?
     /// A finish that came while another dropdown held the notch; shown once that one goes.
     @State private var pendingDoneNotice: DoneNotice?
-    @State private var toolCallUpdateTask: Task<Void, Never>?
     @State private var showSpeedNotice = false
     @State private var speedPeekTask: Task<Void, Never>?
     @State private var speedDismissTask: Task<Void, Never>?
@@ -153,57 +144,12 @@ struct ClangNotchContentView: View {
         notchVM.notchState == .open || notchVM.notchState == .peeking
     }
 
-    private var recentTokenTotal: Int {
-        if telemetryCoordinator.sessionTokenTotal > 0 {
-            return telemetryCoordinator.sessionTokenTotal
-        }
-        return visibleToolCalls.compactMap { $0.tokenCount }.reduce(0, +)
-    }
-
     private var topCornerRadius: CGFloat {
         isExpanded ? cornerRadiusInsets.opened.top : cornerRadiusInsets.closed.top
     }
 
     private var bottomCornerRadius: CGFloat {
         isExpanded ? cornerRadiusInsets.opened.bottom : cornerRadiusInsets.closed.bottom
-    }
-
-    private var activityGlowSource: TelemetrySource {
-        // Only use a source if it's visible in settings
-        if let firstSource = visibleToolCalls.first?.source {
-            return firstSource
-        }
-        // Fallback to telemetry source only if that source is visible
-        let source = telemetryCoordinator.telemetrySource
-        return isSourceVisible(source) ? source : .claudeCode
-    }
-
-    private var activityGlowColor: Color {
-        switch activityGlowSource {
-        case .codex:
-            return codexGlowColor
-        case .claudeCode, .unknown:
-            return claudeGlowColor
-        }
-    }
-
-    private var activityBrightColor: Color {
-        switch activityGlowSource {
-        case .codex:
-            return codexBrightColor
-        case .claudeCode, .unknown:
-            return claudeBrightColor
-        }
-    }
-
-    private var hasActiveToolCall: Bool {
-        visibleToolCalls.first?.isActive == true
-    }
-
-    /// Check if agent is active for a source that's visible in settings
-    private var isAgentActiveForVisibleSource: Bool {
-        guard telemetryCoordinator.isAgentActive else { return false }
-        return isSourceVisible(telemetryCoordinator.telemetrySource)
     }
 
     /// Determines if Claude Code has real activity (not just grace period)
@@ -231,9 +177,7 @@ struct ClangNotchContentView: View {
     /// Real work state used for the one-shot closed-notch entrance. Retained idle
     /// sessions do not retrigger it, and tool changes keep the current panel steady.
     private var hasLiveAgentActivity: Bool {
-        claudeHasRealActivity
-            || codexHasRealActivity
-            || (isAgentActiveForVisibleSource && hasActiveToolCall)
+        claudeHasRealActivity || codexHasRealActivity
     }
 
     private var hasClipboard: Bool {
@@ -281,11 +225,6 @@ struct ClangNotchContentView: View {
     /// the unlock control must never disappear while the keyboard is still blocked.
     private var hasKeyboardLock: Bool { settings.enableKeyboardLock || keyboardLockManager.isLocked }
 
-    /// Notch background: black when active, clear (invisible) when fully idle.
-    private var isTrackingPaused: Bool {
-        telemetryCoordinator.state == .stopped
-    }
-
     /// A collapse from the panel keeps the surface black until it lands on the physical notch,
     /// then drops it in one frame — it already sits under the camera housing, so no exit effect.
     private var notchBackground: Color {
@@ -321,9 +260,7 @@ struct ClangNotchContentView: View {
         if notchVM.notchState == .peeking && doneNotice != nil {
             return claudeHasRealActivity || codexHasRealActivity
         }
-        return showActivityGlow
-            || (isAgentActiveForVisibleSource && hasActiveToolCall)
-            || claudeCodeManager.hasAnySessionActivity
+        return claudeCodeManager.hasAnySessionActivity
             || (settings.showSourceCodex && codexManager.hasAnySessionActivity)
     }
 
@@ -333,7 +270,7 @@ struct ClangNotchContentView: View {
     private var tetherGlowGrowsWithSurface: Bool {
         glowExpandsFromClosed && notchVM.notchState != .closed
             && tetherMonitor.activePlaceName != nil
-            && !showStartupGlow && !showErrorGlow
+            && !showStartupGlow
     }
 
     /// Glow border overlay (extracted from the body modifier chain for type-check speed).
@@ -343,9 +280,6 @@ struct ClangNotchContentView: View {
             if showStartupGlow && notchVM.notchState == .closed {
                 NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
                                 glowColor: startupGlowColor, brightColor: startupBrightColor)
-            } else if showErrorGlow && notchVM.notchState == .closed {
-                NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
-                                glowColor: errorGlowColor, brightColor: errorBrightColor)
             } else if tetherMonitor.activePlaceName != nil {
                 // Tethering at a saved place: the glow sweeps red, agents working or not.
                 // Opening from closed, it keeps the closed sweep until the surface settles.
@@ -405,13 +339,13 @@ struct ClangNotchContentView: View {
             return codexInputRequest == nil ? claudeGlowColor : codexGlowColor
         }
         if claudeHasRealActivity {
-            return activityGlowColor
+            return claudeGlowColor
         } else if codexHasRealActivity {
             return codexGlowColor
         } else if settings.showSourceCodex && codexManager.hasAnySessionActivity && !claudeCodeManager.hasAnySessionActivity {
             return codexGlowColor
         }
-        return activityGlowColor
+        return claudeGlowColor
     }
 
     /// Determines which bright color to use based on active source
@@ -423,13 +357,13 @@ struct ClangNotchContentView: View {
             return codexInputRequest == nil ? claudeBrightColor : codexBrightColor
         }
         if claudeHasRealActivity {
-            return activityBrightColor
+            return claudeBrightColor
         } else if codexHasRealActivity {
             return codexBrightColor
         } else if settings.showSourceCodex && codexManager.hasAnySessionActivity && !claudeCodeManager.hasAnySessionActivity {
             return codexBrightColor
         }
-        return activityBrightColor
+        return claudeBrightColor
     }
 
     /// Visible notch outline for the current state; the closed body is one header tall.
@@ -538,12 +472,6 @@ struct ClangNotchContentView: View {
 
     private var notchChangesA: some View {
         notchVisual
-                .onChange(of: telemetryCoordinator.recentToolCalls.count) { _, _ in
-                    handleToolCallUpdate()
-                }
-                .onChange(of: telemetryCoordinator.recentToolCalls.first?.id) { _, _ in
-                    handleToolCallUpdate()
-                }
                 .onChange(of: notchVM.notchState) { _, newState in
                     if newState != .closed {
                         resetClosedJellyReveal()
@@ -559,25 +487,8 @@ struct ClangNotchContentView: View {
                 .onChange(of: notchVM.notchSize) { _, _ in
                     updateInteractiveRegion()
                 }
-                .onChange(of: settings.showSourceCodex) { _, _ in
-                    handleToolCallUpdate()
-                }
                 .onChange(of: settings.enableCodexJSONL) { _, enabled in
-                    codexManager.setTrackingEnabled(enabled && !isTrackingPaused)
-                }
-                // "Stopped" in the header has to mean nothing is tracked — the OTLP receiver
-                // alone stopping left the JSONL watchers lighting the notch up as Working.
-                .onChange(of: isTrackingPaused, initial: true) { _, paused in
-                    claudeCodeManager.setTrackingEnabled(!paused)
-                    if settings.enableCodexJSONL {
-                        codexManager.setTrackingEnabled(!paused, keepingUsage: true)
-                    }
-                }
-                .onChange(of: settings.showSourceClaudeCode) { _, _ in
-                    handleToolCallUpdate()
-                }
-                .onChange(of: settings.showSourceUnknown) { _, _ in
-                    handleToolCallUpdate()
+                    codexManager.setTrackingEnabled(enabled)
                 }
     }
 
@@ -613,14 +524,6 @@ struct ClangNotchContentView: View {
     private var decoratedNotch: some View {
         VStack(spacing: 0) {
             layoutChanges
-                .onChange(of: telemetryCoordinator.isAgentActive) { wasActive, isActive in
-                    if wasActive && !isActive {
-                        // Only handle completion if the source that finished is visible in settings
-                        guard isSourceVisible(telemetryCoordinator.telemetrySource) else { return }
-                        // Agent just finished - trigger completion notice and stop glows
-                        stopAllGlows()
-                    }
-                }
                 .onChange(of: hasLiveAgentActivity) { wasActive, isActive in
                     if !wasActive && isActive {
                         cancelClosedJellyDismiss()
@@ -788,7 +691,6 @@ struct ClangNotchContentView: View {
         .onDisappear {
             NotchTabShortcuts.shared.setActive(false)
             startupGlowTask?.cancel()
-            toolCallUpdateTask?.cancel()
             speedPeekTask?.cancel()
             speedDismissTask?.cancel()
             tetherNoticeTask?.cancel()
@@ -1090,7 +992,7 @@ struct ClangNotchContentView: View {
                                 .fixedSize()
                         } else if hasCurrentTool || isThinking {
                             // Source-specific indicator color
-                            let indicatorColor = isCodexActive ? codexIndicatorColor : activityGlowColor
+                            let indicatorColor = isCodexActive ? codexIndicatorColor : claudeGlowColor
                             let isActive = isCodexActive || isClaudeActive
                             if showsClaudeIcon {
                                 Image("ClaudeIcon")
@@ -1350,22 +1252,6 @@ struct ClangNotchContentView: View {
             HStack(spacing: 10) {
                 agentOverview
                 Spacer()
-                HStack(spacing: 6) {
-                    TelemetryStatusIndicatorView(state: telemetryCoordinator.state)
-                    Text(telemetryCoordinator.state.displayText)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                }
-                if telemetryCoordinator.state == .running {
-                    NotchControlButton(systemName: "stop.fill", tint: .orange) {
-                        Task { await telemetryCoordinator.stop() }
-                    }.help(L("텔레메트리 중지", "Stop telemetry"))
-                } else if telemetryCoordinator.state == .stopped {
-                    NotchControlButton(systemName: "play.fill", tint: chipAccent) {
-                        Task { await telemetryCoordinator.start() }
-                    }.help(L("텔레메트리 시작", "Start telemetry"))
-                }
                 // Apple's own mute look: the bell, struck through when the sounds are off.
                 NotchControlButton(systemName: settings.notchSoundsEnabled ? "bell" : "bell.slash",
                                    tint: settings.notchSoundsEnabled ? nil : .white.opacity(0.45)) {
@@ -1492,13 +1378,12 @@ struct ClangNotchContentView: View {
     private var overviewHasActivity: Bool {
         (settings.showSourceClaudeCode && claudeHasRealActivity)
             || codexHasRealActivity
-            || isAgentActiveForVisibleSource
     }
 
     /// 요약 줄, at the head of the open notch so it shows on every tab.
     private var agentOverview: some View {
         HStack(spacing: 12) {
-            // How many sessions are working right now; telemetry alone can light it with none.
+            // How many sessions are working right now.
             let working = (settings.showSourceClaudeCode
                            ? claudeCodeManager.availableSessions.filter { claudeCodeManager.sessionStates[$0.id]?.isActive == true }.count : 0)
                 + (settings.showSourceCodex
@@ -1649,7 +1534,7 @@ struct ClangNotchContentView: View {
                     )
                 }
 
-            // Permission badge above footer
+            // Permission badge under the session list
                 if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsNeedingPermission.isEmpty && claudeCodeManager.sessionsConfirmedNeedingPermission.isEmpty {
                     Button {
                         claudeCodeManager.focusIDE()
@@ -1661,21 +1546,6 @@ struct ClangNotchContentView: View {
                     .help(L("에디터에서 권한 확인", "Review permission in your editor"))
                 }
 
-            // Use Claude Code tokens when JSONL is source, otherwise use telemetry
-                let claudeTokens = claudeCodeManager.state.tokenUsage
-                let hasClaudeTokens = claudeTokens.inputTokens > 0 || claudeTokens.outputTokens > 0
-                let displayTokenTotal = hasClaudeTokens ? (claudeTokens.inputTokens + claudeTokens.outputTokens) : recentTokenTotal
-                let displayCacheTokens = hasClaudeTokens ? claudeTokens.cacheReadInputTokens : telemetryCoordinator.sessionCacheTokens
-                let displayCacheWriteTokens = hasClaudeTokens ? claudeTokens.cacheCreationInputTokens : 0
-
-                NotchFooterView(
-                    sessionDuration: Date().timeIntervalSince(sessionStart),
-                    tokenTotal: displayTokenTotal,
-                    cacheReadTokens: displayCacheTokens,
-                    cacheWriteTokens: displayCacheWriteTokens,
-                    showTokenCount: settings.showNotchTokenCount,
-                    gitBranch: claudeCodeManager.state.gitBranch
-                )
             }
             .padding(.horizontal, 1)
             .padding(.top, 1)
@@ -1693,18 +1563,8 @@ struct ClangNotchContentView: View {
                 SpeedPeekHeader(manager: speedTest)
             } else if let tetherPlaceName {
                 TetherPeekHeader(placeName: tetherPlaceName)
-            } else if doneNotice != nil {
-                Color.clear
             } else {
-                HStack(spacing: 10) {
-                    TelemetryStatusIndicatorView(state: telemetryCoordinator.state)
-                    Text("Telemetry Active")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
-
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
+                Color.clear
             }
         }
     }
@@ -1722,24 +1582,6 @@ struct ClangNotchContentView: View {
                 TetherPeekContent(placeName: tetherPlaceName)
             } else if let doneNotice {
                 doneDropdown(doneNotice)
-            } else {
-                VStack(spacing: 8) {
-                    if settings.showNotchTokenCount, recentTokenTotal > 0 {
-                        HStack(spacing: 6) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.6))
-
-                            Text("\(recentTokenTotal) t")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                .foregroundColor(.white)
-
-                            Spacer()
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
             }
         }
     }
@@ -2197,108 +2039,6 @@ struct ClangNotchContentView: View {
         }
     }
 
-    private struct NotchFooterView: View {
-        let sessionDuration: TimeInterval
-        let tokenTotal: Int
-        let cacheReadTokens: Int
-        let cacheWriteTokens: Int
-        let showTokenCount: Bool
-        let gitBranch: String?
-
-        var body: some View {
-            TimelineView(.periodic(from: .now, by: 5)) { _ in
-                HStack(spacing: 8) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.6))
-
-                    Text(formatDuration(sessionDuration))
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.8))
-
-                    // Git branch badge
-                    if let branch = gitBranch, !branch.isEmpty {
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.triangle.branch")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(.purple.opacity(0.8))
-                            Text(branch)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.purple.opacity(0.9))
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.purple.opacity(0.15), in: Capsule())
-                    }
-
-                    Spacer()
-
-                    if showTokenCount {
-                        // Regular tokens (input + output)
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.6))
-
-                        Text(tokenTotal > 0 ? formatTokens(tokenTotal) : "-")
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.8))
-
-                        // Cache read tokens (green - savings)
-                        if cacheReadTokens > 0 {
-                            HStack(spacing: 2) {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .foregroundColor(.green.opacity(0.8))
-                                Text(formatTokens(cacheReadTokens))
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.green.opacity(0.9))
-                            }
-                        }
-
-                        // Cache write tokens (yellow - creation)
-                        if cacheWriteTokens > 0 {
-                            HStack(spacing: 2) {
-                                Image(systemName: "arrow.up.circle")
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .foregroundColor(.yellow.opacity(0.8))
-                                Text(formatTokens(cacheWriteTokens))
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundColor(.yellow.opacity(0.9))
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.white.opacity(0.06), in: Capsule())
-            }
-        }
-
-        private func formatTokens(_ count: Int) -> String {
-            if count >= 1000 {
-                return String(format: "%.1fk", Double(count) / 1000.0)
-            }
-            return "\(count)"
-        }
-
-        private func formatDuration(_ duration: TimeInterval) -> String {
-            let totalSeconds = Int(duration)
-            if totalSeconds < 60 {
-                return "\(totalSeconds)s"
-            } else if totalSeconds < 3600 {
-                let minutes = totalSeconds / 60
-                let seconds = totalSeconds % 60
-                return String(format: "%dm %02ds", minutes, seconds)
-            } else {
-                let hours = totalSeconds / 3600
-                let minutes = (totalSeconds % 3600) / 60
-                return String(format: "%dh %02dm", hours, minutes)
-            }
-        }
-
-    }
-
     private func handleHover(_ hovering: Bool) {
         hoverTask?.cancel()
 
@@ -2360,29 +2100,6 @@ struct ClangNotchContentView: View {
                         notchVM.close()
                         updateInteractiveRegion()
                     }
-                }
-            }
-        }
-    }
-
-    private func triggerActivityGlow() {
-        // Show glow immediately (only if not already showing)
-        if !showActivityGlow {
-            showActivityGlow = true
-        }
-
-        // Cancel previous hide timer and restart
-        // Glow will hide only after 4 seconds of NO new events AND no active tools
-        glowTask?.cancel()
-        glowTask = Task {
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                // Keep glow visible while any tool is still active
-                let hasActiveTool = visibleToolCalls.contains { $0.isActive }
-                guard !hasActiveTool else { return }
-                withAnimation(.easeOut(duration: 0.5)) {
-                    showActivityGlow = false
                 }
             }
         }
@@ -2494,87 +2211,10 @@ struct ClangNotchContentView: View {
         }
     }
 
-    private func triggerErrorGlow() {
-        // Show error glow immediately
-        showErrorGlow = true
-        // Stop activity glow when showing error
-        showActivityGlow = false
-        glowTask?.cancel()
-
-        // Cancel previous error hide timer and restart
-        // Error glow hides after 5 seconds
-        errorGlowTask?.cancel()
-        errorGlowTask = Task {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.5)) {
-                    showErrorGlow = false
-                }
-            }
-        }
-    }
-
-    private func stopAllGlows() {
-        glowTask?.cancel()
-        errorGlowTask?.cancel()
-        withAnimation(.easeOut(duration: 0.3)) {
-            showActivityGlow = false
-            showErrorGlow = false
-        }
-    }
-
-    private func scheduleClear() {
-        clearTask?.cancel()
-        clearTask = Task {
-            // Clear after 30 seconds of inactivity
-            try? await Task.sleep(for: .seconds(30))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.3)) {
-                    visibleToolCalls = []
-                }
-            }
-        }
-    }
-
-    private func handleToolCallUpdate() {
-        // Debounce rapid updates - coalesce multiple onChange calls into one
-        toolCallUpdateTask?.cancel()
-        toolCallUpdateTask = Task {
-            try? await Task.sleep(for: .milliseconds(50))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                performToolCallUpdate()
-            }
-        }
-    }
-
-    private func performToolCallUpdate() {
-        visibleToolCalls = telemetryCoordinator.recentToolCalls.filter { isSourceVisible($0.source) }
-
-        // Check if the most recent completed tool call is an error
-        if let lastCall = visibleToolCalls.first,
-           !lastCall.isActive,
-           !lastCall.isSuccess {
-            triggerErrorGlow()
-        } else {
-            triggerActivityGlow()
-        }
-
-        scheduleClear()
-    }
-
-    private func stopActivityGlowForCompletion() {
-        glowTask?.cancel()
-        showActivityGlow = false
-    }
-
     /// Only a closed notch shows it: the open panel already lists the session, and a
     /// dropdown covers the wings. A second finish within 3s replays it and restarts the clock.
     private func showDoneFlash(_ source: DoneFlash.Source, turn: CompletedTurn? = nil) {
         guard notchVM.notchState == .closed else { return }
-        stopActivityGlowForCompletion()
         doneFlash = DoneFlash(source: source, turn: turn)
         // The turn's end can drop the surface a pass before doneFlash holds it up.
         cancelClosedJellyDismiss()
@@ -2905,7 +2545,6 @@ struct ClangNotchContentView: View {
     }
 
     private func showDoneNotice(_ notice: DoneNotice) {
-        stopActivityGlowForCompletion()
         doneFlashTask?.cancel()
         doneFlash = nil
         doneNotice = notice
@@ -3050,21 +2689,10 @@ struct ClangNotchContentView: View {
         }
     }
 
-    private func isSourceVisible(_ source: TelemetrySource) -> Bool {
-        switch source {
-        case .codex:
-            return settings.showSourceCodex
-        case .claudeCode:
-            return settings.showSourceClaudeCode
-        case .unknown:
-            return settings.showSourceUnknown
-        }
-    }
 }
 
 #Preview {
     ClangNotchContentView()
-        .environmentObject(TelemetryCoordinator.shared)
         .frame(width: 600, height: 300)
         .background(Color.gray.opacity(0.3))
 }

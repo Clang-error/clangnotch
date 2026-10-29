@@ -345,9 +345,8 @@ final class CodexManager: ObservableObject {
         refreshRateLimitsNow()
     }
 
-    /// Apply the JSONL tracking setting immediately. A telemetry pause keeps the usage card:
-    /// the account quota is still true while activity tracking is off.
-    func setTrackingEnabled(_ enabled: Bool, keepingUsage: Bool = false) {
+    /// Apply the JSONL tracking setting immediately.
+    func setTrackingEnabled(_ enabled: Bool) {
         if enabled {
             startSessionScanning()
             startRateLimitRefreshing()
@@ -359,7 +358,6 @@ final class CodexManager: ObservableObject {
             sessionStates = [:]
             sessionActivityCache.removeAll()
             lastActivityTime = .distantPast
-            guard !keepingUsage else { return }
             rateLimits = CodexRateLimits()
             primaryRateLimitUpdatedAt = .distantPast
             secondaryRateLimitUpdatedAt = .distantPast
@@ -371,7 +369,7 @@ final class CodexManager: ObservableObject {
 
     private func startSessionScanning() {
         guard sessionScanTimer == nil, !DemoMode.isActive else { return }
-        if let port = UInt16(exactly: AppSettings.shared.telemetryOtlpPort) {
+        if let port = UInt16(exactly: AppSettings.shared.hookPort) {
             do {
                 try PermissionHooks.install(in: codexDir.appendingPathComponent("hooks.json"), port: port, maxTime: 35)
             } catch {

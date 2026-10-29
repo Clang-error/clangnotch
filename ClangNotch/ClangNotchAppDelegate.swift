@@ -9,8 +9,8 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
 
         if TWorldCommand.runIfRequested() { return }
 
-        // Recording mode: only the notch and the scripted sessions. No telemetry server
-        // (the real instance owns port 4318), no hooks, no update checks.
+        // Recording mode: only the notch and the scripted sessions. No hook receiver
+        // (the real instance owns port 4318), no update checks.
         if DemoMode.isActive {
             Task { @MainActor in
                 UICoordinator.shared.setupUI()
@@ -23,10 +23,8 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             UICoordinator.shared.setupUI()
         }
 
-        if AppSettings.shared.telemetryAutoStart {
-            Task { @MainActor in
-                await TelemetryCoordinator.shared.start()
-            }
+        Task { @MainActor in
+            HookReceiver.shared.start()
         }
 
         Task { @MainActor in
@@ -40,9 +38,9 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { RemoteClaudeManager.shared.stopAll() }
-        Task { @MainActor in
-            await TelemetryCoordinator.shared.stop()
+        MainActor.assumeIsolated {
+            RemoteClaudeManager.shared.stopAll()
+            HookReceiver.shared.stop()
         }
     }
 
@@ -58,7 +56,6 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let settingsView = AgentSettingsView()
-            .environmentObject(TelemetryCoordinator.shared)
 
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(

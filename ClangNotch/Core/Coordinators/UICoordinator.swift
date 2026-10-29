@@ -6,7 +6,6 @@ import Combine
 public final class UICoordinator: ObservableObject {
     public static let shared = UICoordinator()
 
-    @Published private(set) var hasNotch: Bool = false
     @Published private(set) var isVisible: Bool = true
 
     private var notchPanel: NotchPanel?
@@ -93,9 +92,8 @@ public final class UICoordinator: ObservableObject {
     }
 
     private func handleScreenChange() {
-        let nowHasNotch = NotchDetector.hasNotch() || AppSettings.shared.forceNotchMode
         if notchPanel == nil {
-            if nowHasNotch { setupNotchPanel() }
+            setupNotchPanel()
         } else {
             repositionNotchPanel()
         }
@@ -139,12 +137,8 @@ public final class UICoordinator: ObservableObject {
     }
 
     public func setupUI() {
-        // Check for notch or force mode
-        hasNotch = NotchDetector.hasNotch() || AppSettings.shared.forceNotchMode
-
-        if hasNotch {
-            setupNotchPanel()
-        }
+        // Macs without a notch get the same bar at the top centre of the screen.
+        setupNotchPanel()
 
         // Always setup menu bar as fallback/additional control
         setupMenuBar()
@@ -169,7 +163,6 @@ public final class UICoordinator: ObservableObject {
         let panel = NotchPanel(contentRect: frame)
         panel.setContent {
             ClangNotchContentView()
-                .environmentObject(TelemetryCoordinator.shared)
         }
 
         // Add to the notch space for proper layering

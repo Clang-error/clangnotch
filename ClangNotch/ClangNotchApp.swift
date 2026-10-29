@@ -7,7 +7,6 @@ struct ClangNotchApp: App {
     var body: some Scene {
         Settings {
             AgentSettingsView()
-                .environmentObject(TelemetryCoordinator.shared)
         }
     }
 }

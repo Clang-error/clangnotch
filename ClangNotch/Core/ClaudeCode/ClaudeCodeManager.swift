@@ -423,31 +423,13 @@ final class ClaudeCodeManager: ObservableObject {
         }
     }
 
-    /// Pauses or resumes JSONL tracking — the header's telemetry stop/play. Pausing drops every
-    /// session's live state so nothing keeps reading as active while tracking is off.
-    func setTrackingEnabled(_ enabled: Bool) {
-        if enabled {
-            guard sessionScanTimer == nil else { return }
-            startSessionScanning()
-        } else {
-            stopWatching()
-            availableSessions = []
-            selectedSession = nil
-            state = ClaudeCodeState()
-            sessionStates = [:]
-            remoteSessions = [:]
-            sessionsNeedingPermission = []
-            sessionsConfirmedNeedingPermission = []
-        }
-    }
-
     // MARK: - Session Scanning
 
     private func startSessionScanning() {
         // The demo never reads real transcripts or touches ~/.claude/settings.json.
         guard !DemoMode.isActive else { return }
         if AppSettings.shared.enableClaudeCodeJSONL,
-           let port = UInt16(exactly: AppSettings.shared.telemetryOtlpPort) {
+           let port = UInt16(exactly: AppSettings.shared.hookPort) {
             do {
                 try ClaudeQuestionHooks.install(in: claudeDir, port: port)
             } catch {
