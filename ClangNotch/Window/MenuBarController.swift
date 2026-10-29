@@ -51,7 +51,7 @@ final class MenuBarController: NSObject {
             }
             .store(in: &cancellables)
 
-        // The icon follows what the agents are doing, not whether the OTLP server is up.
+        // The icon follows what the agents are doing.
         // objectWillChange fires before the mutation, so settle briefly before reading.
         Publishers.MergeMany(
             ClaudeCodeManager.shared.objectWillChange.eraseToAnyPublisher(),

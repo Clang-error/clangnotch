@@ -192,7 +192,7 @@ struct ClangNotchContentView: View {
 
     private var hasSpeedTest: Bool { settings.enableSpeedTest }
 
-    /// 열린 헤더는 제목+상태 2줄에 컨트롤 캡슐까지 있어 물리 노치 높이로는 넘친다.
+    /// 열린 헤더는 요약 줄과 헤더 버튼이 물리 노치 아래에 한 줄 더 들어가야 한다.
     private var headerHeight: CGFloat {
         notchVM.notchState == .open ? notchVM.closedNotchSize.height + openHeaderHeight : notchVM.closedNotchSize.height
     }
