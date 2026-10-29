@@ -96,11 +96,14 @@ enum UsagePace {
         // Too early in the window, the rate is noise.
         guard remaining > 0, elapsed > window * 0.05 else { return nil }
         let rate = rate(percent: percent, resetsAt: resetsAt, window: window, elapsed: elapsed)
-        if rate > 0, (100 - percent) / rate < remaining {
+        // Hitting the cap only just before the reset is "about 100% at reset", not a warning:
+        // "limit in 5d 9h" next to a reset in 5d 9h said nothing. It has to come at least 5%
+        // of the window (15 minutes of 5 hours, 8 hours of a week) early.
+        if rate > 0, (100 - percent) / rate < remaining - window * 0.05 {
             let timeToFull = (100 - percent) / rate
             return (.fast, L("\(duration(timeToFull)) 뒤 한도 도달", "limit in \(duration(timeToFull))"))
         }
-        let projected = Int((percent + rate * remaining).rounded())
+        let projected = min(100, Int((percent + rate * remaining).rounded()))
         return (projected >= 80 ? .brisk : .easy, L("리셋 때 약 \(projected)%", "about \(projected)% at reset"))
     }
 
