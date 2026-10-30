@@ -98,6 +98,10 @@ final class CodexManager: ObservableObject {
 
     private var sessionsDir: URL { codexDir.appendingPathComponent("sessions") }
 
+    /// Thread names by session id, from `session_index.jsonl` (renaming a thread appends a line).
+    @Published private(set) var threadNames: [String: String] = [:]
+    private var threadNamesReadAt: Date?
+
     private var sessionScanTimer: Timer?
     private var rateLimitRefreshTimer: Timer?
     private var rateLimitProcess: Process?
@@ -144,6 +148,22 @@ final class CodexManager: ObservableObject {
     // MARK: - Public Methods
 
     /// Scan for active Codex sessions
+    private func loadThreadNames() {
+        let file = codexDir.appendingPathComponent("session_index.jsonl")
+        guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+              modified != threadNamesReadAt,
+              let text = try? String(contentsOf: file, encoding: .utf8) else { return }
+        threadNamesReadAt = modified
+        var names: [String: String] = [:]
+        for line in text.split(separator: "\n") {
+            guard let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let id = json["id"] as? String,
+                  let name = json["thread_name"] as? String, !name.isEmpty else { continue }
+            names[id] = name
+        }
+        if names != threadNames { threadNames = names }
+    }
+
     func scanForSessions() {
         let fm = FileManager.default
         var sessions: [CodexSession] = []
@@ -213,6 +233,8 @@ final class CodexManager: ObservableObject {
                 loadLatestRateLimits(from: candidate.url)
             }
         }
+
+        loadThreadNames()
 
         // Sort by timestamp (most recent first)
         sessions.sort { $0.timestamp > $1.timestamp }

@@ -71,6 +71,8 @@ swift += formatter(claude, 'lineTimestampFormatters') + '\n'
 start = claude.index('    private static let attentionNotificationTypes:')
 end = claude.index('\n    ]', start) + len('\n    ]')
 swift += claude[start:end].replace('private static let', 'static let', 1) + '\n'
+start = claude.index('    private static func sessionTitle(')
+swift += claude[start:claude.index('\n    }', start) + len('\n    }')].replace('private static', 'static', 1) + '\n'
 for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission','applyTodoTool']:
     swift += method(claude, name) + '\n'
 swift += '}\nfinal class CodexFixture {\n' + common + '''
@@ -85,6 +87,7 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     var rateLimits = CodexRateLimits()
     var lastCompletedTurn: CompletedTurn?
     func clearEndedSessions() {}
+    func loadThreadNames() {}
     func loadLatestRateLimits(from: URL) {}
     func selectSession(_ session: CodexSession) { selectedSession = Selection(id: session.id) }
     func startWatchingSession(_ session: CodexSession) {
@@ -196,6 +199,9 @@ swift += '''}
         precondition(!c.state.isActive, "The turn ends with no ghost tool left running")
         c.parseJSONLLineForSession("{\\"type\\":\\"system\\"}", sessionId:"s")
         precondition(!c.state.isActive, "Metadata must not restart a finished turn")
+        c.parseJSONLLineForSession(#"{"type":"ai-title","aiTitle":"자동 이름","sessionId":"s"}"#, sessionId:"s")
+        c.parseJSONLLineForSession(#"{"type":"custom-title","customTitle":"내 이름","sessionId":"s"}"#, sessionId:"s")
+        precondition(c.sessionStates["s"]?.title == "내 이름" && !c.state.isActive, "A title line names the session and nothing else")
         c.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"q", "name":"AskUserQuestion"]]], sessionId:"s")
         precondition(!c.state.needsPermission, "Questions must not be classified as tool approvals")
         c.sessionStates["s"]?.lastUpdateTime = Date(timeIntervalSinceNow: -600)

@@ -265,8 +265,8 @@ private struct UnifiedWorkspaceSessionRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
-                        Text(displayName)
-                            .font(.system(size: 13, weight: .semibold))
+                        Text(sessionTitle ?? displayName)
+                            .font(.system(size: sessionTitle == nil ? 13 : 12, weight: .semibold))
                             .foregroundColor(.primary)
                             .lineLimit(1)
                         if !group.claude.isEmpty {
@@ -287,11 +287,26 @@ private struct UnifiedWorkspaceSessionRow: View {
                             .background(Color.teal.opacity(0.15), in: Capsule())
                             .fixedSize()
                     }
+                    if sessionTitle != nil {
+                        HStack(spacing: 4) {
+                            FolderElbow()
+                                .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+                                .frame(width: 7, height: 6)
+                                // The foot sits at the text's middle, not the row's.
+                                .offset(y: -2.5)
+                                .padding(.leading, 3)
+                            Text(displayName)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
                     if let subtitle = preview ?? sessionHint {
                         Text(subtitle)
                             .font(.system(size: 11))
                             .foregroundColor(needsPermission || awaitingAnswer ? .orange : .secondary)
                             .lineLimit(1)
+                            .padding(.top, sessionTitle == nil ? 0 : 3)
                     }
                 }
                 Spacer(minLength: 0)
@@ -359,6 +374,13 @@ private struct UnifiedWorkspaceSessionRow: View {
         return destination?.label ?? group.claude.first?.ideName ?? "app"
     }
 
+    /// The session's name; the folder then moves to a smaller line under it.
+    private var sessionTitle: String? {
+        if let session = group.claude.first { return manager.sessionStates[session.id]?.title }
+        if let session = group.codex.first { return codexManager.threadNames[session.id] }
+        return nil
+    }
+
     private var displayName: String {
         let name = URL(fileURLWithPath: group.path).lastPathComponent
         return name.isEmpty ? group.path : name
@@ -371,6 +393,17 @@ private struct UnifiedWorkspaceSessionRow: View {
             .frame(width: 12, height: 12)
             .opacity(active ? 1 : 0.55)
             .shadow(color: active ? glow.opacity(0.8) : .clear, radius: 4)
+    }
+}
+
+/// The └ that hangs the folder line under the session name.
+private struct FolderElbow: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        return path
     }
 }
 

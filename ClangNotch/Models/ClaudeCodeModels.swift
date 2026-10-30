@@ -263,6 +263,8 @@ struct ClaudeCodeState: Equatable {
     var cwd: String = ""
     var gitBranch: String = ""
     var entrypoint: ClaudeEntrypoint = .unknown
+    /// The session's name: one set with /rename or in the desktop app, else Claude's own.
+    var title: String?
 
     var tokenUsage: ClaudeTokenUsage = ClaudeTokenUsage()
 

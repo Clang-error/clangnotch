@@ -642,6 +642,9 @@ final class ClaudeCodeManager: ObservableObject {
             sessionReadPositions[session.id] = handle.offsetInFile
             sessionJSONLPaths[session.id] = jsonlFile.path
             loadRecentHistoryForSession(from: jsonlFile, sessionId: session.id)
+            if sessionStates[session.id]?.title == nil {
+                sessionStates[session.id]?.title = Self.latestTitle(in: jsonlFile)
+            }
         } catch {
             return
         }
@@ -817,6 +820,46 @@ final class ClaudeCodeManager: ObservableObject {
         markAllSessionsIdle()
     }
 
+    private static func sessionTitle(in json: [String: Any]) -> String? {
+        switch json["type"] as? String {
+        case "custom-title": json["customTitle"] as? String
+        case "ai-title": json["aiTitle"] as? String
+        default: nil
+        }
+    }
+
+    /// The newest title line, read backwards from the end. Claude appends it again every
+    /// few turns, so it is usually within the last few lines; gives up after 4 MB.
+    private static func latestTitle(in file: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        let markers = [Data(#""type":"custom-title""#.utf8), Data(#""type":"ai-title""#.utf8)]
+        let end = handle.seekToEndOfFile()
+        let chunkSize: UInt64 = 256 * 1024
+        var position = end
+        var head = Data()  // the start of a line cut by the chunk boundary
+        while position > 0, end - position < 4 * 1024 * 1024 {
+            let start = position > chunkSize ? position - chunkSize : 0
+            handle.seek(toFileOffset: start)
+            guard let data = try? handle.read(upToCount: Int(position - start)) else { return nil }
+            var block = data + head
+            position = start
+            head = Data()
+            if start > 0, let newline = block.firstIndex(of: 0x0A) {
+                head = Data(block[..<newline])
+                block = Data(block[newline...])
+            }
+            for line in block.split(separator: 0x0A).reversed()
+            where markers.contains(where: { line.range(of: $0) != nil }) {
+                if let json = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                   let title = sessionTitle(in: json) {
+                    return title
+                }
+            }
+        }
+        return nil
+    }
+
     private func parseJSONLLineForSession(_ line: String, sessionId: String) {
         guard let data = line.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -825,6 +868,14 @@ final class ClaudeCodeManager: ObservableObject {
         // Not a transcript event: the whole outgoing prompt, earlier tool_use blocks included,
         // with no timestamp. Parsing it re-added finished tools as running after the turn ended.
         guard json["type"] as? String != "api-request-blob" else { return }
+        if let title = Self.sessionTitle(in: json) {
+            if sessionStates[sessionId]?.title != title {
+                sessionStates[sessionId]?.title = title
+                syncStateIfSelected(sessionId)
+                objectWillChange.send()
+            }
+            return
+        }
 
         let isLoadingHistory = isLoadingHistoryBySession[sessionId] == true
         let lineDate = (json["timestamp"] as? String).flatMap { raw in

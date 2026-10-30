@@ -2564,7 +2564,13 @@ struct ClangNotchContentView: View {
             showDoneFlash(source, turn: turn)
             return
         }
-        let notice = DoneNotice(source: source, turn: turn, projectName: projectName(source, turn.sessionId))
+        let title: String? = switch source {
+        case .claude: claudeCodeManager.sessionStates[turn.sessionId]?.title
+        case .codex: codexManager.threadNames[turn.sessionId]
+        }
+        let folder = projectName(source, turn.sessionId)
+        let name = [title, folder].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        let notice = DoneNotice(source: source, turn: turn, projectName: name)
         if showPermissionNotice || showQuestionNotice || showSpeedNotice || tetherPlaceName != nil {
             pendingDoneNotice = notice
         } else {
