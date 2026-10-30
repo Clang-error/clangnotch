@@ -23,11 +23,18 @@ final class NotchPanel: NSPanel {
         level = .mainMenu + 3
         // On every Space and fixed in place while Spaces slide. Not on full-screen Spaces:
         // the notch hides there anyway (`UICoordinator.applyFullScreenVisibility`).
+        // `NotchOverlaySpace` then takes it out of the desktop Spaces for Stage Manager.
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
     }
 
     func setContent<Content: View>(@ViewBuilder content: () -> Content) {
-        contentView = NSHostingView(rootView: content())
+        let hosting = NSHostingView(rootView: content())
+        hosting.autoresizingMask = [.width, .height]
+        let container = NSView(frame: frame)
+        hosting.frame = container.bounds
+        container.addSubview(hosting)
+        container.addSubview(StageSwitchKeepalive(frame: NSRect(x: 0, y: 0, width: 1, height: 1)))
+        contentView = container
     }
 
     override var canBecomeKey: Bool { false }

@@ -112,6 +112,7 @@ public final class UICoordinator: ObservableObject {
         )
         panel.setFrame(frame, display: true)
         panel.orderFrontRegardless()
+        NotchOverlaySpace.pin(panel)
     }
 
     // MARK: - Full-screen detection
@@ -167,6 +168,7 @@ public final class UICoordinator: ObservableObject {
 
         // Show the panel
         panel.orderFrontRegardless()
+        NotchOverlaySpace.pin(panel)
 
         notchPanel = panel
     }
