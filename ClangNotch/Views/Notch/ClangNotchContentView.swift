@@ -2631,6 +2631,16 @@ struct ClangNotchContentView: View {
         }
     }
 
+    private func sessionTerminal(_ source: DoneFlash.Source, _ sessionId: String) -> TerminalLocation? {
+        switch source {
+        case .claude:
+            return claudeCodeManager.availableSessions.first { $0.id == sessionId }
+                .flatMap { claudeCodeManager.terminalLocation(for: $0) }
+        case .codex:
+            return codexManager.sessionTerminals[sessionId]
+        }
+    }
+
     /// "터미널 열기" or "GUI 열기", by where the session runs.
     private func openTitle(_ source: DoneFlash.Source, _ sessionId: String) -> String {
         (sessionDestination(source, sessionId) ?? .terminal).openTitle
@@ -2640,8 +2650,12 @@ struct ClangNotchContentView: View {
     private func isSessionAppFrontmost(_ source: DoneFlash.Source, _ sessionId: String) -> Bool {
         // Demo sessions have no app of their own; whatever is in front isn't theirs.
         guard !DemoMode.isActive else { return false }
-        guard let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return false }
-        return sessionDestination(source, sessionId)?.bundleIdentifiers.contains(front) == true
+        guard let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+              let destination = sessionDestination(source, sessionId) else { return false }
+        if destination == .terminal, let terminal = sessionTerminal(source, sessionId)?.bundleIdentifier {
+            return terminal == front
+        }
+        return destination.bundleIdentifiers.contains(front)
     }
 
     /// The same destination as clicking the session in the list.

@@ -395,22 +395,20 @@ final class ClaudeCodeManager: ObservableObject {
 
         let entrypoint = sessionStates[targetSession.id]?.entrypoint ?? .unknown
         if let destination = SessionAppDestination.claude(entrypoint: entrypoint, ideName: targetSession.ideName) {
-            // A CLI session started in a Warp tab goes back to that exact tab; anywhere else
-            // (or when its process can't be found) the terminal app just comes forward.
-            if destination == .terminal,
-               let conversationId = conversationId(for: targetSession),
-               let pid = liveSessionRecords()?[conversationId]?.pid,
-               let url = SessionAppResolver.warpFocusURL(pid: pid_t(pid)) {
-                NSWorkspace.shared.open(url)
-                return
-            }
-            SessionAppLauncher.open(destination)
+            SessionAppLauncher.open(destination, in: destination == .terminal ? terminalLocation(for: targetSession) : nil)
             return
         }
         // Preserve support for unrecognised IDEs with a known application PID.
         if let app = NSRunningApplication(processIdentifier: pid_t(targetSession.pid)) {
             app.activate(options: [.activateIgnoringOtherApps])
         }
+    }
+
+    /// The terminal a CLI session's process runs in; nil once that process has exited.
+    func terminalLocation(for session: ClaudeSession) -> TerminalLocation? {
+        guard let conversationId = conversationId(for: session),
+              let pid = liveSessionRecords()?[conversationId]?.pid else { return nil }
+        return SessionAppResolver.terminal(pid: pid_t(pid))
     }
 
     // MARK: - Session Scanning

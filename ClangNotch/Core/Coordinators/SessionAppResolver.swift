@@ -31,37 +31,112 @@ enum SessionAppResolver {
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    // MARK: - Warp tabs
+    // MARK: - Terminals
 
-    /// The URL that brings the process's own Warp tab to the front. Warp sets
-    /// `WARP_FOCUS_URL=warp://session/<uuid>` in every tab's shell, so any process started in
-    /// a tab inherits it. nil for a process started anywhere else.
-    static func warpFocusURL(pid: pid_t) -> URL? {
-        let prefix = "WARP_FOCUS_URL="
-        guard let value = processArguments(pid: pid)?.environment.first(where: { $0.hasPrefix(prefix) }),
-              let url = URL(string: String(value.dropFirst(prefix.count))),
-              url.scheme == "warp" else { return nil }
-        return url
+    /// The terminal a process runs in, read from what the terminal set in its environment.
+    /// nil when the environment names none. The parent chain can't tell: Rex's shells hang off
+    /// its background server, and a CLI's own path is inside ChatGPT.app.
+    static func terminal(pid: pid_t) -> TerminalLocation? {
+        guard let environment = processArguments(pid: pid)?.environment else { return nil }
+        func variable(_ name: String) -> String? {
+            let prefix = name + "="
+            return environment.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+        }
+
+        // First: a Rex server started from another terminal passes that terminal's variables on.
+        if variable("TERM_PROGRAM") == "rex" {
+            var location = TerminalLocation(bundleIdentifier: "com.superlogical.rex")
+            if let directory = variable("REX_BIN_DIR"), let session = variable("REX_SESSION"),
+               let block = variable("REX_BLOCK") {
+                location.tab = .rex(cli: directory + "/rex", server: variable("REX_SERVER"), session: session, block: block)
+            }
+            return location
+        }
+
+        // Warp sets `WARP_FOCUS_URL=warp://session/<uuid>` in every tab's shell.
+        let warpURL = variable("WARP_FOCUS_URL").flatMap(URL.init(string:)).flatMap { $0.scheme == "warp" ? $0 : nil }
+        // macOS sets this for whatever LaunchServices opened, so any terminal app has it.
+        let identifier = variable("__CFBundleIdentifier").flatMap { $0.isEmpty ? nil : $0 }
+        guard warpURL != nil || identifier != nil else { return nil }
+        return TerminalLocation(bundleIdentifier: identifier, tab: warpURL.map { .warp($0) })
     }
 
-    /// The Warp tab of a Codex session. When the rollout's writer runs in a tab, that is exact.
-    /// Current Codex CLIs instead attach to a shared `codex app-server` that writes every
-    /// rollout, and nothing links a thread to its client — so fall back to the Warp codex
-    /// client in the session's folder: the one whose arguments name the session (`resume <id>`),
-    /// else the only one there. nil when unsure, so a click never jumps to the wrong tab.
-    static func codexWarpFocusURL(file: URL, sessionId: String, cwd: String) -> URL? {
+    /// The terminal of a Codex session, or nil when no terminal opened it. When the rollout's
+    /// writer runs in a terminal, that is exact. Current Codex CLIs instead attach to a shared
+    /// `codex app-server` that writes every rollout, so: the client whose arguments name the
+    /// session (`resume <id>`), else the client that opened the session's server connection
+    /// (`codexConnectionDate`), else the only one in the session's folder.
+    /// With several left, only their app is known, so a click doesn't jump to the wrong tab.
+    static func codexTerminal(file: URL, sessionId: String, cwd: String) -> TerminalLocation? {
         let writers = output("/usr/sbin/lsof", ["-a", "-c", "codex", "-t", "--", file.path])
             .split(whereSeparator: \.isWhitespace).compactMap { Int32($0) }
-        if let url = writers.lazy.compactMap({ warpFocusURL(pid: $0) }).first { return url }
+        if let writer = writers.first(where: isInTerminal) { return terminal(pid: writer) ?? TerminalLocation() }
+
+        let clients = processIDs(named: "codex").filter(isInTerminal)
+        if let named = clients.first(where: { processArguments(pid: $0)?.arguments.contains(sessionId) == true }) {
+            return terminal(pid: named) ?? TerminalLocation()
+        }
+
+        // The TUI creates this empty file with the thread; Desktop and phone threads have none.
+        let marker = codexDirectory.appendingPathComponent("tui-thread-reference-capabilities/\(sessionId)")
+        guard FileManager.default.fileExists(atPath: marker.path) else { return nil }
 
         let folder = URL(fileURLWithPath: cwd).standardizedFileURL.path
-        let clients = processIDs(named: "codex").filter {
+        let inFolder = clients.filter {
             processDirectory(pid: $0).map { URL(fileURLWithPath: $0).standardizedFileURL.path } == folder
-        }.compactMap { pid in warpFocusURL(pid: pid).map { (pid: pid, url: $0) } }
-        if let named = clients.first(where: { processArguments(pid: $0.pid)?.arguments.contains(sessionId) == true }) {
-            return named.url
         }
-        return clients.count == 1 ? clients[0].url : nil
+        if let connected = codexConnectionDate(sessionId: sessionId) {
+            if let client = lastStarted(inFolder, before: connected) { return terminal(pid: client) ?? TerminalLocation() }
+        } else if inFolder.count == 1 {
+            return terminal(pid: inFolder[0]) ?? TerminalLocation()
+        }
+        let apps = Set(inFolder.map { terminal(pid: $0)?.bundleIdentifier })
+        return TerminalLocation(bundleIdentifier: apps.count == 1 ? apps.first ?? nil : nil)
+    }
+
+    /// When the client holding the session connected to the shared server. Nothing links a
+    /// thread to a client's pid, but the server's log names the connection each thread request
+    /// came in on, and a client connects right after it starts (measured 2026-10-31). The
+    /// thread's own time won't do: it comes after any dialog the TUI opens with. nil once the
+    /// log has rotated the connection out, or if a Codex update changes these lines.
+    private static func codexConnectionDate(sessionId: String) -> Date? {
+        guard UUID(uuidString: sessionId) != nil,
+              let names = try? FileManager.default.contentsOfDirectory(atPath: codexDirectory.path),
+              let name = names.filter({ $0.hasPrefix("logs_") && $0.hasSuffix(".sqlite") }).max() else { return nil }
+        func query(_ sql: String) -> String {
+            output("/usr/bin/sqlite3", ["-readonly", codexDirectory.appendingPathComponent(name).path, sql])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let row = query("""
+            select process_uuid || ' ' || feedback_log_body from logs
+            where thread_id = '\(sessionId)' and feedback_log_body like '%app_server.connection_id=%'
+            order by ts desc, ts_nanos desc limit 1
+            """)
+        guard let server = row.split(separator: " ").first,
+              let label = row.range(of: #"app_server\.connection_id=\d+"#, options: .regularExpression),
+              let connection = row[label].split(separator: "=").last else { return nil }
+        let seconds = query("""
+            select ts + ts_nanos / 1000000000.0 from logs
+            where process_uuid = '\(server.replacingOccurrences(of: "'", with: "''"))'
+              and feedback_log_body like 'app-server request: initialize connection_id=ConnectionId(\(connection))%'
+            order by ts, ts_nanos limit 1
+            """)
+        return TimeInterval(seconds).map(Date.init(timeIntervalSince1970:))
+    }
+
+    /// The client that started last before `date`, within a few seconds. nil when two started
+    /// too close together to tell which one it was.
+    private static func lastStarted(_ clients: [pid_t], before date: Date) -> pid_t? {
+        let started = clients.compactMap { pid in startDate(pid: pid).map { (pid: pid, date: $0) } }
+            .filter { (0...10).contains(date.timeIntervalSince($0.date)) }
+            .sorted { $0.date > $1.date }
+        guard let last = started.first else { return nil }
+        if started.count > 1, last.date.timeIntervalSince(started[1].date) < 1 { return nil }
+        return last.pid
+    }
+
+    private static var codexDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
     }
 
     /// argv and environment of a process owned by this user (KERN_PROCARGS2).
@@ -88,6 +163,23 @@ enum SessionAppResolver {
         }
         let count = min(argc, strings.count)
         return (Array(strings[..<count]), Array(strings[count...]))
+    }
+
+    /// Whether the process has a controlling terminal; a server or an app's helper has none.
+    private static func isInTerminal(_ pid: pid_t) -> Bool {
+        processInfo(pid: pid).map { $0.e_tdev != UInt32.max } == true
+    }
+
+    private static func startDate(pid: pid_t) -> Date? {
+        processInfo(pid: pid).map {
+            Date(timeIntervalSince1970: TimeInterval($0.pbi_start_tvsec) + TimeInterval($0.pbi_start_tvusec) / 1_000_000)
+        }
+    }
+
+    private static func processInfo(pid: pid_t) -> proc_bsdinfo? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        return proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size ? info : nil
     }
 
     private static func processDirectory(pid: pid_t) -> String? {

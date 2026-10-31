@@ -327,6 +327,7 @@ final class CodexManager: ObservableObject {
     }
 
     @Published private(set) var sessionAppDestinations: [String: SessionAppDestination] = [:]
+    private(set) var sessionTerminals: [String: TerminalLocation] = [:]
 
     func appDestination(for session: CodexSession) -> SessionAppDestination {
         sessionAppDestinations[session.id] ?? .codex(originator: session.originator, source: session.source)
@@ -338,22 +339,21 @@ final class CodexManager: ObservableObject {
 
     private func resolveApp(for session: CodexSession, open: Bool = false) {
         Task {
-            let (destination, warpURL) = await Task.detached(priority: .userInitiated) { () -> (SessionAppDestination, URL?) in
-                let destination = SessionAppResolver.codexOwner(of: session.jsonlFile)
-                    ?? .codex(originator: session.originator, source: session.source)
-                // A terminal session started in a Warp tab goes back to that exact tab.
-                let warpURL = open && destination == .terminal
-                    ? SessionAppResolver.codexWarpFocusURL(file: session.jsonlFile, sessionId: session.id, cwd: session.cwd)
-                    : nil
-                return (destination, warpURL)
+            let (destination, terminal) = await Task.detached(priority: .userInitiated) { () -> (SessionAppDestination, TerminalLocation?) in
+                if let terminal = SessionAppResolver.codexTerminal(file: session.jsonlFile, sessionId: session.id, cwd: session.cwd) {
+                    return (.terminal, terminal)
+                }
+                return (SessionAppResolver.codexOwner(of: session.jsonlFile)
+                    ?? .codex(originator: session.originator, source: session.source), nil)
             }.value
-            if sessionStates[session.id] != nil { sessionAppDestinations[session.id] = destination }
-            guard open else { return }
-            if let warpURL {
-                NSWorkspace.shared.open(warpURL)
-            } else {
-                SessionAppLauncher.open(destination)
+            // The server's log drops old connections, so a later look can know less than the first.
+            let known = terminal?.tab == nil ? sessionTerminals[session.id] ?? terminal : terminal
+            if sessionStates[session.id] != nil {
+                sessionAppDestinations[session.id] = destination
+                sessionTerminals[session.id] = known
             }
+            guard open else { return }
+            SessionAppLauncher.open(destination, in: known)
         }
     }
 
@@ -732,6 +732,7 @@ final class CodexManager: ObservableObject {
         sessionLineBuffers.removeValue(forKey: sessionId)
         sessionStates.removeValue(forKey: sessionId)
         sessionAppDestinations.removeValue(forKey: sessionId)
+        sessionTerminals.removeValue(forKey: sessionId)
         endedCheckTimes.removeValue(forKey: sessionId)
         isLoadingHistoryBySession.removeValue(forKey: sessionId)
         externalImportSessions.remove(sessionId)
