@@ -102,7 +102,12 @@ final class SystemControlOSD: ObservableObject {
             } else {
                 let fraction = Self.stepped(reading.fraction, by: key == Self.soundUp ? step : -step)
                 Self.setVolumeProperty(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume, Float32(fraction))
-                if reading.kind == .mute { Self.setVolumeProperty(device, kAudioDevicePropertyMute, UInt32(0)) }
+                // Mute at 0 and unmute above it, as macOS does: on some outputs (headphones,
+                // reported 2026-11-03) volume 0 is only very quiet, and the sound leaked.
+                let mute = fraction == 0
+                if (reading.kind == .mute) != mute {
+                    Self.setVolumeProperty(device, kAudioDevicePropertyMute, UInt32(mute ? 1 : 0))
+                }
             }
             showVolume(on: NSScreen.main)
             return true
