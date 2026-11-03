@@ -85,8 +85,11 @@ final class SystemBannerCenterer {
     }
 
     private static func takeOver(_ window: AXUIElement) {
-        // MenuBarAgent's menu bar windows are dialogs; banners are not.
+        // MenuBarAgent's menu bar windows are dialogs; banners are not. Banners carry an
+        // AXIdentifier; the icon being ⌘-dragged in the menu bar is an unnamed window, and
+        // centering it broke rearranging menu bar icons (2026-11-03).
         guard (attribute(window, kAXSubroleAttribute) as? String) != kAXDialogSubrole as String,
+              let identifier = attribute(window, "AXIdentifier") as? String, !identifier.isEmpty,
               let frame = frame(of: window)
         else { return }
 
@@ -95,7 +98,7 @@ final class SystemBannerCenterer {
         let mid = CGPoint(x: frame.midX, y: primaryTop - frame.midY)
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mid) }) ?? NSScreen.main else { return }
 
-        switch attribute(window, "AXIdentifier") as? String {
+        switch identifier {
         case volumeBannerID:
             move(window, to: CGPoint(x: -10_000, y: frame.minY))
             SystemControlOSD.shared.showVolume(on: screen)
