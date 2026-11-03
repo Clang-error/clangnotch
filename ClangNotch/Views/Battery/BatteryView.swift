@@ -175,87 +175,96 @@ private struct BatteryRow: View {
         }
     }
 
+    /// 남은 시간과 L/R·케이스 잔량을 한 줄로.
+    private var detail: String? {
+        var items: [String] = []
+        if let minutes = device.minutesLeft {
+            let time = minutes >= 60 ? L("\(minutes / 60)시간 \(minutes % 60)분", "\(minutes / 60)h \(minutes % 60)m")
+                                     : L("\(minutes)분", "\(minutes)m")
+            items.append(device.charging ? L("완충까지 \(time)", "\(time) to full") : L("약 \(time) 남음", "About \(time) left"))
+        }
+        if !device.parts.isEmpty {
+            items.append(device.parts.map { "\($0.displayLabel) \($0.percent)%" }.joined(separator: "  "))
+        }
+        return items.isEmpty ? nil : items.joined(separator: " · ")
+    }
+
+    // Volume 탭의 볼륨 알약과 같은 모양: 카드 왼쪽에 아이콘, 오른쪽에 이름과 %가 든 알약.
+    // 알약은 잔량만큼 채워지고, 채워진 부분의 글자는 검정이다. 누르거나 끌 수는 없다.
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 9) {
             Image(systemName: device.symbol)
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 15))
                 .foregroundColor(.white.opacity(0.75))
-                .frame(width: 22)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    Text(device.name)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    if device.charging {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 8))
-                            .foregroundColor(good)
-                            // Plugging in pops the bolt in (SuperIsland bounces its charging symbol).
-                            .transition(.scale(scale: 0.2).combined(with: .opacity))
-                    }
-                    if pinned {
-                        Image(systemName: "pin.fill")
-                            .font(.system(size: 8))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
-                    if let closedRank {
-                        Text(L("\(closedRank + 1)순위", "#\(closedRank + 1)"))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                    if !device.live {
-                        Text(staleLabel)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white.opacity(0.5))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Color.white.opacity(0.08), in: Capsule())
-                    }
-                }
-                gauge
-                if let minutes = device.minutesLeft {
-                    let time = minutes >= 60 ? L("\(minutes / 60)시간 \(minutes % 60)분", "\(minutes / 60)h \(minutes % 60)m")
-                                             : L("\(minutes)분", "\(minutes)m")
-                    Text(device.charging ? L("완충까지 \(time)", "\(time) to full") : L("약 \(time) 남음", "About \(time) left"))
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                if !device.parts.isEmpty {
-                    Text(device.parts.map { "\($0.displayLabel) \($0.percent)%" }.joined(separator: "  "))
-                        .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.5))
-                }
-            }
-
-            Text("\(device.percent)%")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(tone)
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(device.percent)))
+                .frame(width: 22, height: 22)
+            pill
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.5), value: device.charging)
         .animation(.smooth, value: device.percent)
         .opacity(dim)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity)
-        .notchCard(cornerRadius: 12)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .notchCard(cornerRadius: 8)
+        .padding(.horizontal, 4)
     }
 
-    private var gauge: some View {
-        GeometryReader { geo in
+    private let height: CGFloat = 26
+
+    private var pill: some View {
+        GeometryReader { geometry in
+            let fillWidth = max(height, geometry.size.width * CGFloat(device.percent) / 100)
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.1))
+                Capsule().fill(Color.white.opacity(0.1))
+                labels(color: .white.opacity(0.85), dimColor: .white.opacity(0.5))
                 Capsule()
                     .fill(tone)
-                    .frame(width: max(3, geo.size.width * CGFloat(device.percent) / 100))
+                    .frame(width: fillWidth)
+                labels(color: .black.opacity(0.8), dimColor: .black.opacity(0.55))
+                    .mask(alignment: .leading) { Rectangle().frame(width: fillWidth) }
             }
         }
-        .frame(height: 4)
+        .frame(height: height)
+    }
+
+    private func labels(color: Color, dimColor: Color) -> some View {
+        HStack(spacing: 5) {
+            Text(device.name)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(color)
+                .lineLimit(1)
+            if device.charging {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(color)
+                    .transition(.scale(scale: 0.2).combined(with: .opacity))
+            }
+            if pinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(dimColor)
+            }
+            if let closedRank {
+                Text(L("\(closedRank + 1)순위", "#\(closedRank + 1)"))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(dimColor)
+            }
+            if !device.live {
+                Text(staleLabel)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(dimColor)
+            }
+            Spacer(minLength: 6)
+            if let detail {
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(dimColor)
+                    .lineLimit(1)
+            }
+            Text("\(device.percent)%")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(color)
+                .contentTransition(.numericText(value: Double(device.percent)))
+        }
+        .padding(.horizontal, 10)
     }
 }
 
