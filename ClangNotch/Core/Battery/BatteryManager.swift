@@ -133,11 +133,22 @@ final class BatteryManager: ObservableObject {
         }
     }
 
+    private var tabVisible = false
+
     /// Battery 탭이 보일 때 — 촘촘히 갱신.
-    func start() { if !DemoMode.isActive { setPolling(activeInterval) } }
+    func start() { tabVisible = true; updatePolling() }
 
     /// 탭이 닫혀도 감시는 멈추지 않고 주기만 늘린다.
-    func stop() { if !DemoMode.isActive { setPolling(idleInterval) } }
+    func stop() { tabVisible = false; updatePolling() }
+
+    /// 닫힌 노치에 아이폰·아이패드 부족 표시가 떠 있는 동안도 촘촘히 돈다. 5분 주기에
+    /// 잠든 폰이 응답을 거르면 충전을 시작해도 15분 넘게 표시가 남았다(2026-11-02 실측).
+    /// 충전이 잡히면 표시가 빠지면서 다시 성기게 돌아간다.
+    private func updatePolling() {
+        guard !DemoMode.isActive else { return }
+        let lowIOS = closedNotchLowBattery?.kindKey == "ios"
+        setPolling(tabVisible || lowIOS ? activeInterval : idleInterval)
+    }
 
     private func setPolling(_ seconds: TimeInterval) {
         guard interval != seconds else { return }
@@ -208,6 +219,8 @@ final class BatteryManager: ObservableObject {
         trace(fresh: freshIDs)
         checkAlerts()
         rearmLowBatteryBadge()
+        // 기동 직후 캐시를 깔 때(아직 감시 전)는 타이머를 만들지 않는다.
+        if interval != 0 { updatePolling() }
     }
 
     /// 빠른 수집분만 갈아 끼운다. 빠른 수집에 안 잡힌 블루투스 기기는 방금 끊긴 것이다.
