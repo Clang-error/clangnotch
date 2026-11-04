@@ -51,7 +51,7 @@ Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same s
 Each one is a tab in the open notch, and each can be turned off in Settings.
 
 <p align="center">
-  <img src="assets/demo-tools.gif" width="80%" alt="Clipboard, per-app volume, batteries, speed test, Sidecar and display arrangement tabs">
+  <img src="assets/demo-tools.gif" width="80%" alt="Clipboard, per-app volume, batteries, speed test, Sidecar and display arrangement, and key test tabs">
 </p>
 
 - Clipboard history (text only, kept in memory)
@@ -60,7 +60,7 @@ Each one is a tab in the open notch, and each can be turned off in Settings.
 - Quick access to multi-display arrangement
 - Battery for your Mac, Bluetooth devices, iPhone and iPad
 - Speed test and network info
-- Keyboard lock
+- Keyboard lock and key test
 
 The volume and brightness keys show ClangNotch's own slider instead of the system one.
 
