@@ -141,6 +141,8 @@ final class SoftwareVolume {
         let key = (ns.data1 & 0xFFFF_0000) >> 16
         let isDown = (ns.data1 & 0xFF00) >> 8 == 0xA
         let isRepeat = ns.data1 & 0x1 != 0
+        // A running Key Test takes every key, these too: lit, not applied.
+        if KeyTester.shared.mediaKey(key, isDown: isDown) { return nil }
         guard let uid = keyTarget, [Self.soundUp, Self.soundDown, Self.mute].contains(key) else {
             // Outputs and displays macOS can set itself: the 조절창 sets them, so no system banner.
             let fine = ns.modifierFlags.isSuperset(of: [.option, .shift])

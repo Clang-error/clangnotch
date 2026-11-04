@@ -2,6 +2,7 @@ import SwiftUI
 
 struct KeyboardLockView: View {
     @ObservedObject var manager: KeyboardLockManager
+    @ObservedObject private var tester = KeyTester.shared
 
     var body: some View {
         Group {
@@ -50,6 +51,8 @@ struct KeyboardLockView: View {
     private var lockToggle: some View {
         VStack(spacing: 10) {
             Button {
+                // The lock takes the keys ahead of a running test; end the test first.
+                tester.stop()
                 manager.toggle()
             } label: {
                 VStack(spacing: 6) {
@@ -74,6 +77,33 @@ struct KeyboardLockView: View {
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.center)
             }
+
+            keyTestCard
         }
+    }
+
+    /// Key Test 카드: keys light up while held, and only during a test, which keeps every key
+    /// from other apps. Leaving the tab or closing the notch ends it.
+    private var keyTestCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Key Test")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.8)
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer(minLength: 0)
+                Button(tester.isTesting ? L("끝내기", "Stop") : L("테스트 시작", "Start Test")) {
+                    tester.toggle()
+                }
+                .controlSize(.small)
+                .disabled(manager.isLocked)
+            }
+            KeyTestKeyboard(tester: tester)
+                .opacity(tester.isTesting ? 1 : 0.5)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .notchCard()
+        .onDisappear { tester.stop() }
     }
 }
