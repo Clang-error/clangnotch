@@ -7,7 +7,7 @@ import AppKit
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, tools }
+    enum Scene: String { case claude, codex, both, tools, many }
 
     static var scene: Scene {
         let args = CommandLine.arguments
@@ -22,6 +22,8 @@ enum DemoMode {
 /// both: one Claude session from 2s, one Codex session from 9s; the Claude question is up
 /// from 17s, the Codex one from 24s; they finish at 31s and 36s. A Claude question can be
 /// answered by picking an option in the notch. The last seconds are quiet, for a final look.
+/// many: Claude sessions join one every 3s from 2s (up to 5), then Codex ones from 17s
+/// (up to 3), so the wing's 아이콘 지그재그 grows; all finish around 40–45s.
 @MainActor
 final class DemoDriver {
     static let shared = DemoDriver()
@@ -159,6 +161,23 @@ final class DemoDriver {
         case .claude: return [orbit, lumen]
         case .codex: return [atlas, prism]
         case .tools: return []
+        case .many:
+            let claudeNames = ["orbit-api", "lumen-web", "nova-docs", "pulse-ios", "relay-bot"]
+            let codexNames = ["atlas-cli", "prism-app", "quill-sdk"]
+            let claude = claudeNames.enumerated().map { index, name in
+                var script = index.isMultiple(of: 2) ? orbit : lumen
+                script = Script(name: name, agent: script.agent, branch: script.branch, prompt: script.prompt,
+                                answer: script.answer, start: 2 + Double(index) * 3, end: 40 + Double(index),
+                                steps: script.steps)
+                return script
+            }
+            let codex = codexNames.enumerated().map { index, name in
+                let base = index.isMultiple(of: 2) ? atlas : prism
+                return Script(name: name, agent: .codex, branch: base.branch, prompt: base.prompt,
+                              answer: base.answer, start: 17 + Double(index) * 3, end: 42 + Double(index),
+                              steps: base.steps)
+            }
+            return claude + codex
         case .both:
             var claude = orbit
             claude.end = 31

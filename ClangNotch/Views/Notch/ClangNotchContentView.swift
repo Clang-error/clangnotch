@@ -851,10 +851,19 @@ struct ClangNotchContentView: View {
         let labelCapsuleWidth = min(124, measuredTextWidth(closedLabel, 10, .medium) + 12)
         let showsClaudeIcon = (hasCurrentTool || isThinking) && isClaudeActive && !isCodexActive
         let showsCodexIcon = (hasCurrentTool || isThinking) && isCodexActive
+        // Working sessions per agent, counted like the 요약 줄's "작업 중 N"; the wing icon
+        // gets one zigzag copy behind it per extra session.
+        let claudeWorkingCount = claudeCodeManager.availableSessions
+            .filter { claudeCodeManager.sessionStates[$0.id]?.isActive == true }.count
+        let codexWorkingCount = codexManager.availableSessions
+            .filter { codexManager.sessionStates[$0.id]?.isActive == true }.count
+        let leftIconWidth: CGFloat = showsCodexIcon ? ClosedAgentIconStack.width(for: codexWorkingCount)
+            : showsClaudeIcon ? ClosedAgentIconStack.width(for: claudeWorkingCount)
+            : 8
         let leftWingWidth: CGFloat = showsDone ? 12 + 6 + measuredTextWidth("Done", 10, .medium)
             : showsCodexQuestionOnLeft ? 58
             : showsQuestionWaitOnLeft ? 12 + 6 + labelCapsuleWidth
-            : (showLeftWing ? (showsClaudeIcon || showsCodexIcon ? 12 : 8) + 6 + labelCapsuleWidth : 0)
+            : (showLeftWing ? leftIconWidth + 6 + labelCapsuleWidth : 0)
         let simultaneousClaudeLabel = currentClaudeTool?.toolName ?? "Thinking"
         let showsSimultaneousClaudeWing = isSimultaneousClaudeCodex && !isClaudeQuestionWait
             && (isCodexQuestionWait || !hasPermissionNeeded) && !showsDone
@@ -876,7 +885,8 @@ struct ClangNotchContentView: View {
             }
             if showsDone { return DoneCheckmarkView.size }
             if showsSimultaneousClaudeWing {
-                return min(124, measuredTextWidth(simultaneousClaudeLabel, 10, .medium) + 12) + 6 + 12
+                return min(124, measuredTextWidth(simultaneousClaudeLabel, 10, .medium) + 12) + 6
+                    + ClosedAgentIconStack.width(for: claudeWorkingCount)
             }
             if showsQuestionOnRight || hasPermissionNeeded { return 58 }
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
@@ -1006,16 +1016,11 @@ struct ClangNotchContentView: View {
                             let indicatorColor = isCodexActive ? codexIndicatorColor : claudeGlowColor
                             let isActive = isCodexActive || isClaudeActive
                             if showsClaudeIcon {
-                                Image("ClaudeIcon")
-                                    .resizable()
-                                    .frame(width: 12, height: 12)
-                                    .shadow(color: indicatorColor.opacity(0.6), radius: 3)
+                                ClosedAgentIconStack(agent: .claude, count: claudeWorkingCount,
+                                                     spreadsLeading: true, glowColor: indicatorColor)
                             } else if showsCodexIcon {
-                                Image("ChatGPTIcon")
-                                    .resizable()
-                                    .foregroundColor(.white)
-                                    .frame(width: 12, height: 12)
-                                    .shadow(color: indicatorColor.opacity(0.6), radius: 3)
+                                ClosedAgentIconStack(agent: .codex, count: codexWorkingCount,
+                                                     spreadsLeading: true, glowColor: indicatorColor)
                             } else {
                                 Circle()
                                     .fill(indicatorColor)
@@ -1084,10 +1089,8 @@ struct ClangNotchContentView: View {
                                     foregroundOpacity: currentClaudeTool != nil ? 0.85 : 0.7,
                                     glowColor: claudeGlowColor
                                 )
-                                Image("ClaudeIcon")
-                                    .resizable()
-                                    .frame(width: 12, height: 12)
-                                    .shadow(color: claudeGlowColor.opacity(0.6), radius: 3)
+                                ClosedAgentIconStack(agent: .claude, count: claudeWorkingCount,
+                                                     spreadsLeading: false, glowColor: claudeGlowColor)
                             }
                         } else if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
                             // Codex tool info
