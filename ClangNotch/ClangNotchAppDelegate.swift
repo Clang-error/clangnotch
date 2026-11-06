@@ -3,6 +3,7 @@ import SwiftUI
 
 final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
+    private var settingsToolbar: SettingsToolbarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -55,22 +56,38 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let settingsView = AgentSettingsView()
+        let (settingsView, toolbarController) = MainActor.assumeIsolated {
+            let navigator = SettingsNavigator()
+            return (AgentSettingsView(navigator: navigator), SettingsToolbarController(navigator: navigator))
+        }
 
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 450, height: 300),
-            styleMask: [.titled, .closable, .miniaturizable],
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
+        // The sidebar runs up under the title bar; the unified toolbar makes that bar 52pt
+        // tall so the traffic lights line up with the back/forward control and the title.
+        // Set before the content: added after, the window sizes itself 66pt too tall.
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.toolbar = toolbarController.toolbar
+        window.toolbarStyle = .unified
+        window.isMovableByWindowBackground = true
         window.contentViewController = hostingController
         window.title = L("ClangNotch 설정", "ClangNotch Settings")
-        window.setFrameAutosaveName("SettingsWindow")
+        // New key: the old one restores the tab-style window's 600×560 frame.
+        window.setFrameAutosaveName("SettingsWindowSidebar")
+        // The saved frame can be from a build that sized the window wrong; the view is fixed.
+        window.setContentSize(NSSize(width: 780, height: 600))
         window.center()
         window.isReleasedWhenClosed = false
 
         settingsWindow = window
+        // The toolbar holds its delegate weakly.
+        settingsToolbar = toolbarController
         // A closed window kept its whole SwiftUI view tree alive, still following every
         // manager it observes, until the next open replaced it.
         var closeObserver: NSObjectProtocol?
@@ -79,7 +96,10 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self, weak window] _ in
             if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
             window?.contentViewController = nil
-            if self?.settingsWindow === window { self?.settingsWindow = nil }
+            if self?.settingsWindow === window {
+                self?.settingsWindow = nil
+                self?.settingsToolbar = nil
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)

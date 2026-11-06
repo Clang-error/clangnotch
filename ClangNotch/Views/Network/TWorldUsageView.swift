@@ -139,7 +139,7 @@ struct TWorldSettingsView: View {
                     .disabled(loginID.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isRefreshing)
                 }
                 if session.hasCredentials {
-                    Text(L("자동 로그인 저장됨 · 세션이 만료되면 T ID에 다시 로그인합니다.", "Auto-login saved · signs in to T ID again when the session expires."))
+                    Text(L("자동 로그인 저장됨 · 세션이 만료되면 T ID에 자동으로 다시 로그인", "Auto-login saved · signs in to T ID again on its own when the session expires"))
                         .font(.caption).foregroundColor(.secondary)
                 }
                 HStack {

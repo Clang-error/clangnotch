@@ -75,6 +75,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.
     @AppStorage("notchOpenDelay") public var notchOpenDelay: Double = 0.09
+    /// Keep the notch over full-screen apps instead of hiding it there (Mission Control still hides it).
+    @AppStorage("keepNotchInFullScreen") public var keepNotchInFullScreen: Bool = false
     /// A light trackpad tap when the notch opens on hover.
     @AppStorage("notchHapticsEnabled") public var notchHapticsEnabled: Bool = true
     /// The same tap when a session finishes its turn; muted sessions stay quiet.

@@ -424,7 +424,7 @@ struct ClaudeUsageSettingsView: View {
                     }
                 }
 
-                Text(L("Claude Code가 이 Mac에 이미 저장한 토큰으로 사용량을 읽으므로 따로 로그인하거나 API 키를 넣을 필요가 없습니다. 감지되지 않으면 Claude Code에서 로그인하세요.", "Usage is read from the token Claude Code already stored on this Mac — no login or API key needed. Sign in with Claude Code if not detected."))
+                Text(L("Claude Code가 이 Mac에 저장한 토큰 사용 · 따로 로그인이나 API 키 필요 없음 · 감지 안 되면 Claude Code에서 로그인", "Uses the token Claude Code stored on this Mac · no login or API key needed · sign in with Claude Code if not detected"))
                     .font(.caption2)
                     .foregroundColor(.secondary.opacity(0.7))
             }

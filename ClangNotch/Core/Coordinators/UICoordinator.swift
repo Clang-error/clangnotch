@@ -98,7 +98,13 @@ public final class UICoordinator: ObservableObject {
             repositionNotchPanel()
         }
         // Re-assert visibility unless a full-screen app or Mission Control is active.
-        if !FullScreenDetector.isFullScreenActive() && !MissionControlDetector.isActive() { show() }
+        if !shouldHideNotch { show() }
+    }
+
+    /// Mission Control always hides the notch; a full-screen app does unless the user keeps it.
+    private var shouldHideNotch: Bool {
+        (FullScreenDetector.isFullScreenActive() && !AppSettings.shared.keepNotchInFullScreen)
+            || MissionControlDetector.isActive()
     }
 
     private func repositionNotchPanel() {
@@ -131,7 +137,8 @@ public final class UICoordinator: ObservableObject {
     private func applyFullScreenVisibility() {
         // Mission Control puts its Spaces strip right where the notch lives, so hide there
         // too — otherwise reaching for a Space opens the notch and it eats the clicks.
-        let shouldHide = FullScreenDetector.isFullScreenActive() || MissionControlDetector.isActive()
+        // The setting is read on each poll, so turning it on or off applies within a second.
+        let shouldHide = shouldHideNotch
         guard shouldHide != lastFullScreen else { return }  // only act on change
         lastFullScreen = shouldHide
         if shouldHide { hide() } else { show() }
