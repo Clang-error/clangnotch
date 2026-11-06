@@ -51,28 +51,6 @@ struct TetherPeekContent: View {
     }
 }
 
-/// Open-notch header warning; breathes so it catches the eye while tethering lasts.
-struct TetherWarningLabel: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var bright = false
-
-    var body: some View {
-        Text(L("테더링 연결중 - 해제 권장", "Tethering on - disconnect advised"))
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.red)
-            .lineLimit(1)
-            // Dims only to 0.6 so the text stays readable through the whole breath.
-            .opacity(bright ? 1 : 0.6)
-            .shadow(color: .red.opacity(bright ? 0.9 : 0), radius: bright ? 6 : 0)
-            .onAppear {
-                guard !reduceMotion else { bright = true; return }
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    bright = true
-                }
-            }
-    }
-}
-
 struct TetherPlacesSettingsView: View {
     @ObservedObject private var monitor = TetherPlaceMonitor.shared
     @ObservedObject private var network = NetworkInfoManager.shared
@@ -125,8 +103,8 @@ struct TetherPlacesSettingsView: View {
                     Button(L("삭제", "Delete"), role: .destructive) { monitor.remove(place.id) }
                     Button(L("취소", "Cancel"), role: .cancel) {}
                 } message: {
-                    Text(L("다시 추가하려면 그 장소에서 '현재 위치 추가'를 눌러야 합니다.",
-                           "To add it back you have to be there and use Add current location."))
+                    Text(L("다시 추가하려면 그 장소에서 '현재 위치 추가' 클릭",
+                           "To add it back, click Add current location while there"))
                 }
             }
             HStack {

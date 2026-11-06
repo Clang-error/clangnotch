@@ -374,6 +374,16 @@ struct ClangNotchContentView: View {
                height: isExpanded ? notchVM.notchSize.height : notchVM.closedNotchSize.height)
     }
 
+    /// With no wings the closed surface is the bare notch, and `NotchShape` sets its sides
+    /// `topCornerRadius` in from the frame — 4pt inside the camera housing, so the startup
+    /// glow traced a line inside the notch. Widen the glow by both flares so its sides land
+    /// just outside the housing. With wings the sides are out in the menu bar anyway.
+    private var glowSurfaceWidth: CGFloat {
+        guard notchVM.notchState == .closed,
+              notchVM.notchSize.width <= notchVM.closedNotchSize.width + 0.5 else { return notchSurfaceSize.width }
+        return notchVM.closedNotchSize.width + topCornerRadius * 2
+    }
+
     private var notchSurfaceShape: some View {
         NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius)
             .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
@@ -445,7 +455,7 @@ struct ClangNotchContentView: View {
             .mask(alignment: .top) { notchSurfaceShape }
             .overlay(alignment: .top) {
                 glowOverlay
-                    .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
+                    .frame(width: glowSurfaceWidth, height: notchSurfaceSize.height)
                     // Switching state swaps the glow for a new view that appears at its
                     // final size, ahead of the still-resizing surface; fade it in after.
                     .opacity(isGlowSettled || tetherGlowGrowsWithSurface ? 1 : 0)
@@ -586,7 +596,9 @@ struct ClangNotchContentView: View {
                 .onChange(of: claudeCodeManager.pendingInputRequests, initial: true) { old, requests in
                     if let request = requests.first, request != claudeInputRequest {
                         // `old == requests` is the launch pass: a question already waiting stays quiet.
-                        if old != requests, request.id != claudeInputRequest?.id {
+                        // A next-step box comes seconds before its turn's end, which plays the
+                        // done sound; chiming for the box too made every such turn ring twice.
+                        if old != requests, request.id != claudeInputRequest?.id, !request.isWrapUp {
                             let sessionId = claudeCodeManager.sessionStates.first { $0.value.pendingInputRequests.contains { $0.id == request.id } }?.key
                             NotchSounds.playAttention(for: sessionId)
                         }
@@ -1018,9 +1030,12 @@ struct ClangNotchContentView: View {
                             if showsClaudeIcon {
                                 ClosedAgentIconStack(agent: .claude, count: claudeWorkingCount,
                                                      spreadsLeading: true, glowColor: indicatorColor)
+                                    .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)
                             } else if showsCodexIcon {
                                 ClosedAgentIconStack(agent: .codex, count: codexWorkingCount,
                                                      spreadsLeading: true, glowColor: indicatorColor)
+                                    // Codex taking the left wing from Claude pops in there.
+                                    .transition(reduceMotion ? .opacity : .scale(scale: 0.3).combined(with: .opacity))
                             } else {
                                 Circle()
                                     .fill(indicatorColor)
@@ -1091,6 +1106,9 @@ struct ClangNotchContentView: View {
                                 )
                                 ClosedAgentIconStack(agent: .claude, count: claudeWorkingCount,
                                                      spreadsLeading: false, glowColor: claudeGlowColor)
+                                    // Same id as the left wing's Claude icon: when Codex joins,
+                                    // Claude's icon glides across the notch instead of popping.
+                                    .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)
                             }
                         } else if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
                             // Codex tool info
@@ -1196,6 +1214,10 @@ struct ClangNotchContentView: View {
             .animation(.easeInOut(duration: 0.18), value: closedDisplayedLabel)
             // Same curve as the surface, so the content moves with the black edge.
             .animation(closedWingResizeAnimation, value: totalWidth)
+            // Codex joining or leaving moves Claude between the wings; animate it even if
+            // the wings keep their width.
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.72),
+                       value: isSimultaneousClaudeCodex)
         }
     }
 
@@ -1265,7 +1287,9 @@ struct ClangNotchContentView: View {
             Color.clear.frame(height: notchVM.closedNotchSize.height)
             HStack(spacing: 10) {
                 agentOverview
-                Spacer()
+                // Takes the width left between the 요약 줄 and the buttons, and shrinks to fit it.
+                HeaderStatusChips()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 // Apple's own mute look: the bell, struck through when the sounds are off.
                 NotchControlButton(systemName: settings.notchSoundsEnabled ? "bell" : "bell.slash",
                                    tint: settings.notchSoundsEnabled ? nil : .white.opacity(0.45)) {
@@ -1278,14 +1302,6 @@ struct ClangNotchContentView: View {
                     .help(L("ClangNotch 종료", "Quit ClangNotch"))
             }
             .frame(height: openHeaderHeight)
-            // Centred on the whole header, not squeezed between the title and the controls.
-            .overlay {
-                if tetherMonitor.activePlaceName != nil {
-                    TetherWarningLabel()
-                } else {
-                    HeaderBatteryStrip()
-                }
-            }
         }
     }
 
@@ -1349,6 +1365,8 @@ struct ClangNotchContentView: View {
     }
 
     @Namespace private var chipNamespace
+    /// Ties the left and right wings' Claude icons together so it moves between them.
+    @Namespace private var wingIconNamespace
 
     /// Each `ViewThatFits` branch gets its own capsule id, in case both get measured at once.
     private func modeChips(matchID: String) -> some View {
@@ -1402,26 +1420,55 @@ struct ClangNotchContentView: View {
                            ? claudeCodeManager.availableSessions.filter { claudeCodeManager.sessionStates[$0.id]?.isActive == true }.count : 0)
                 + (settings.showSourceCodex
                    ? codexManager.availableSessions.filter { codexManager.sessionStates[$0.id]?.isActive == true }.count : 0)
-            Text(!overviewHasActivity ? L("대기 중", "Quiet")
-                 : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working"))
-                // Glow first: its gradient sits closest to the text and wins while working.
-                // The grey only reaches the text when idle (a style set before the glow
-                // used to dim the glow colours too).
-                .modifier(overviewGlow)
-                .foregroundStyle(.white.opacity(0.8))
-            let sessionCount = (settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0)
-                + (settings.showSourceCodex ? codexManager.availableSessions.count : 0)
-            Text(L("세션 \(sessionCount)", "Sessions \(sessionCount)"))
-            Label("\(attentionCount)", systemImage: "bubble.left.and.exclamationmark.bubble.right")
-                .foregroundStyle(attentionCount > 0 ? .red : .secondary)
-                .modifier(Breathing(active: attentionCount > 0))
-                .help(L("답변·승인 대기", "Waiting for your response"))
+            let glow = overviewGlow
+            HStack(spacing: 6) {
+                StatusDot(active: overviewHasActivity, color: glow.color, secondary: glow.secondary)
+                Text(!overviewHasActivity ? L("대기 중", "Quiet")
+                     : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working"))
+                    // Glow first: its gradient sits closest to the text and wins while working.
+                    // The grey only reaches the text when idle (a style set before the glow
+                    // used to dim the glow colours too).
+                    .modifier(glow)
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 24)
+            .background(Capsule().fill(Color.white.opacity(0.08)))
+            // Sessions per agent, by logo; an agent with none is left out.
+            let claudeCount = settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0
+            if claudeCount > 0 {
+                let count = claudeCount
+                overviewAgentCount(Image("ClaudeIcon").resizable(), count)
+                    .help(L("Claude 세션 \(count)", "Claude sessions: \(count)"))
+            }
+            let codexCount = settings.showSourceCodex ? codexManager.availableSessions.count : 0
+            if codexCount > 0 {
+                let count = codexCount
+                overviewAgentCount(Image("ChatGPTIcon").resizable().foregroundColor(.white), count)
+                    .help(L("Codex 세션 \(count)", "Codex sessions: \(count)"))
+            }
+            if attentionCount > 0 {
+                Label("\(attentionCount)", systemImage: "bubble.left.and.exclamationmark.bubble.right")
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+                    .background(Capsule().fill(Color.red.opacity(0.18)))
+                    .modifier(Breathing(active: true))
+                    .help(L("답변·승인 대기", "Waiting for your response"))
+            }
         }
         .font(.system(size: 13, weight: .semibold))
         .monospacedDigit()
         .lineLimit(1)
         .fixedSize()
         .accessibilityElement(children: .combine)
+    }
+
+    private func overviewAgentCount(_ logo: some View, _ count: Int) -> some View {
+        HStack(spacing: 4) {
+            logo.frame(width: 12, height: 12)
+            Text("\(count)")
+        }
     }
 
     /// "작업 중" lit in the working agent's colour like the glow; both working → it alternates.

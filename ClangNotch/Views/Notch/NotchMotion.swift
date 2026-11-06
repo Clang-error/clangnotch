@@ -121,7 +121,7 @@ struct GlowSweepText: ViewModifier {
     }
 
     /// Same as NotchGlowBorder's: `Color.mix(with:by:)` needs macOS 15; the target is 14.2.
-    private static func blend(_ from: Color, _ to: Color?, _ fraction: Double) -> Color {
+    static func blend(_ from: Color, _ to: Color?, _ fraction: Double) -> Color {
         guard let to, fraction > 0 else { return from }
         guard let blended = NSColor(from).usingColorSpace(.sRGB)?
             .blended(withFraction: fraction, of: NSColor(to)) else { return from }
@@ -141,6 +141,31 @@ struct GlowSweepText: ViewModifier {
             content.foregroundStyle(LinearGradient(colors: [base, band, base],
                                                    startPoint: UnitPoint(x: center - 0.25, y: 0.5),
                                                    endPoint: UnitPoint(x: center + 0.25, y: 0.5)))
+        }
+    }
+}
+
+/// The 요약 줄's status dot. Grey when quiet; while working it breathes in the working
+/// agent's colour, and with a `secondary` (both agents working) it eases between the two
+/// colours on `GlowSweepText`'s 6s cycle, so dot and text change together.
+struct StatusDot: View {
+    var active: Bool
+    var color: Color
+    var secondary: Color? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: !active || reduceMotion)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let moving = active && !reduceMotion
+            let mix = moving && secondary != nil ? 0.5 - 0.5 * cos(2 * .pi * t / 6) : 0
+            let wave = moving ? 0.5 + 0.5 * cos(2 * .pi * t / 2.4) : 1
+            let fill = active ? GlowSweepText.blend(color, secondary, mix) : Color.white.opacity(0.35)
+            Circle()
+                .fill(fill)
+                .frame(width: 7, height: 7)
+                .opacity(active ? 0.55 + 0.45 * wave : 1)
+                .shadow(color: active ? fill.opacity(0.8 * wave) : .clear, radius: 3)
         }
     }
 }

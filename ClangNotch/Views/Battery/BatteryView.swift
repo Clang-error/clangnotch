@@ -268,55 +268,6 @@ private struct BatteryRow: View {
     }
 }
 
-/// Open-notch header strip: the pinned devices that are connected, icon and level only.
-struct HeaderBatteryStrip: View {
-    @ObservedObject private var manager = BatteryManager.shared
-    @ObservedObject private var settings = AppSettings.shared
-
-    /// 지정한 순서대로.
-    private var shown: [BatteryDevice] {
-        settings.headerBatteryDeviceIDs.split(separator: "\n").compactMap { id in
-            manager.devices.first { $0.id == id && $0.isConnected }
-        }
-    }
-
-    var body: some View {
-        // 기기마다 한 줄: 가로로 이으면 기기가 늘수록 헤더 오른쪽 상태 글자까지 덮는다.
-        VStack(alignment: .center, spacing: 2) {
-            ForEach(shown) { device in
-                HStack(spacing: 4) {
-                    Image(systemName: device.compactSymbol)
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.6))
-                    // 에어팟처럼 좌우가 따로 잡히면 한쪽만 먼저 닳는 게 보이도록 L/R을 나눠 띄운다.
-                    // 한쪽만 잡히면 아이콘이 이미 어느 쪽인지 말해 주므로 잔량만 둔다.
-                    let earbuds = device.parts.filter { $0.label == "L" || $0.label == "R" }
-                    if earbuds.count < 2 {
-                        level(device.displayLevel)
-                    } else {
-                        ForEach(earbuds, id: \.label) { part in
-                            HStack(spacing: 2) {
-                                Text(part.label)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.5))
-                                level(part.percent)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .lineLimit(1)
-    }
-
-    private func level(_ percent: Int) -> some View {
-        Text("\(percent)%")
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundColor(percent <= 20 ? Color(red: 0.95, green: 0.35, blue: 0.35) : .white.opacity(0.8))
-            .monospacedDigit()
-    }
-}
-
 /// Closed-notch right-wing badge for the low priority device: icon and level, in red.
 struct ClosedLowBatteryBadge: View {
     let device: BatteryDevice
