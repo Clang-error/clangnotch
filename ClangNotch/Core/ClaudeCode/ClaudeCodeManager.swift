@@ -162,6 +162,8 @@ final class ClaudeCodeManager: ObservableObject {
     private var seenLiveConversationIds: Set<String> = []
     /// Real `cwd` read from each transcript's head (it never changes for a file).
     private var cwdByFile: [String: String] = [:]
+    /// Newest line timestamp per transcript, valid while the file's mtime is unchanged.
+    private var lastEntryByFile: [String: (modified: Date, entry: Date)] = [:]
     /// A session must be this quiet before a missing registry record ends it, so a new or
     /// /clear'd session isn't ended in the moment before its record is rewritten.
     private let endedSessionGrace: TimeInterval = 30
@@ -274,7 +276,7 @@ final class ClaudeCodeManager: ObservableObject {
                             ideName: "Terminal"
                         )
                         let modified = (try? jsonlFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-                        guard modified > recentThreshold
+                        guard (modified > recentThreshold && lastEntryDate(of: jsonlFile, modified: modified) > recentThreshold)
                                 || sessionStates[session.id].map({ $0.isActive || $0.needsPermission || $0.isAwaitingInput }) == true
                         else { continue }
 
@@ -1625,7 +1627,49 @@ final class ClaudeCodeManager: ObservableObject {
                 ?? findActiveSessionFiles(in: dir).first,
               let mod = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         else { return .distantPast }
-        return mod
+        return lastEntryDate(of: file, modified: mod)
+    }
+
+    /// When the transcript last had a real event: the newest line with a `timestamp`.
+    /// The mtime alone lies — the desktop app appends untimed bookkeeping lines
+    /// (`cost-state`, `last-prompt`, `bridge-session`, `tools-used`…) to sessions idle for
+    /// days, several files at once, which listed them for five minutes (2026-11-06).
+    private func lastEntryDate(of file: URL, modified: Date) -> Date {
+        if let cached = lastEntryByFile[file.path], cached.modified == modified { return cached.entry }
+        let entry = Self.newestLineTimestamp(in: file) ?? .distantPast
+        lastEntryByFile[file.path] = (modified, entry)
+        return entry
+    }
+
+    /// Reads backwards like `latestTitle(in:)`; gives up after 4 MB.
+    private static func newestLineTimestamp(in file: URL) -> Date? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        let marker = Data(#""timestamp":""#.utf8)
+        let end = handle.seekToEndOfFile()
+        let chunkSize: UInt64 = 256 * 1024
+        var position = end
+        var head = Data()  // the start of a line cut by the chunk boundary
+        while position > 0, end - position < 4 * 1024 * 1024 {
+            let start = position > chunkSize ? position - chunkSize : 0
+            handle.seek(toFileOffset: start)
+            guard let data = try? handle.read(upToCount: Int(position - start)) else { return nil }
+            var block = data + head
+            position = start
+            head = Data()
+            if start > 0, let newline = block.firstIndex(of: 0x0A) {
+                head = Data(block[..<newline])
+                block = Data(block[newline...])
+            }
+            for line in block.split(separator: 0x0A).reversed() where line.range(of: marker) != nil {
+                if let json = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                   let raw = json["timestamp"] as? String,
+                   let date = lineTimestampFormatters.lazy.compactMap({ $0.date(from: raw) }).first {
+                    return date
+                }
+            }
+        }
+        return nil
     }
 
     private func findActiveSessionFiles(in projectDir: URL) -> [URL] {
