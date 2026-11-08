@@ -57,7 +57,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .about:    return ["버전", "업데이트", "version", "updates"]
         case .general:  return ["언어", "로그인", "메뉴 막대", "배터리 절약", "language", "login", "menu bar", "battery saver"]
-        case .notch:    return ["탭", "순서", "열기", "햅틱", "전체 화면", "표시", "tabs", "order", "opening", "haptic", "full screen", "visibility"]
+        case .notch:    return ["노치 색", "라이트", "다크", "배경", "탭", "순서", "열기", "햅틱", "전체 화면", "표시",
+                                "notch color", "light", "dark", "wallpaper", "tabs", "order", "opening", "haptic", "full screen", "visibility"]
         case .features: return ["클립보드", "볼륨", "믹서", "sidecar", "배터리", "속도", "키보드", "밝기",
                                 "clipboard", "volume", "mixer", "battery", "speed", "keyboard", "brightness"]
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
@@ -348,6 +349,151 @@ private struct SettingsPageIcon: View {
     }
 }
 
+/// 설정 › 노치 › 노치 색: four picture tiles, each a small notch over a desktop.
+private struct NotchAppearancePicker: View {
+    @Binding var selection: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(NotchAppearanceMode.allCases, id: \.self) { mode in
+                let selected = selection == mode.rawValue
+                Button { selection = mode.rawValue } label: {
+                    VStack(spacing: 6) {
+                        NotchAppearanceTile(mode: mode)
+                            .frame(width: 92, height: 60)
+                            .padding(3)
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2.5))
+                        Text(title(mode))
+                            .font(.callout.weight(selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? .primary : .secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    private func title(_ mode: NotchAppearanceMode) -> String {
+        switch mode {
+        case .wallpaper: return L("배경 따라", "Wallpaper")
+        case .auto:      return L("자동", "Auto")
+        case .light:     return L("라이트", "Light")
+        case .dark:      return L("다크", "Dark")
+        }
+    }
+}
+
+/// 배경 따라's colour: read from the wallpaper, or picked off the screen with the eyedropper.
+private struct WallpaperColorSource: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject private var appearance = NotchAppearance.shared
+
+    var body: some View {
+        Picker(L("색 가져오기", "Colour from"), selection: $settings.notchWallpaperSource) {
+            Text(L("바탕화면에서", "Wallpaper")).tag("wallpaper")
+            Text(L("직접 지정", "Custom")).tag("custom")
+        }
+        .pickerStyle(.segmented)
+
+        if settings.notchWallpaperSource == "custom" {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("스포이드", "Eyedropper"))
+                    Text(L("화면 아무 곳이나 눌러 그 색을 노치에 칠함", "Click anywhere on screen to paint the notch that colour"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let color = NotchAppearance.color(hex: settings.notchCustomColor) {
+                    Circle()
+                        .fill(Color(nsColor: color))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.2), lineWidth: 1))
+                        .frame(width: 20, height: 20)
+                        .help(settings.notchCustomColor)
+                }
+                Button {
+                    NSColorSampler().show { picked in
+                        guard let picked else { return }
+                        Task { @MainActor in settings.notchCustomColor = NotchAppearance.hex(picked) }
+                    }
+                } label: {
+                    Label(L("색 찍기", "Pick"), systemImage: "eyedropper")
+                }
+            }
+        } else if appearance.wallpaperUnreadable {
+            Text(L("폴더로 바뀌는 바탕화면은 지금 사진을 알 수 없어 다크로 표시 · 직접 지정 권장",
+                   "A rotating wallpaper folder doesn't say which picture is showing, so the notch stays dark · use Custom"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct NotchAppearanceTile: View {
+    let mode: NotchAppearanceMode
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        ZStack {
+            switch mode {
+            case .wallpaper:
+                scene(desktop: [Color(red: 0.95, green: 0.55, blue: 0.35), Color(red: 0.45, green: 0.25, blue: 0.6)],
+                      surface: Color(red: 0.93, green: 0.58, blue: 0.42), ink: .black)
+            case .auto:
+                scene(desktop: desktop, surface: Color(white: 0.96), ink: .black)
+                scene(desktop: desktop, surface: .black, ink: .white)
+                    .mask(DiagonalHalf())
+            case .light:
+                scene(desktop: desktop, surface: Color(white: 0.96), ink: .black)
+            case .dark:
+                scene(desktop: desktop, surface: .black, ink: .white)
+            }
+        }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+    }
+
+    private var desktop: [Color] {
+        [Color(red: 0.2, green: 0.45, blue: 0.85), Color(red: 0.08, green: 0.2, blue: 0.5)]
+    }
+
+    /// A desktop with an open notch hanging from the top edge, two lines of text in it.
+    private func scene(desktop: [Color], surface: Color, ink: Color) -> some View {
+        ZStack(alignment: .top) {
+            LinearGradient(colors: desktop, startPoint: .topLeading, endPoint: .bottomTrailing)
+            UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8, style: .continuous)
+                .fill(surface)
+                .frame(width: 64, height: 36)
+                .overlay(alignment: .topLeading) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Capsule().fill(ink.opacity(0.85)).frame(width: 30, height: 4)
+                        Capsule().fill(ink.opacity(0.4)).frame(width: 44, height: 4)
+                        Capsule().fill(ink.opacity(0.4)).frame(width: 22, height: 4)
+                    }
+                    .padding(.top, 9)
+                    .padding(.leading, 8)
+                }
+        }
+    }
+}
+
+/// The lower-right triangle of the tile, for 자동's half-light, half-dark tile.
+private struct DiagonalHalf: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: rect.maxX * 0.62, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            p.addLine(to: CGPoint(x: rect.maxX * 0.38, y: rect.maxY))
+            p.closeSubpath()
+        }
+    }
+}
+
 /// A switch with what it does in one line under it, so no setting needs a paragraph.
 private struct SettingToggle: View {
     let title: String
@@ -492,6 +638,15 @@ struct NotchSettingsTab: View {
 
     var body: some View {
         Form {
+            Section {
+                NotchAppearancePicker(selection: $settings.notchAppearance)
+                if settings.notchAppearance == NotchAppearanceMode.wallpaper.rawValue {
+                    WallpaperColorSource(settings: settings)
+                }
+            } header: {
+                Text(L("노치 색", "Notch color"))
+            }
+
             Section {
                 NotchTabOrderView()
             } header: {

@@ -10,7 +10,7 @@ struct CornerResizeHandle: View {
     var body: some View {
         Button(action: action) {
             CornerArc(cornerRadius: cornerRadius)
-                .stroke(Color.white.opacity(hovering ? 1 : 0.75),
+                .stroke(NotchPalette.ink.opacity(hovering ? 1 : 0.75),
                         style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .frame(width: cornerRadius, height: cornerRadius)
                 .padding(8)

@@ -14,7 +14,7 @@ struct TetherPeekHeader: View {
                     .foregroundColor(tetherAccent)
                 Text(L("테더링", "Tethering"))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(NotchPalette.ink.opacity(0.8))
                 Spacer(minLength: 0)
             }
             .padding(.leading, 12)
@@ -23,7 +23,7 @@ struct TetherPeekHeader: View {
 
             Text(placeName)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(NotchPalette.ink.opacity(0.7))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: 90, alignment: .trailing)
@@ -39,10 +39,10 @@ struct TetherPeekContent: View {
         VStack(spacing: 2) {
             Text(L("\(placeName)에서 아이폰 테더링 사용 중", "Tethering to iPhone at \(placeName)"))
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(NotchPalette.ink)
             Text(L("Wi-Fi로 바꾸면 데이터를 아낄 수 있어요", "Switch to Wi-Fi to save data"))
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.55))
+                .foregroundColor(NotchPalette.ink.opacity(0.55))
         }
         .lineLimit(1)
         .frame(maxWidth: .infinity)

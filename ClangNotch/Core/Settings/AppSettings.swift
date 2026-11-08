@@ -77,6 +77,12 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchOpenDelay") public var notchOpenDelay: Double = 0.09
     /// Keep the notch over full-screen apps instead of hiding it there (Mission Control still hides it).
     @AppStorage("keepNotchInFullScreen") public var keepNotchInFullScreen: Bool = false
+    /// 노치 색: "wallpaper", "auto", "light" or "dark" (`NotchAppearanceMode`).
+    @AppStorage("notchAppearance") public var notchAppearance: String = "dark"
+    /// 배경 따라's colour: "wallpaper" (read from the wallpaper file) or "custom" (`notchCustomColor`).
+    @AppStorage("notchWallpaperSource") public var notchWallpaperSource: String = "wallpaper"
+    /// "#RRGGBB" picked with the eyedropper for 배경 따라 › 직접 지정.
+    @AppStorage("notchCustomColor") public var notchCustomColor: String = ""
     /// A light trackpad tap when the notch opens on hover.
     @AppStorage("notchHapticsEnabled") public var notchHapticsEnabled: Bool = true
     /// The same tap when a session finishes its turn; muted sessions stay quiet.

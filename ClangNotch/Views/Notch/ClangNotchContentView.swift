@@ -38,6 +38,7 @@ struct ClangNotchContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var notchVM = NotchViewModel()
     @StateObject private var settings = AppSettings.shared
+    @StateObject private var appearance = NotchAppearance.shared
     @StateObject private var claudeCodeManager = ClaudeCodeManager.shared
     @StateObject private var codexManager = CodexManager.shared
     @StateObject private var clipboardManager = ClipboardManager.shared
@@ -146,6 +147,11 @@ struct ClangNotchContentView: View {
         notchVM.notchState == .open || notchVM.notchState == .peeking
     }
 
+    /// 설정 › 노치 › 노치 색, for the whole notch, closed wings included.
+    private var theme: NotchTheme { appearance.theme(settings) }
+
+    private var notchScheme: ColorScheme { theme.scheme }
+
     private var topCornerRadius: CGFloat {
         isExpanded ? cornerRadiusInsets.opened.top : cornerRadiusInsets.closed.top
     }
@@ -230,7 +236,7 @@ struct ClangNotchContentView: View {
     /// A collapse from the panel keeps the surface black until it lands on the physical notch,
     /// then drops it in one frame — it already sits under the camera housing, so no exit effect.
     private var notchBackground: Color {
-        notchActive || notchVM.isSettlingClosed ? .black : .clear
+        notchActive || notchVM.isSettlingClosed ? theme.surface ?? .black : .clear
     }
 
     /// Whether to draw the notch chrome at all. When fully idle (no AI, not
@@ -447,8 +453,12 @@ struct ClangNotchContentView: View {
                 // while the mask was still shrinking, and its square corners showed.
                 ZStack {
                     notchBackground
-                    LinearGradient(colors: [.black, NotchPalette.background], startPoint: .top, endPoint: .bottom)
-                        .opacity(notchVM.notchState == .open ? 1 : 0)
+                    // A chosen colour is flat everywhere; only the original dark look has
+                    // the open notch's black-to-slate fade.
+                    if theme.surface == nil {
+                        LinearGradient(colors: [.black, NotchPalette.background], startPoint: .top, endPoint: .bottom)
+                            .opacity(notchVM.notchState == .open ? 1 : 0)
+                    }
                 }
                 .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
             }
@@ -652,12 +662,18 @@ struct ClangNotchContentView: View {
         .padding(.bottom, isExpanded ? 8 : closedNotchGlowPadding)
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
         .compositingGroup()
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, notchScheme)
+        .preferredColorScheme(notchScheme)
         // ⌘1–⌘7 pick the nth visible tab, but only while open: the tap that supplies them
         // is created on open and torn down on close, so nothing is intercepted otherwise.
         .onChange(of: notchVM.notchState) { _, state in
             NotchTabShortcuts.shared.setActive(state == .open)
+            // 배경 따라: catches a wallpaper changed since the last look.
+            if state != .closed { appearance.refreshWallpaper() }
         }
+        .onChange(of: settings.notchAppearance) { appearance.refreshWallpaper() }
+        .onChange(of: settings.notchWallpaperSource) { appearance.refreshWallpaper() }
+        .onAppear { appearance.refreshWallpaper() }
         .onReceive(NotificationCenter.default.publisher(for: .notchSelectTab)) { note in
             guard notchVM.notchState == .open, let index = note.userInfo?["index"] as? Int,
                   visibleModes.indices.contains(index) else { return }
@@ -994,7 +1010,7 @@ struct ClangNotchContentView: View {
                                 if isCodexQuestionWait {
                                     Image("ChatGPTIcon")
                                         .resizable()
-                                        .foregroundColor(.white)
+                                        .foregroundColor(NotchPalette.ink)
                                 } else {
                                     Image("ClaudeIcon")
                                         .resizable()
@@ -1015,7 +1031,7 @@ struct ClangNotchContentView: View {
                             } else {
                                 Image("ChatGPTIcon")
                                     .resizable()
-                                    .foregroundColor(.white)
+                                    .foregroundColor(NotchPalette.ink)
                                     .frame(width: 12, height: 12)
                             }
                             Text("Done")
@@ -1120,13 +1136,13 @@ struct ClangNotchContentView: View {
                                     if let arg = codexTool.argument {
                                         Text(arg.prefix(20))
                                             .font(.system(size: 9))
-                                            .foregroundColor(.white.opacity(0.5))
+                                            .foregroundColor(NotchPalette.ink.opacity(0.5))
                                             .lineLimit(1)
                                     }
                                 } else {
                                     Text(codexTool.formattedDuration)
                                         .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(.white.opacity(0.6))
+                                        .foregroundColor(NotchPalette.ink.opacity(0.6))
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
                                 }
@@ -1141,13 +1157,13 @@ struct ClangNotchContentView: View {
                                     if let desc = claudeTool.description {
                                         Text(desc.prefix(20))
                                             .font(.system(size: 9))
-                                            .foregroundColor(.white.opacity(0.5))
+                                            .foregroundColor(NotchPalette.ink.opacity(0.5))
                                             .lineLimit(1)
                                     }
                                 } else {
                                     Text(claudeTool.formattedDuration)
                                         .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(.white.opacity(0.6))
+                                        .foregroundColor(NotchPalette.ink.opacity(0.6))
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
                                 }
@@ -1160,7 +1176,7 @@ struct ClangNotchContentView: View {
                                 if let modelName = thinkingModelName {
                                     Text(modelName)
                                         .font(.system(size: 9, weight: .medium))
-                                        .foregroundColor(.white.opacity(0.5))
+                                        .foregroundColor(NotchPalette.ink.opacity(0.5))
                                 }
                             }
                         } else if hasPermissionNeeded {
@@ -1173,7 +1189,7 @@ struct ClangNotchContentView: View {
                         } else if showsTetherWings {
                             Text(tetherRightLabel)
                                 .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.white.opacity(0.75))
+                                .foregroundColor(NotchPalette.ink.opacity(0.75))
                                 .lineLimit(1)
                                 .fixedSize()
                         }
@@ -1292,13 +1308,13 @@ struct ClangNotchContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 // Apple's own mute look: the bell, struck through when the sounds are off.
                 NotchControlButton(systemName: settings.notchSoundsEnabled ? "bell" : "bell.slash",
-                                   tint: settings.notchSoundsEnabled ? nil : .white.opacity(0.45)) {
+                                   tint: settings.notchSoundsEnabled ? nil : NotchPalette.ink.opacity(0.45)) {
                     settings.notchSoundsEnabled.toggle()
                 }
                 .help(settings.notchSoundsEnabled ? L("효과음 끄기", "Mute sounds") : L("효과음 켜기", "Turn sounds on"))
                 NotchControlButton(systemName: "gearshape") { openSettings() }
                     .help(L("설정", "Settings"))
-                NotchControlButton(systemName: "power", tint: .white.opacity(0.5)) { confirmQuit() }
+                NotchControlButton(systemName: "power", tint: NotchPalette.ink.opacity(0.5)) { confirmQuit() }
                     .help(L("ClangNotch 종료", "Quit ClangNotch"))
             }
             .frame(height: openHeaderHeight)
@@ -1429,11 +1445,11 @@ struct ClangNotchContentView: View {
                     // The grey only reaches the text when idle (a style set before the glow
                     // used to dim the glow colours too).
                     .modifier(glow)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(NotchPalette.ink.opacity(0.55))
             }
             .padding(.horizontal, 10)
             .frame(height: 24)
-            .background(Capsule().fill(Color.white.opacity(0.08)))
+            .background(Capsule().fill(NotchPalette.ink.opacity(0.08)))
             // Sessions per agent, by logo; an agent with none is left out.
             let claudeCount = settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0
             if claudeCount > 0 {
@@ -1444,7 +1460,7 @@ struct ClangNotchContentView: View {
             let codexCount = settings.showSourceCodex ? codexManager.availableSessions.count : 0
             if codexCount > 0 {
                 let count = codexCount
-                overviewAgentCount(Image("ChatGPTIcon").resizable().foregroundColor(.white), count)
+                overviewAgentCount(Image("ChatGPTIcon").resizable().foregroundColor(NotchPalette.ink), count)
                     .help(L("Codex 세션 \(count)", "Codex sessions: \(count)"))
             }
             if attentionCount > 0 {
@@ -1496,7 +1512,7 @@ struct ClangNotchContentView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(L("Claude 사용량", "Claude usage"))
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.55))
+                                .foregroundStyle(NotchPalette.ink.opacity(0.55))
                             Text(L("사용량 조회가 꺼져 있습니다. 설정에서 켜면 5시간·7일 사용량을 확인할 수 있습니다.", "Usage tracking is off. Turn it on in Settings to see 5-hour and 7-day usage."))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
@@ -1517,7 +1533,7 @@ struct ClangNotchContentView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(L("Codex 사용량", "Codex usage"))
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.55))
+                                .foregroundStyle(NotchPalette.ink.opacity(0.55))
                             Text(L("아직 사용량 데이터가 없습니다. Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "No usage data yet. It appears once a Codex session reports its limits."))
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
@@ -1665,11 +1681,11 @@ struct ClangNotchContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Waiting for Your Answer")
                     .font(.system(size: 13 * questionScale, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
 
                 Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
                     .font(.system(size: 11 * questionScale))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(NotchPalette.ink.opacity(0.7))
             }
 
             Spacer()
@@ -1772,7 +1788,7 @@ struct ClangNotchContentView: View {
                     Text(L("Codex 사용량", "Codex usage"))
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(NotchPalette.ink.opacity(0.4))
                     if rateLimits.limitReached {
                         // A window can sit well under 100% while a different one
                         // is what's actually blocking, so say so outright.
@@ -1790,7 +1806,7 @@ struct ClangNotchContentView: View {
                             Text(L("갱신 중", "Refreshing"))
                         }
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
                     } else if let nextRefreshAt = codexManager.nextRateLimitRefreshAt {
                         // A spent weekly window pauses polling for days; "138:54:03" reads as
                         // nonsense, so use the same day/hour wording as the Claude card.
@@ -1801,7 +1817,7 @@ struct ClangNotchContentView: View {
                                 Text(remaining >= 1 ? ClaudeUsageNotchSection.formatCountdown(remaining) : L("곧", "soon"))
                             }
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
-                            .foregroundColor(.white.opacity(0.5))
+                            .foregroundColor(NotchPalette.ink.opacity(0.5))
                         }
                     }
                     Button(action: codexManager.refresh) {
@@ -1809,7 +1825,7 @@ struct ClangNotchContentView: View {
                         // below loops its replace transition forever, even in the closed popover.
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.55))
+                            .foregroundColor(NotchPalette.ink.opacity(0.55))
                             .rotationEffect(.degrees(codexManager.isRefreshingRateLimits ? 360 : 0))
                             .frame(width: 20, height: 20)
                             .contentShape(Rectangle())
@@ -1920,7 +1936,7 @@ struct ClangNotchContentView: View {
                             .foregroundColor(accentColor)
                         Text(question.question)
                             .font(.system(size: 11 * scale, weight: .medium))
-                            .foregroundColor(.white)
+                            .foregroundColor(NotchPalette.ink)
                         ForEach(Array(question.options.enumerated()), id: \.offset) { optionIndex, option in
                             if onSubmit != nil {
                                 optionButton(option, picked: picks[index]?.contains(optionIndex) == true,
@@ -1931,7 +1947,7 @@ struct ClangNotchContentView: View {
                             } else {
                                 HStack(alignment: .top, spacing: 5) {
                                     Circle()
-                                        .fill(Color.white.opacity(0.5))
+                                        .fill(NotchPalette.ink.opacity(0.5))
                                         .frame(width: 4, height: 4)
                                         .padding(.top, 5)
                                     optionText(option)
@@ -1944,7 +1960,7 @@ struct ClangNotchContentView: View {
                 if questions.isEmpty {
                     Text(L("질문 내용은 \(sourceName)에서 확인해 주세요.", "See \(sourceName) for the question."))
                         .font(.system(size: 11 * scale))
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(NotchPalette.ink.opacity(0.7))
                 }
                 HStack {
                     if let onOpen {
@@ -1955,7 +1971,7 @@ struct ClangNotchContentView: View {
                                 .foregroundColor(accentColor)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
-                                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                                .background(NotchPalette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -1971,10 +1987,10 @@ struct ClangNotchContentView: View {
                         Button(action: submit) {
                             Text(L("보내기", "Send"))
                                 .font(.system(size: 11 * scale, weight: .semibold))
-                                .foregroundColor(canSend ? .black : .white.opacity(0.4))
+                                .foregroundColor(canSend ? .black : NotchPalette.ink.opacity(0.4))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 5)
-                                .background(Capsule().fill(canSend ? accentColor : Color.white.opacity(0.08)))
+                                .background(Capsule().fill(canSend ? accentColor : NotchPalette.ink.opacity(0.08)))
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
@@ -1989,11 +2005,11 @@ struct ClangNotchContentView: View {
             VStack(alignment: .leading, spacing: 2 * scale) {
                 Text(option.label)
                     .font(.system(size: 10 * scale, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundColor(NotchPalette.ink.opacity(0.9))
                 if !option.description.isEmpty {
                     Text(option.description)
                         .font(.system(size: 10 * scale))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(NotchPalette.ink.opacity(0.6))
                 }
             }
         }
@@ -2005,7 +2021,7 @@ struct ClangNotchContentView: View {
                     Image(systemName: multiSelect ? (picked ? "checkmark.square.fill" : "square")
                                                   : (picked ? "largecircle.fill.circle" : "circle"))
                         .font(.system(size: 11 * scale))
-                        .foregroundColor(picked ? accentColor : .white.opacity(0.45))
+                        .foregroundColor(picked ? accentColor : NotchPalette.ink.opacity(0.45))
                         .padding(.top, 1)
                     optionText(option)
                     Spacer(minLength: 0)
@@ -2013,7 +2029,7 @@ struct ClangNotchContentView: View {
                 .padding(.horizontal, 8 * scale)
                 .padding(.vertical, 6 * scale)
                 .background(RoundedRectangle(cornerRadius: 7 * scale, style: .continuous)
-                    .fill(picked ? accentColor.opacity(0.16) : Color.white.opacity(0.05)))
+                    .fill(picked ? accentColor.opacity(0.16) : NotchPalette.ink.opacity(0.05)))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -2062,14 +2078,14 @@ struct ClangNotchContentView: View {
                         Text(title)
                             .font(.system(size: 10, weight: .semibold))
                             .tracking(0.8)
-                            .foregroundColor(.white.opacity(0.4))
+                            .foregroundColor(NotchPalette.ink.opacity(0.4))
                             .lineLimit(1)
                         if let onDismiss {
                             Spacer(minLength: 0)
                             Button(action: onDismiss) {
                                 Image(systemName: "xmark")
                                     .font(.system(size: 10))
-                                    .foregroundColor(.white.opacity(0.55))
+                                    .foregroundColor(NotchPalette.ink.opacity(0.55))
                                     .frame(width: 22, height: 22)
                                     .contentShape(Rectangle())
                             }
@@ -2099,9 +2115,9 @@ struct ClangNotchContentView: View {
             Button(action: action) {
                 Image(systemName: systemName)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(tint ?? .white.opacity(0.75))
+                    .foregroundColor(tint ?? NotchPalette.ink.opacity(0.75))
                     .padding(6)
-                    .background(Circle().fill(Color.white.opacity(hovering ? 0.16 : 0.08)))
+                    .background(Circle().fill(NotchPalette.ink.opacity(hovering ? 0.16 : 0.08)))
                     .contentShape(Circle())
             }
             .buttonStyle(NotchPressButtonStyle())

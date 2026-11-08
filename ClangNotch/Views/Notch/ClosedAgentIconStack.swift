@@ -80,11 +80,11 @@ struct ClosedAgentIconStack: View {
     private func icon(outlined: Bool) -> some View {
         ZStack {
             if outlined {
-                // A black ring around the silhouette: eight offset copies, like a text stroke.
+                // A ring in the notch's own dark/light around the silhouette: eight offset copies, like a text stroke.
                 ForEach(0..<8, id: \.self) { step in
                     let angle = Double(step) * .pi / 4
                     base.renderingMode(.template)
-                        .foregroundColor(.black)
+                        .foregroundColor(NotchPalette.inkInverse)
                         .frame(width: Self.iconSize, height: Self.iconSize)
                         .offset(x: cos(angle) * 1.2, y: sin(angle) * 1.2)
                 }
@@ -94,7 +94,7 @@ struct ClosedAgentIconStack: View {
                 base.frame(width: Self.iconSize, height: Self.iconSize)
             case .codex:
                 base.renderingMode(.template)
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
                     .frame(width: Self.iconSize, height: Self.iconSize)
             }
         }

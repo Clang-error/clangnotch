@@ -332,7 +332,7 @@ struct ClosedToolTransitionLabel: View {
     var body: some View {
         Text(label)
             .font(.system(size: 10, weight: .medium))
-            .foregroundColor(.white.opacity(foregroundOpacity))
+            .foregroundColor(NotchPalette.ink.opacity(foregroundOpacity))
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.horizontal, 6)
@@ -412,7 +412,7 @@ private struct ClosedToolTrack: View {
             GeometryReader { proxy in
                 let width = proxy.size.width
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.1))
+                    Capsule().fill(NotchPalette.ink.opacity(0.1))
                     Capsule().fill(color)
                         .frame(width: width * 0.35)
                         .offset(x: -width * 0.35 + phase * width * 1.35)

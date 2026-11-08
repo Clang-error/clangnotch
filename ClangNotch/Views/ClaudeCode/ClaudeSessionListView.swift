@@ -319,7 +319,7 @@ private struct UnifiedWorkspaceSessionRow: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
-            .background(Color.white.opacity(isSelected ? (hovering ? 0.11 : 0.08) : (hovering ? 0.07 : 0.035)),
+            .background(NotchPalette.ink.opacity(isSelected ? (hovering ? 0.11 : 0.08) : (hovering ? 0.07 : 0.035)),
                         in: RoundedRectangle(cornerRadius: 9))
             .overlay {
                 if let activeOutline {
@@ -389,7 +389,7 @@ private struct UnifiedWorkspaceSessionRow: View {
     private func sourceIcon(_ name: String, glow: Color, active: Bool) -> some View {
         Image(name)
             .resizable()
-            .foregroundColor(.white)
+            .foregroundColor(NotchPalette.ink)
             .frame(width: 12, height: 12)
             .opacity(active ? 1 : 0.55)
             .shadow(color: active ? glow.opacity(0.8) : .clear, radius: 4)

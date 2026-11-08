@@ -69,10 +69,10 @@ struct SpeedTestView: View {
         HStack(spacing: 5) {
             Image(systemName: "wifi")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(NotchPalette.ink.opacity(0.4))
             Text(network.name)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(NotchPalette.ink.opacity(0.7))
                 .lineLimit(1)
             if network.ssidBlocked {
                 // macOS only reveals the SSID with Location Services. Tapping here
@@ -80,7 +80,7 @@ struct SpeedTestView: View {
                 Button { network.requestAccess() } label: {
                     Text(L("네트워크 이름을 보려면 위치 서비스 허용", "Allow Location Services to see the network name"))
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
                         .lineLimit(1)
                         .underline()
                         .contentShape(Rectangle())
@@ -99,7 +99,7 @@ struct SpeedTestView: View {
                     .foregroundColor(verdict.tone)
                 Text(L("— 가능한 용도", "— good for"))
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
                 Spacer(minLength: 0)
             }
 
@@ -114,11 +114,11 @@ struct SpeedTestView: View {
                     HStack(spacing: 5) {
                         Image(systemName: capability.ok ? "checkmark" : "xmark")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(capability.ok ? accent : .white.opacity(0.22))
+                            .foregroundColor(capability.ok ? accent : NotchPalette.ink.opacity(0.22))
                             .frame(width: 10)
                         Text(capability.name)
                             .font(.system(size: 11))
-                            .foregroundColor(capability.ok ? .white.opacity(0.85) : .white.opacity(0.5))
+                            .foregroundColor(capability.ok ? NotchPalette.ink.opacity(0.85) : NotchPalette.ink.opacity(0.5))
                             .lineLimit(1)
                     }
                 }
@@ -132,15 +132,15 @@ struct SpeedTestView: View {
             HStack(alignment: .lastTextBaseline, spacing: 5) {
                 Text(dialValue.map(SpeedFormat.mbps) ?? "—")
                     .font(.system(size: 40, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
                     .monospacedDigit()
                 Text("Mbps")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
             }
             Text(statusText)
                 .font(.system(size: 11))
-                .foregroundColor(manager.phase == .failed ? failed : .white.opacity(0.5))
+                .foregroundColor(manager.phase == .failed ? failed : NotchPalette.ink.opacity(0.5))
         }
         .padding(.top, 4)
     }
@@ -193,7 +193,7 @@ struct SpeedTestView: View {
                 .font(.system(size: 10))
             Spacer(minLength: 0)
         }
-        .foregroundColor(.white.opacity(0.5))
+        .foregroundColor(NotchPalette.ink.opacity(0.5))
     }
 
     private var actionButton: some View {
@@ -203,10 +203,10 @@ struct SpeedTestView: View {
         } label: {
             Text(running ? L("취소", "Cancel") : L("측정", "Test"))
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(running ? .white.opacity(0.8) : .black)
+                .foregroundColor(running ? NotchPalette.ink.opacity(0.8) : .black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
-                .background(running ? Color.white.opacity(0.12) : accent, in: Capsule())
+                .background(running ? NotchPalette.ink.opacity(0.12) : accent, in: Capsule())
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -229,11 +229,11 @@ private struct SpeedMetricCard: View {
                 Text(title)
                     .font(.system(size: 10, weight: .medium))
             }
-            .foregroundColor(active ? accent : .white.opacity(0.5))
+            .foregroundColor(active ? accent : NotchPalette.ink.opacity(0.5))
 
             Text(value)
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(NotchPalette.ink)
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .animation(.smooth(duration: 0.25), value: value)
@@ -242,11 +242,11 @@ private struct SpeedMetricCard: View {
 
             Text(unit)
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(Color.white.opacity(active ? 0.10 : 0.05), in: RoundedRectangle(cornerRadius: 10))
+        .background(NotchPalette.ink.opacity(active ? 0.10 : 0.05), in: RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(active ? accent.opacity(0.5) : .clear, lineWidth: 1)
@@ -282,7 +282,7 @@ struct SpeedPeekHeader: View {
     }
 
     private var labelColor: Color {
-        manager.phase == .finished ? (verdict?.tone ?? .white.opacity(0.8)) : .white.opacity(0.8)
+        manager.phase == .finished ? (verdict?.tone ?? NotchPalette.ink.opacity(0.8)) : NotchPalette.ink.opacity(0.8)
     }
 
     var body: some View {
@@ -304,10 +304,10 @@ struct SpeedPeekHeader: View {
             HStack(spacing: 4) {
                 Image(systemName: "wifi")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.35))
+                    .foregroundColor(NotchPalette.ink.opacity(0.35))
                 Text(network.name)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(NotchPalette.ink.opacity(0.7))
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -353,15 +353,15 @@ struct SpeedPeekContent: View {
         VStack(spacing: 2) {
             Text(title)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(active ? accent : .white.opacity(0.5))
+                .foregroundColor(active ? accent : NotchPalette.ink.opacity(0.5))
             HStack(alignment: .lastTextBaseline, spacing: 3) {
                 Text(value ?? "—")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
                     .monospacedDigit()
                 Text(unit)
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
             }
         }
         .frame(maxWidth: .infinity)

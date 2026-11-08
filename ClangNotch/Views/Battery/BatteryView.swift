@@ -58,12 +58,12 @@ struct BatteryView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(L("닫힌 노치에 \(device.name) \(device.displayLevel)% 표시", "Showing \(device.name) \(device.displayLevel)% in the closed notch"))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
                     .lineLimit(1)
                 if snoozed {
                     Text(L("20%를 넘으면 다시 켜집니다", "Turns back on above 20%"))
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
                 }
             }
             Spacer(minLength: 0)
@@ -86,10 +86,10 @@ struct BatteryView: View {
         HStack(spacing: 8) {
             Image(systemName: "iphone")
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(NotchPalette.ink.opacity(0.6))
             Text(L("아이폰·아이패드 배터리를 보려면 도구 설치가 필요합니다", "Install a tool to see iPhone and iPad batteries"))
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundColor(NotchPalette.ink.opacity(0.8))
                 .lineLimit(1)
             Spacer(minLength: 0)
             Button(L("설치", "Install")) { BatteryManager.installIOSTools() }
@@ -133,10 +133,10 @@ struct BatteryView: View {
         VStack(spacing: 8) {
             Image(systemName: "battery.0")
                 .font(.system(size: 30, weight: .light))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(NotchPalette.ink.opacity(0.25))
             Text(L("기기를 찾지 못했습니다", "No devices found"))
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
@@ -195,7 +195,7 @@ private struct BatteryRow: View {
         HStack(spacing: 9) {
             Image(systemName: device.symbol)
                 .font(.system(size: 15))
-                .foregroundColor(.white.opacity(0.75))
+                .foregroundColor(NotchPalette.ink.opacity(0.75))
                 .frame(width: 22, height: 22)
             pill
         }
@@ -213,8 +213,8 @@ private struct BatteryRow: View {
         GeometryReader { geometry in
             let fillWidth = max(height, geometry.size.width * CGFloat(device.percent) / 100)
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.1))
-                labels(color: .white.opacity(0.85), dimColor: .white.opacity(0.5))
+                Capsule().fill(NotchPalette.ink.opacity(0.1))
+                labels(color: NotchPalette.ink.opacity(0.85), dimColor: NotchPalette.ink.opacity(0.5))
                 Capsule()
                     .fill(tone)
                     .frame(width: fillWidth)

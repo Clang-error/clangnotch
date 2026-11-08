@@ -89,7 +89,7 @@ struct SessionDetailView: View {
             if let lastAnswer {
                 Text(lastAnswer.split(whereSeparator: \.isNewline).first.map(String.init) ?? lastAnswer)
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(NotchPalette.ink.opacity(0.6))
                     .lineLimit(1)
             }
         }
@@ -102,7 +102,7 @@ struct SessionDetailView: View {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 11, weight: .semibold))
                     .frame(width: 24, height: 24)
-                    .background(Circle().fill(Color.white.opacity(0.08)))
+                    .background(Circle().fill(NotchPalette.ink.opacity(0.08)))
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -112,7 +112,7 @@ struct SessionDetailView: View {
                 if target.agent == .claude {
                     Image("ClaudeIcon").resizable()
                 } else {
-                    Image("ChatGPTIcon").resizable().foregroundColor(.white)
+                    Image("ChatGPTIcon").resizable().foregroundColor(NotchPalette.ink)
                 }
             }
             .frame(width: 14, height: 14)
@@ -120,11 +120,11 @@ struct SessionDetailView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(cwd.isEmpty ? L("알 수 없음", "Unknown") : URL(fileURLWithPath: cwd).lastPathComponent)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
                     .lineLimit(1)
                 Text(target.agent == .claude ? "Claude Code" : "Codex")
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
             }
             if isActive {
                 Text(L("작업 중", "Working"))
@@ -173,9 +173,9 @@ struct SessionDetailView: View {
         return HStack(spacing: 8) {
             Text("Context")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
             Capsule()
-                .fill(Color.white.opacity(0.1))
+                .fill(NotchPalette.ink.opacity(0.1))
                 .overlay(alignment: .leading) {
                     GeometryReader { geo in
                         Capsule().fill(color.opacity(0.8)).frame(width: geo.size.width * progress)
@@ -184,7 +184,7 @@ struct SessionDetailView: View {
                 .frame(height: 3)
             Text("\(Self.tokens(used)) / \(Self.tokens(limit))")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(NotchPalette.ink.opacity(0.6))
         }
         .padding(.leading, 32)
     }
@@ -205,7 +205,7 @@ struct SessionDetailView: View {
                     if all.isEmpty {
                         Text(L("아직 기록된 도구가 없습니다.", "No tool calls yet."))
                             .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.5))
+                            .foregroundColor(NotchPalette.ink.opacity(0.5))
                             .padding(8)
                     }
                     ForEach(Array(all.enumerated()), id: \.element.id) { index, step in
@@ -217,10 +217,10 @@ struct SessionDetailView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 13))
-                                .foregroundColor(.white.opacity(0.35))
+                                .foregroundColor(NotchPalette.ink.opacity(0.35))
                             Text("Done")
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.4))
+                                .foregroundColor(NotchPalette.ink.opacity(0.4))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
@@ -232,7 +232,7 @@ struct SessionDetailView: View {
             .onAppear { proxy.scrollTo(isActive ? steps.last?.id : "done", anchor: .bottom) }
         }
         .padding(6)
-        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(NotchPalette.ink.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func stepRow(_ step: SessionStep, picked: Bool) -> some View {
@@ -254,12 +254,12 @@ struct SessionDetailView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(step.name)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(step.isRunning ? 1 : 0.85))
+                        .foregroundColor(NotchPalette.ink.opacity(step.isRunning ? 1 : 0.85))
                         .lineLimit(1)
                     if let argument = step.argument, !argument.isEmpty {
                         Text(argument)
                             .font(.system(size: 10))
-                            .foregroundColor(.white.opacity(0.45))
+                            .foregroundColor(NotchPalette.ink.opacity(0.45))
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -285,11 +285,11 @@ struct SessionDetailView: View {
                         .foregroundColor(accent)
                     Text(URL(fileURLWithPath: change.file).lastPathComponent)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.white)
+                        .foregroundColor(NotchPalette.ink)
                     Spacer(minLength: 0)
                     Text(URL(fileURLWithPath: change.file).deletingLastPathComponent().lastPathComponent)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.35))
+                        .foregroundColor(NotchPalette.ink.opacity(0.35))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -309,7 +309,7 @@ struct SessionDetailView: View {
                     .padding(.vertical, 7)
                 Text("$ \(step.argument ?? "")")
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.85))
+                    .foregroundColor(NotchPalette.ink.opacity(0.85))
                     .padding(.horizontal, 10)
                     .textSelection(.enabled)
                 Spacer(minLength: 0)
@@ -319,7 +319,7 @@ struct SessionDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.white.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(NotchPalette.ink.opacity(0.06)))
         .id(shownStep?.id)
         .popIn(delay: 0.07)
     }
@@ -331,7 +331,7 @@ struct SessionDetailView: View {
                 .foregroundColor(removed ? .red.opacity(0.8) : .green.opacity(0.8))
                 .frame(width: 10)
             Text(line.text.isEmpty ? " " : line.text)
-                .foregroundColor(.white.opacity(removed ? 0.5 : 0.9))
+                .foregroundColor(NotchPalette.ink.opacity(removed ? 0.5 : 0.9))
                 .strikethrough(removed, color: .red.opacity(0.5))
                 .lineLimit(1)
                 .truncationMode(.tail)

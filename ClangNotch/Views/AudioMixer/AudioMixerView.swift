@@ -12,7 +12,7 @@ struct AudioMixerView: View {
                 if manager.apps.isEmpty {
                     Text(L("소리를 내는 앱 없음", "No apps playing audio"))
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, 20)
                 } else {
@@ -37,10 +37,10 @@ struct AudioMixerView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(L("\(app) 마이크 사용 중", "\(app) is using the mic"))
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundColor(NotchPalette.ink.opacity(0.9))
                 Text(L("블루투스로 볼륨 줄이면 통화가 끊길 수 있어요", "Lowering volume over Bluetooth can drop the call"))
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
             }
             Spacer()
         }
@@ -72,7 +72,7 @@ private struct AppVolumeRow: View {
                 Image(nsImage: icon).resizable().frame(width: 22, height: 22)
             } else {
                 Image(systemName: "app.dashed").resizable().frame(width: 22, height: 22)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(NotchPalette.ink.opacity(0.4))
             }
             VolumePill(name: app.name, gain: $gain, accent: accent) {
                 manager.setGain(gain, for: app)
@@ -104,8 +104,8 @@ private struct VolumePill: View {
             let width = geometry.size.width
             let fillWidth = width * CGFloat(gain)
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.1))
-                labels(color: .white.opacity(0.85), percentColor: gain < 0.99 ? accent : .white.opacity(0.5))
+                Capsule().fill(NotchPalette.ink.opacity(0.1))
+                labels(color: NotchPalette.ink.opacity(0.85), percentColor: gain < 0.99 ? accent : NotchPalette.ink.opacity(0.5))
                 Capsule()
                     .fill(accent)
                     .frame(width: max(height, fillWidth))

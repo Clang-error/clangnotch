@@ -52,13 +52,13 @@ struct HeaderStatusChips: View {
             if fit.shown < devices.count {
                 let hidden = devices.dropFirst(fit.shown)
                 Text("+\(hidden.count)")
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(NotchPalette.ink.opacity(0.6))
                     .modifier(HeaderChip())
                     .help(hidden.map { "\($0.name) \($0.displayLevel)%" }.joined(separator: "\n"))
             }
             // Sets the chips apart from the header buttons.
             Rectangle()
-                .fill(Color.white.opacity(0.14))
+                .fill(NotchPalette.ink.opacity(0.14))
                 .frame(width: 1, height: 14)
                 .padding(.leading, 4)
         }
@@ -84,7 +84,7 @@ struct HeaderStatusChips: View {
         HStack(spacing: 4) {
             Image(systemName: device.compactSymbol)
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(NotchPalette.ink.opacity(0.6))
             // Earbuds caught separately show L and R, so one running down first is visible.
             // One side caught: the icon already says which, so just the level.
             let earbuds = device.parts.filter { $0.label == "L" || $0.label == "R" }
@@ -92,7 +92,7 @@ struct HeaderStatusChips: View {
                 ForEach(earbuds, id: \.label) { part in
                     Text(part.label)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
                     level(part.percent)
                 }
             } else {
@@ -105,12 +105,12 @@ struct HeaderStatusChips: View {
 
     private func level(_ percent: Int) -> some View {
         Text("\(percent)%")
-            .foregroundColor(percent <= 20 ? Color(red: 0.95, green: 0.35, blue: 0.35) : .white.opacity(0.8))
+            .foregroundColor(percent <= 20 ? Color(red: 0.95, green: 0.35, blue: 0.35) : NotchPalette.ink.opacity(0.8))
     }
 }
 
 private struct HeaderChip: ViewModifier {
-    var fill = Color.white.opacity(0.08)
+    var fill = NotchPalette.ink.opacity(0.08)
     var stroke: Color? = nil
 
     func body(content: Content) -> some View {

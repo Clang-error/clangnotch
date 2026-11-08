@@ -9,7 +9,7 @@ private struct AgentIcon: View {
             if agent == .claude {
                 Image("ClaudeIcon").resizable()
             } else {
-                Image("ChatGPTIcon").resizable().foregroundColor(.white)
+                Image("ChatGPTIcon").resizable().foregroundColor(NotchPalette.ink)
             }
         }
         .frame(width: 13, height: 13)
@@ -30,7 +30,7 @@ private struct DropdownButton: View {
                 .foregroundColor(filled ? .black : tint)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(filled ? tint.opacity(hovering ? 1 : 0.9) : Color.white.opacity(hovering ? 0.16 : 0.09)))
+                .background(Capsule().fill(filled ? tint.opacity(hovering ? 1 : 0.9) : NotchPalette.ink.opacity(hovering ? 0.16 : 0.09)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -56,16 +56,16 @@ struct PermissionDropdownView: View {
                 AgentIcon(agent: item.agent)
                 Text("Permission")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
                 Text(item.projectName)
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(NotchPalette.ink.opacity(0.55))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if total > 1 {
                     Text("\(position)/\(total)")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(NotchPalette.ink.opacity(0.55))
                 }
             }
             .popIn()
@@ -77,14 +77,14 @@ struct PermissionDropdownView: View {
                 if !item.detail.isEmpty {
                     Text(item.detail)
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.88))
+                        .foregroundColor(NotchPalette.ink.opacity(0.88))
                         .lineLimit(3)
                         .truncationMode(.middle)
                 }
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(NotchPalette.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .popIn(delay: 0.035)
 
             HStack(spacing: 8) {
@@ -92,14 +92,14 @@ struct PermissionDropdownView: View {
                     Label(inTerminal ? L("터미널에서", "In terminal") : L("GUI에서", "In app"),
                           systemImage: inTerminal ? "terminal" : "macwindow")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(NotchPalette.ink.opacity(0.6))
                         .padding(.vertical, 4)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(L("노치에서 답하지 않고 에이전트의 승인 창으로 넘기기", "Leave this one to the agent's own approval prompt"))
                 Spacer(minLength: 0)
-                DropdownButton(title: L("거부", "Deny"), tint: .white.opacity(0.85)) { onDecide(.deny) }
+                DropdownButton(title: L("거부", "Deny"), tint: NotchPalette.ink.opacity(0.85)) { onDecide(.deny) }
                 DropdownButton(title: L("허용", "Allow"), tint: accent, filled: true) { onDecide(.allow) }
                     .newHighlight(cornerRadius: 12, delay: 0.25)
             }
@@ -139,16 +139,16 @@ struct WrapUpDropdownView: View {
                 AgentIcon(agent: .claude)
                 Text("Next step")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(NotchPalette.ink)
                 Text(projectName)
                     .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(NotchPalette.ink.opacity(0.55))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(NotchPalette.ink.opacity(0.55))
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
@@ -161,17 +161,17 @@ struct WrapUpDropdownView: View {
                 if let recap = request.recap, !recap.isEmpty {
                     Text(recap)
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(NotchPalette.ink.opacity(0.6))
                         .lineLimit(3)
                 }
                 Text(question?.question ?? "")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.92))
+                    .foregroundColor(NotchPalette.ink.opacity(0.92))
                     .lineLimit(3)
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(NotchPalette.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .popIn(delay: 0.035)
 
             HStack(spacing: 6) {
@@ -179,11 +179,11 @@ struct WrapUpDropdownView: View {
                 ForEach(Array((question?.options ?? []).enumerated()), id: \.offset) { _, option in
                     Text(option.label)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(NotchPalette.ink.opacity(0.7))
                         .lineLimit(1)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
-                        .overlay(Capsule().stroke(Color.white.opacity(0.18)))
+                        .overlay(Capsule().stroke(NotchPalette.ink.opacity(0.18)))
                         .help(option.description)
                 }
                 Spacer(minLength: 0)
@@ -227,18 +227,18 @@ struct DoneDropdownView: View {
                         AgentIcon(agent: agent)
                         Text(projectName)
                             .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.55))
+                            .foregroundColor(NotchPalette.ink.opacity(0.55))
                             .lineLimit(1)
                         Spacer(minLength: 0)
                         if let elapsedText {
                             Text(elapsedText)
                                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.55))
+                                .foregroundColor(NotchPalette.ink.opacity(0.55))
                         }
                     }
                     Text(turn.headline ?? L("작업을 마쳤습니다.", "Finished."))
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.88))
+                        .foregroundColor(NotchPalette.ink.opacity(0.88))
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

@@ -131,7 +131,7 @@ struct UsageBar: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.white.opacity(0.1))
+                    .fill(NotchPalette.ink.opacity(0.1))
                 RoundedRectangle(cornerRadius: 3)
                     .fill(color)
                     .frame(width: geometry.size.width * CGFloat(min(percent, 100) / 100))
@@ -161,7 +161,7 @@ struct UsagePaceLine: View {
         if let pace = UsagePace.summary(percent: percent, resetsAt: resetsAt, window: window) {
             // The tier word takes its colour; the rest keeps orange (limit) or grey.
             (Text(pace.tier.label).foregroundColor(pace.tier.color)
-                + Text(" · \(pace.detail)").foregroundColor(pace.tier == .fast ? .orange : .white.opacity(0.4)))
+                + Text(" · \(pace.detail)").foregroundColor(pace.tier == .fast ? .orange : NotchPalette.ink.opacity(0.4)))
                 .font(.system(size: 10, weight: pace.tier == .fast ? .semibold : .regular))
         }
     }
@@ -247,7 +247,7 @@ struct ClaudeUsageNotchSection: View {
                 Text(L("Claude 사용량", "Claude usage"))
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(0.8)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(NotchPalette.ink.opacity(0.4))
                 if usageManager.usageData.limitReached {
                     // A window can sit well under 100% while a different one
                     // is what's actually blocking, so say so outright.
@@ -266,7 +266,7 @@ struct ClaudeUsageNotchSection: View {
                     // menu bar popover kept redrawing it at 120 Hz while closed.
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(NotchPalette.ink.opacity(0.55))
                         .rotationEffect(.degrees(usageManager.isLoading ? 360 : 0))
                         .animation(usageManager.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: usageManager.isLoading)
                         .frame(width: 20, height: 20)
@@ -300,7 +300,7 @@ struct ClaudeUsageNotchSection: View {
                 Text(L("갱신 중", "Refreshing"))
             }
             .font(.system(size: 10, weight: .medium))
-            .foregroundColor(.white.opacity(0.5))
+            .foregroundColor(NotchPalette.ink.opacity(0.5))
         } else if let next = usageManager.nextRefreshAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let remaining = max(0, next.timeIntervalSince(context.date))
@@ -309,7 +309,7 @@ struct ClaudeUsageNotchSection: View {
                     Text(remaining >= 1 ? Self.formatCountdown(remaining) : L("곧", "soon"))
                 }
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
             }
         }
     }

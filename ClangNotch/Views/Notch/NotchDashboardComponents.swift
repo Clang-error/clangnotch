@@ -3,6 +3,17 @@ import SwiftUI
 enum NotchPalette {
     static let accent = Color(red: 0.57, green: 0.88, blue: 0.77)
     static let background = Color(red: 0.045, green: 0.055, blue: 0.065)
+    /// Text and line colour inside the notch: white on a dark notch, black on a light one.
+    /// It follows the `colorScheme` the notch sets from 설정 › 노치 › 노치 색.
+    static let ink = dynamic(dark: .white, light: .black)
+    /// The opposite of `ink`, for text on an ink-filled shape.
+    static let inkInverse = dynamic(dark: .black, light: .white)
+
+    private static func dynamic(dark: NSColor, light: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        })
+    }
 }
 
 extension View {
@@ -11,8 +22,8 @@ extension View {
     /// emphasis (NEEDS YOU), in the waiting agent's colour.
     func notchCard(cornerRadius: CGFloat = 14, rail: Color? = nil) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        return background(Color.white.opacity(0.05), in: shape)
-            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+        return background(NotchPalette.ink.opacity(0.05), in: shape)
+            .overlay(shape.strokeBorder(NotchPalette.ink.opacity(0.08), lineWidth: 1))
             .overlay(alignment: .leading) {
                 if let rail {
                     Capsule()
@@ -90,7 +101,7 @@ struct NotchHoverButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .background(Color.white.opacity(base + (configuration.isPressed ? 0.07 : hovering ? 0.035 : 0)),
+                .background(NotchPalette.ink.opacity(base + (configuration.isPressed ? 0.07 : hovering ? 0.035 : 0)),
                             in: RoundedRectangle(cornerRadius: cornerRadius))
                 .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
                 .onHover { hovering = $0 }
@@ -127,19 +138,19 @@ struct NotchNavigationButton: View {
                     Circle().fill(.red).frame(width: 5, height: 5)
                 }
             }
-            .foregroundStyle(selected ? .white : .white.opacity(hovering ? 0.85 : 0.5))
+            .foregroundStyle(selected ? NotchPalette.ink : NotchPalette.ink.opacity(hovering ? 0.85 : 0.5))
             .padding(.horizontal, 10)
             .frame(height: 37)
             .background {
                 if selected {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.12))
+                        .fill(NotchPalette.ink.opacity(0.12))
                         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+                            .strokeBorder(NotchPalette.ink.opacity(0.08), lineWidth: 1))
                         .matchedGeometryEffect(id: matchID, in: namespace)
                 } else if hovering {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
+                        .fill(NotchPalette.ink.opacity(0.06))
                 }
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))

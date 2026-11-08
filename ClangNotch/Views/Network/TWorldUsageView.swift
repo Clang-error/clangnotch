@@ -34,13 +34,13 @@ struct TWorldUsageView: View {
                     Spacer(minLength: 4)
                     Text("/ \(balance.totalGB, specifier: "%.2f") GB")
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(NotchPalette.ink.opacity(0.7))
                 }
                 // Drawn by hand: macOS ProgressView ignores .tint and paints the system accent.
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.white.opacity(0.1))
+                            .fill(NotchPalette.ink.opacity(0.1))
                         Capsule()
                             .fill(remainingColor(balance.remainingFraction))
                             .frame(width: max(3, geo.size.width * balance.remainingFraction))
@@ -59,13 +59,13 @@ struct TWorldUsageView: View {
                     }
                 }
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.65))
+                .foregroundColor(NotchPalette.ink.opacity(0.65))
             } else if session.isRefreshing {
                 Text(L("잔여량 확인 중…", "Checking balance…")).font(.system(size: 10))
             } else if session.errorMessage == nil {
                 Text(L("T world에 연결하면 공유 잔여량이 표시됩니다.", "Connect T world to see the shared balance."))
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(NotchPalette.ink.opacity(0.7))
             }
             if let error = session.errorMessage {
                 Text((session.balance == nil ? "" : L("이전 조회값 · ", "Last reading · ")) + error)
@@ -75,10 +75,10 @@ struct TWorldUsageView: View {
             }
         }
         .buttonStyle(.plain)
-        .foregroundColor(.white.opacity(0.92))
+        .foregroundColor(NotchPalette.ink.opacity(0.92))
         .padding(10)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.1)))
+        .background(NotchPalette.ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(NotchPalette.ink.opacity(0.1)))
         .task {
             // Speed shows this only on the configured SSID; the menu bar popover shows it whenever
             // connected. Either way the session's 10-minute cooldown bounds the traffic.

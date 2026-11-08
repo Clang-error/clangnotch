@@ -30,10 +30,10 @@ struct KeyboardLockView: View {
         VStack(spacing: 8) {
             Image(systemName: "lock.shield")
                 .font(.system(size: 22))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(NotchPalette.ink.opacity(0.7))
             Text(L("키보드 입력을 막으려면 손쉬운 사용 권한이 필요합니다.", "Needs Accessibility access to block keyboard input."))
                 .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(NotchPalette.ink.opacity(0.7))
                 .multilineTextAlignment(.center)
             Button(L("권한 허용", "Grant Access")) {
                 manager.requestPermission()
@@ -61,11 +61,11 @@ struct KeyboardLockView: View {
                     Text(manager.isLocked ? L("키보드 잠김", "Keyboard Locked") : L("키보드 잠그기", "Lock Keyboard"))
                         .font(.system(size: 12, weight: .semibold))
                 }
-                .foregroundColor(manager.isLocked ? .black : .white)
+                .foregroundColor(manager.isLocked ? .black : NotchPalette.ink)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(
-                    manager.isLocked ? Color.green : Color.white.opacity(0.1),
+                    manager.isLocked ? Color.green : NotchPalette.ink.opacity(0.1),
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
             }
@@ -74,7 +74,7 @@ struct KeyboardLockView: View {
             if manager.isLocked {
                 Text(L("위 버튼이나 메뉴바 아이콘으로 잠금을 풉니다", "Click above or use the menu bar icon to unlock"))
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
                     .multilineTextAlignment(.center)
             }
 
@@ -90,7 +90,7 @@ struct KeyboardLockView: View {
                 Text("Key Test")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(0.8)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(NotchPalette.ink.opacity(0.4))
                 Spacer(minLength: 0)
                 Button(tester.isTesting ? L("끝내기", "Stop") : L("테스트 시작", "Start Test")) {
                     tester.toggle()

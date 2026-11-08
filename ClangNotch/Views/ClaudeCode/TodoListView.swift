@@ -12,7 +12,7 @@ struct TodoListView: View {
             if todos.count > maxItems {
                 Text(L("+\(todos.count - maxItems)개 더", "+\(todos.count - maxItems) more"))
                     .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(NotchPalette.ink.opacity(0.5))
                     .padding(.leading, 18)
             }
         }
@@ -30,7 +30,7 @@ private struct TodoRow: View {
                 .frame(width: 12)
             Text(todo.content)
                 .font(.system(size: 10, weight: todo.status == .inProgress ? .medium : .regular))
-                .foregroundStyle(.white.opacity(todo.status == .inProgress ? 0.9 : todo.status == .pending ? 0.6 : 0.45))
+                .foregroundStyle(NotchPalette.ink.opacity(todo.status == .inProgress ? 0.9 : todo.status == .pending ? 0.6 : 0.45))
                 .strikethrough(todo.status == .completed)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -47,7 +47,7 @@ private struct TodoRow: View {
 
     private var tint: Color {
         switch todo.status {
-        case .pending: .white.opacity(0.4)
+        case .pending: NotchPalette.ink.opacity(0.4)
         case .inProgress: .orange
         case .completed: .green
         }

@@ -58,14 +58,14 @@ struct DisplayArrangementCard: View {
             .frame(height: Self.mapHeight)
             Text(L("화면을 끌어 위치를 바꿉니다", "Drag a screen to move it"))
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(NotchPalette.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(NotchPalette.ink.opacity(0.08), lineWidth: 1)
         )
         .padding(.horizontal, 6)
         .onChange(of: displays) { _, _ in placed = nil }
@@ -135,17 +135,17 @@ struct DisplayArrangementCard: View {
         let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
         let symbol = display.isSidecar ? "ipad.landscape" : (display.isBuiltin ? "laptopcomputer" : "display")
         return shape
-            .fill(focused ? accent.opacity(0.22) : Color.white.opacity(0.12))
-            .overlay(shape.stroke(focused ? accent : Color.white.opacity(0.3), lineWidth: 1.5))
+            .fill(focused ? accent.opacity(0.22) : NotchPalette.ink.opacity(0.12))
+            .overlay(shape.stroke(focused ? accent : NotchPalette.ink.opacity(0.3), lineWidth: 1.5))
             .overlay(
                 Image(systemName: symbol)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(focused ? accent : .white.opacity(0.6))
+                    .foregroundColor(focused ? accent : NotchPalette.ink.opacity(0.6))
             )
             // The menu bar, as System Settings draws it on the main screen.
             .overlay(alignment: .top) {
                 if display.isMain {
-                    Capsule().fill(Color.white.opacity(0.85))
+                    Capsule().fill(NotchPalette.ink.opacity(0.85))
                         .frame(height: 2.5)
                         .padding(.horizontal, 4)
                         .padding(.top, 3)

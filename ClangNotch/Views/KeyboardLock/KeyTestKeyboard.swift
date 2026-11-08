@@ -97,12 +97,12 @@ struct KeyTestKeyboard: View {
         let glow = !lit && key.codes.contains { tester.afterglow.contains($0) }
         return Text(key.label)
             .font(.system(size: key.label.count > 1 ? 8 : 10, weight: .medium))
-            .foregroundColor(lit ? .black : .white.opacity(glow ? 0.9 : 0.6))
+            .foregroundColor(lit ? NotchPalette.inkInverse : NotchPalette.ink.opacity(glow ? 0.9 : 0.6))
             .frame(width: max(0, width), height: height)
-            .background(lit ? Color.white : Color.white.opacity(glow ? 0.35 : 0.06),
+            .background(lit ? NotchPalette.ink : NotchPalette.ink.opacity(glow ? 0.35 : 0.06),
                         in: RoundedRectangle(cornerRadius: 4, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .strokeBorder(Color.white.opacity(lit || glow ? 0 : 0.08), lineWidth: 1))
+                .strokeBorder(NotchPalette.ink.opacity(lit || glow ? 0 : 0.08), lineWidth: 1))
             // On at once; down to the afterglow quickly, out of it slowly.
             .animation(lit ? nil : .easeOut(duration: glow ? 0.15 : 0.5), value: lit ? 2 : glow ? 1 : 0)
     }

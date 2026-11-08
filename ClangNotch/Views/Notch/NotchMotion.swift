@@ -38,7 +38,7 @@ struct NewHighlight: ViewModifier {
             .scaleEffect(lit ? 1.06 : 1)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(lit ? 0.75 : 0), lineWidth: 1.5)
+                    .stroke(NotchPalette.ink.opacity(lit ? 0.75 : 0), lineWidth: 1.5)
             )
             .task {
                 guard active, !reduceMotion else { return }
@@ -160,7 +160,7 @@ struct StatusDot: View {
             let moving = active && !reduceMotion
             let mix = moving && secondary != nil ? 0.5 - 0.5 * cos(2 * .pi * t / 6) : 0
             let wave = moving ? 0.5 + 0.5 * cos(2 * .pi * t / 2.4) : 1
-            let fill = active ? GlowSweepText.blend(color, secondary, mix) : Color.white.opacity(0.35)
+            let fill = active ? GlowSweepText.blend(color, secondary, mix) : NotchPalette.ink.opacity(0.35)
             Circle()
                 .fill(fill)
                 .frame(width: 7, height: 7)

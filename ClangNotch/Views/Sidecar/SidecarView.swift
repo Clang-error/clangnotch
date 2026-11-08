@@ -51,13 +51,13 @@ struct SidecarView: View {
         VStack(spacing: 8) {
             Image(systemName: "ipad.and.arrow.forward")
                 .font(.system(size: 30, weight: .light))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(NotchPalette.ink.opacity(0.25))
             Text(L("연결할 수 있는 iPad 없음", "No available iPad"))
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
             Text(L("같은 Apple 계정과 Wi-Fi가 필요합니다", "Same Apple Account & Wi-Fi required"))
                 .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
@@ -82,7 +82,7 @@ private struct SidecarCard: View {
     private var connected: Bool { device.isConnected }
 
     /// Primary accent: amber while switching, green when connected, dim otherwise.
-    private var tone: Color { busy ? pending : (connected ? accent : Color.white.opacity(0.25)) }
+    private var tone: Color { busy ? pending : (connected ? accent : NotchPalette.ink.opacity(0.25)) }
 
     private var statusText: String {
         if connecting { return L("연결 중…", "Connecting…") }
@@ -133,10 +133,10 @@ private struct SidecarCard: View {
         }
         .animation(reduceMotion ? nil : SidecarView.spring, value: connected)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(NotchPalette.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke((busy || connected) ? tone.opacity(0.45) : Color.white.opacity(0.08), lineWidth: 1)
+                .stroke((busy || connected) ? tone.opacity(0.45) : NotchPalette.ink.opacity(0.08), lineWidth: 1)
         )
         .padding(.horizontal, 6)
     }
@@ -144,18 +144,18 @@ private struct SidecarCard: View {
     private var nameText: some View {
         Text(device.name)
             .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.white)
+            .foregroundColor(NotchPalette.ink)
             .lineLimit(1)
     }
 
     private var statusRow: some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(busy ? pending : (connected ? accent : Color.white.opacity(0.3)))
+                .fill(busy ? pending : (connected ? accent : NotchPalette.ink.opacity(0.3)))
                 .frame(width: 6, height: 6)
             Text(statusText)
                 .font(.system(size: 11, weight: busy ? .semibold : .regular))
-                .foregroundColor(busy ? pending : (connected ? accent.opacity(0.9) : .white.opacity(0.5)))
+                .foregroundColor(busy ? pending : (connected ? accent.opacity(0.9) : NotchPalette.ink.opacity(0.5)))
         }
     }
 
@@ -191,7 +191,7 @@ private struct SidecarCard: View {
 
             // iPad body
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill((busy || connected) ? tone.opacity(0.12) : Color.white.opacity(0.04))
+                .fill((busy || connected) ? tone.opacity(0.12) : NotchPalette.ink.opacity(0.04))
                 .overlay(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .stroke(tone, lineWidth: 2.5)
@@ -222,7 +222,7 @@ private struct SidecarCard: View {
         } else {
             Image(systemName: "plus")
                 .font(.system(size: 18, weight: .light))
-                .foregroundColor(.white.opacity(0.35))
+                .foregroundColor(NotchPalette.ink.opacity(0.35))
         }
     }
 
@@ -237,12 +237,12 @@ private struct SidecarCard: View {
                 }
                 Text(buttonText)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(busy ? pending : (connected ? .white.opacity(0.9) : .black))
+                    .foregroundColor(busy ? pending : (connected ? NotchPalette.ink.opacity(0.9) : .black))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .background(
-                busy ? pending.opacity(0.15) : (connected ? Color.white.opacity(0.12) : accent),
+                busy ? pending.opacity(0.15) : (connected ? NotchPalette.ink.opacity(0.12) : accent),
                 in: Capsule()
             )
         }
