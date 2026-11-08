@@ -93,5 +93,7 @@ func getClosedNotchSize(screen: NSScreen? = nil) -> CGSize {
         }
     }
 
-    return CGSize(width: notchWidth, height: notchHeight + 2)
+    // +1: at exactly the safe-area height the notch read as tucked inside the camera housing and
+    // half of the glow stroke went under it; +2 (upstream) hung visibly below it.
+    return CGSize(width: notchWidth, height: notchHeight + 1)
 }
