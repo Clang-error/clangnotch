@@ -1721,7 +1721,7 @@ struct ClangNotchContentView: View {
         let sessionId = claudeSessionId(asking: request)
         return WrapUpDropdownView(
             request: request,
-            projectName: sessionId.map { projectName(.claude, $0) } ?? "",
+            projectName: sessionId.map { sessionLabel(.claude, $0) } ?? "",
             accent: agentAccent(.claude),
             openTitle: askingSessionOpenTitle,
             onOpen: { goToAskingSession() },
@@ -2630,13 +2630,7 @@ struct ClangNotchContentView: View {
             showDoneFlash(source, turn: turn)
             return
         }
-        let title: String? = switch source {
-        case .claude: claudeCodeManager.sessionStates[turn.sessionId]?.title
-        case .codex: codexManager.threadNames[turn.sessionId]
-        }
-        let folder = projectName(source, turn.sessionId)
-        let name = [title, folder].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-        let notice = DoneNotice(source: source, turn: turn, projectName: name)
+        let notice = DoneNotice(source: source, turn: turn, projectName: sessionLabel(source, turn.sessionId))
         if showPermissionNotice || showQuestionNotice || showSpeedNotice || tetherPlaceName != nil {
             pendingDoneNotice = notice
         } else {
@@ -2672,6 +2666,16 @@ struct ClangNotchContentView: View {
         }
         doneNotice = nil
         if notchVM.notchState == .peeking { restorePeek() }
+    }
+
+    /// "세션 이름 · 폴더", or just the folder while the session has no name.
+    private func sessionLabel(_ source: DoneFlash.Source, _ sessionId: String) -> String {
+        let title: String? = switch source {
+        case .claude: claudeCodeManager.sessionStates[sessionId]?.title
+        case .codex: codexManager.threadNames[sessionId]
+        }
+        return [title, projectName(source, sessionId)].compactMap { $0 }.filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     private func projectName(_ source: DoneFlash.Source, _ sessionId: String) -> String {

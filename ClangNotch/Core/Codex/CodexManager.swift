@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import AppKit
+import SQLite3
 
 // MARK: - Debug Logging (uses shared debugLog from ClaudeCodeManager)
 // Note: debugLog is defined in ClaudeCodeManager.swift and available app-wide
@@ -98,9 +99,13 @@ final class CodexManager: ObservableObject {
 
     private var sessionsDir: URL { codexDir.appendingPathComponent("sessions") }
 
-    /// Thread names by session id, from `session_index.jsonl` (renaming a thread appends a line).
+    /// Thread names by session id: the app's thread list in `state_5.sqlite` for the sessions
+    /// on screen, over `session_index.jsonl` (renaming a thread appends a line there).
     @Published private(set) var threadNames: [String: String] = [:]
     private var threadNamesReadAt: Date?
+    private var indexThreadNames: [String: String] = [:]
+    private var stateThreadNamesKey: String?
+    private var stateThreadNames: [String: String] = [:]
 
     private var sessionScanTimer: Timer?
     private var rateLimitRefreshTimer: Timer?
@@ -148,20 +153,70 @@ final class CodexManager: ObservableObject {
     // MARK: - Public Methods
 
     /// Scan for active Codex sessions
-    private func loadThreadNames() {
+    private func loadThreadNames(for sessionIDs: [String]) {
         let file = codexDir.appendingPathComponent("session_index.jsonl")
-        guard let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-              modified != threadNamesReadAt,
-              let text = try? String(contentsOf: file, encoding: .utf8) else { return }
-        threadNamesReadAt = modified
-        var names: [String: String] = [:]
-        for line in text.split(separator: "\n") {
-            guard let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                  let id = json["id"] as? String,
-                  let name = json["thread_name"] as? String, !name.isEmpty else { continue }
-            names[id] = name
+        if let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+           modified != threadNamesReadAt,
+           let text = try? String(contentsOf: file, encoding: .utf8) {
+            threadNamesReadAt = modified
+            var names: [String: String] = [:]
+            for line in text.split(separator: "\n") {
+                guard let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                      let id = json["id"] as? String,
+                      let name = json["thread_name"] as? String, !name.isEmpty else { continue }
+                names[id] = name
+            }
+            indexThreadNames = names
         }
+        loadStateThreadNames(for: sessionIDs)
+        let names = indexThreadNames.merging(stateThreadNames) { _, state in state }
         if names != threadNames { threadNames = names }
+    }
+
+    /// The Codex app keeps most thread names only in its database, not in `session_index.jsonl`:
+    /// `name` once renamed, else the `title` it made up. Re-read only when the database or the
+    /// sessions on screen change.
+    private func loadStateThreadNames(for sessionIDs: [String]) {
+        let db = codexDir.appendingPathComponent("state_5.sqlite")
+        let modified = [db, codexDir.appendingPathComponent("state_5.sqlite-wal")].map {
+            (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?
+                .timeIntervalSince1970 ?? 0
+        }
+        let ids = sessionIDs.sorted()
+        let key = "\(modified)|\(ids)"
+        guard key != stateThreadNamesKey else { return }
+        stateThreadNamesKey = key
+        guard !ids.isEmpty else { stateThreadNames = [:]; return }
+
+        var handle: OpaquePointer?
+        defer { sqlite3_close(handle) }
+        guard sqlite3_open_v2(db.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            stateThreadNames = [:]
+            return
+        }
+        sqlite3_busy_timeout(handle, 100)
+        let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ",")
+        let sql = "SELECT id, coalesce(nullif(name, ''), title) FROM threads WHERE id IN (\(placeholders))"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
+            stateThreadNames = [:]
+            return
+        }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, id) in ids.enumerated() {
+            sqlite3_bind_text(statement, Int32(index + 1), id, -1, transient)
+        }
+        var names: [String: String] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let idText = sqlite3_column_text(statement, 0),
+                  let nameText = sqlite3_column_text(statement, 1) else { continue }
+            // An untitled thread's title is its whole first message; keep its first line.
+            let name = String(cString: nameText).split(whereSeparator: \.isNewline).first
+                .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+            if !name.isEmpty { names[String(cString: idText)] = name }
+        }
+        stateThreadNames = names
     }
 
     func scanForSessions() {
@@ -234,7 +289,7 @@ final class CodexManager: ObservableObject {
             }
         }
 
-        loadThreadNames()
+        loadThreadNames(for: sessions.map(\.id))
 
         // Sort by timestamp (most recent first)
         sessions.sort { $0.timestamp > $1.timestamp }
