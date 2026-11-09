@@ -668,6 +668,7 @@ struct ClangNotchContentView: View {
         // is created on open and torn down on close, so nothing is intercepted otherwise.
         .onChange(of: notchVM.notchState) { _, state in
             NotchTabShortcuts.shared.setActive(state == .open)
+            AirPodsDropdown.shared.notchState = state
             // 배경 따라: catches a wallpaper changed since the last look.
             if state != .closed { appearance.refreshWallpaper() }
         }
@@ -678,6 +679,11 @@ struct ClangNotchContentView: View {
         }
         .onChange(of: settings.notchWallpaperSource) { appearance.refreshWallpaper() }
         .onAppear { appearance.refreshWallpaper() }
+        .onReceive(NotificationCenter.default.publisher(for: .notchOpenBattery)) { _ in
+            guard visibleModes.contains(.battery) else { return }
+            expandedMode = .battery
+            openSelectedMode()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .notchSelectTab)) { note in
             guard notchVM.notchState == .open, let index = note.userInfo?["index"] as? Int,
                   visibleModes.indices.contains(index) else { return }

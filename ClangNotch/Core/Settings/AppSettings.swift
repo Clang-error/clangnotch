@@ -44,6 +44,9 @@ public final class AppSettings: ObservableObject {
     // Wireless iPhone/iPad readings need libimobiledevice + Local Network permission.
     @AppStorage("enableBattery") public var enableBattery: Bool = true
 
+    // 에어팟 드롭다운: name and levels under the notch when AirPods connect. Needs enableBattery.
+    @AppStorage("enableAirPodsDropdown") public var enableAirPodsDropdown: Bool = true
+
     // Battery device ids shown in the open notch header, newline-separated.
     @AppStorage("headerBatteryDeviceIDs") public var headerBatteryDeviceIDs: String = ""
 

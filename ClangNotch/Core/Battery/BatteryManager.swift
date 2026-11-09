@@ -124,7 +124,21 @@ final class BatteryManager: ObservableObject {
     /// 메인에서 처음 부르면 데드락이다(refresh()의 경고 참고).
     private func registerBluetoothEventsIfNeeded() {
         guard bluetoothEvents == nil else { return }
-        bluetoothEvents = BluetoothEvents { [weak self] in
+        bluetoothEvents = BluetoothEvents { [weak self] device, event in
+            if let address = device.addressString {
+                switch event {
+                case .newConnection:
+                    let productID = unsafeBitCast(device, to: BTBatteryDevice.self).productID
+                    AirPodsDropdown.shared.deviceConnected(address: address, productID: productID)
+                case .disconnection:
+                    // Lid closed on the buds: fold their card now.
+                    AirPodsDropdown.shared.caseClosed(address: address)
+                    AirPodsLidWatcher.shared.forget(address: address)
+                case .knownConnection:
+                    break
+                }
+            }
+            AirPodsLidWatcher.shared.reevaluate()
             // 막 붙은 에어팟은 잔량을 몇 초 뒤에야 보고한다.
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(3))
@@ -694,7 +708,7 @@ private enum Collector {
 
 /// IOBluetoothDevice의 비공개 배터리 프로퍼티. 공개 헤더에 없어 프로토콜로 브리징한다
 /// (앱이 SidecarCore·CGS·MediaRemote에 쓰는 방식과 동일).
-@objc private protocol BTBatteryDevice {
+@objc protocol BTBatteryDevice {
     @objc(batteryPercentSingle) var batteryPercentSingle: Int { get }
     @objc(batteryPercentLeft) var batteryPercentLeft: Int { get }
     @objc(batteryPercentRight) var batteryPercentRight: Int { get }
@@ -704,11 +718,17 @@ private enum Collector {
 
 /// IOBluetooth 연결·해제 알림을 받는 NSObject 어댑터. 알림은 메인 런루프로 온다.
 private final class BluetoothEvents: NSObject {
-    private let onChange: () -> Void
+    /// 새 연결은 앱이 감시를 시작한 뒤 새로 붙은 것(에어팟 드롭다운용). 등록 때 이미 붙어 있던 기기는 known.
+    enum Event { case newConnection, knownConnection, disconnection }
+    private let onChange: (IOBluetoothDevice, Event) -> Void
     private var connectNotification: IOBluetoothUserNotification?
+    /// 지금 연결된 기기 주소. 등록 때 이미 붙어 있던 기기는 미리 넣어 두어 새 연결로 치지 않는다.
+    private var connectedAddresses: Set<String>
 
-    init(onChange: @escaping () -> Void) {
+    init(onChange: @escaping (IOBluetoothDevice, Event) -> Void) {
         self.onChange = onChange
+        let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []
+        connectedAddresses = Set(paired.filter { $0.isConnected() }.compactMap(\.addressString))
         super.init()
         // 등록 즉시 이미 연결된 기기마다 한 번씩 불린다 — 거기서 해제 알림도 건다.
         connectNotification = IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(connected(_:device:)))
@@ -716,12 +736,14 @@ private final class BluetoothEvents: NSObject {
 
     @objc private func connected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         device.register(forDisconnectNotification: self, selector: #selector(disconnected(_:device:)))
-        onChange()
+        let isNew = device.addressString.map { connectedAddresses.insert($0).inserted } ?? false
+        onChange(device, isNew ? .newConnection : .knownConnection)
     }
 
     @objc private func disconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         notification.unregister()
-        onChange()
+        if let address = device.addressString { connectedAddresses.remove(address) }
+        onChange(device, .disconnection)
     }
 }
 
