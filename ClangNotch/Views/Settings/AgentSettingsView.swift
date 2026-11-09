@@ -757,12 +757,77 @@ struct FeaturesSettingsTab: View {
                     .onChange(of: settings.centerSystemBanners) { _, _ in
                         SystemBannerCenterer.shared.syncWithSettings()
                     }
+                SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
+                              L("HDMI·DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생 · 볼륨·밝기 표시 바꾸기가 켜져 있어야 함",
+                                "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter · needs Replace volume and brightness HUD"),
+                              isOn: $settings.enableSoftwareVolume)
+                    .disabled(!settings.centerSystemBanners)
+                    .onChange(of: settings.enableSoftwareVolume) { _, _ in
+                        SoftwareVolume.shared.apply()
+                    }
+                if settings.enableSoftwareVolume && settings.centerSystemBanners {
+                    SoftwareVolumeExcludedApps(settings: settings)
+                }
             } header: {
                 Text(L("기능", "Features"))
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+/// Apps "볼륨 조절 안 되는 모니터 소리 줄이기" leaves alone, so they keep their own sound path
+/// (a screen-share that skips its own audio, say). Stored as bundle IDs.
+private struct SoftwareVolumeExcludedApps: View {
+    @ObservedObject var settings: AppSettings
+
+    private var bundleIDs: [String] {
+        settings.softwareVolumeExcludedApps.split(separator: "\n").map(String.init)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("제외할 앱", "Apps left out"))
+            Text(L("가로채지 않아 볼륨 키로 안 줄어듦 · 화면 공유에 다른 사람 소리가 섞이는 앱(디스코드 등)",
+                   "Not intercepted, so the volume keys don't turn them down · apps whose screen share picks up other people's voices (Discord, …)"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(bundleIDs, id: \.self) { id in
+                HStack(spacing: 8) {
+                    let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+                    if let url {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                            .resizable()
+                            .frame(width: 18, height: 18)
+                    }
+                    Text(url.map { FileManager.default.displayName(atPath: $0.path) } ?? id)
+                    Spacer()
+                    Button {
+                        set(bundleIDs.filter { $0 != id })
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            Button(L("앱 추가…", "Add App…"), action: add)
+        }
+    }
+
+    private func add() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        let added = panel.urls.compactMap { Bundle(url: $0)?.bundleIdentifier }
+        set(bundleIDs + added.filter { !bundleIDs.contains($0) })
+    }
+
+    private func set(_ ids: [String]) {
+        settings.softwareVolumeExcludedApps = ids.joined(separator: "\n")
+        SoftwareVolume.shared.apply()
     }
 }
 

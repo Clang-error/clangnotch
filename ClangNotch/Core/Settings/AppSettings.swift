@@ -26,6 +26,13 @@ public final class AppSettings: ObservableObject {
     // "볼륨·밝기 표시 바꾸기": replace macOS volume/brightness banners with our 조절창 and
     // center the other system banners (SystemBannerCenterer + SystemControlOSD, needs Accessibility)
     @AppStorage("centerSystemBanners") public var centerSystemBanners: Bool = true
+    // SoftwareVolume's audio tap for outputs macOS can't turn down (HDMI/DisplayPort speakers).
+    // Off by default: it intercepts every app's sound. Needs centerSystemBanners (its key tap).
+    @AppStorage("enableSoftwareVolume") public var enableSoftwareVolume: Bool = false
+    // Bundle IDs that tap leaves alone, newline-separated; each also covers its helpers
+    // (com.hnc.Discord → com.hnc.Discord.helper.Renderer). Discord because its Go Live would
+    // otherwise stream friends' voices replayed by ClangNotch (2026-11-09).
+    @AppStorage("softwareVolumeExcludedApps") public var softwareVolumeExcludedApps: String = "com.hnc.Discord"
 
     // Internet speed test (ping/download/upload against Cloudflare's public endpoints).
     // Only ever runs when the user presses Test in the tab.

@@ -43,7 +43,7 @@ final class SoftwareVolume {
     /// Gain on the samples: the level squared, close to how macOS's own volume falls off
     /// (linear amplitude makes 50% only −6 dB). 1 while there is nothing to turn down.
     var multiplier: Float {
-        guard running, let uid = Self.uncontrollableOutputUID() else { return 1 }
+        guard running, AppSettings.shared.enableSoftwareVolume, let uid = Self.uncontrollableOutputUID() else { return 1 }
         if muted { return 0 }
         let level = Float(levels[uid] ?? 1)
         return level * level
@@ -57,6 +57,9 @@ final class SoftwareVolume {
         }
         var address = Self.defaultOutputAddress
         AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, listener)
+        // Helpers of excluded apps that start later must be left out of the tap too.
+        var processes = Self.processListAddress
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &processes, .main, listener)
         deviceListener = listener
         startKeyTap()
         apply()
@@ -68,6 +71,8 @@ final class SoftwareVolume {
         if let deviceListener {
             var address = Self.defaultOutputAddress
             AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, deviceListener)
+            var processes = Self.processListAddress
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &processes, .main, deviceListener)
         }
         deviceListener = nil
         stopKeyTap()
@@ -155,7 +160,8 @@ final class SoftwareVolume {
 
     /// Brings the tap in line with the output device, the level and the per-app sessions.
     func apply() {
-        keyTarget = running ? Self.uncontrollableOutputUID() : nil
+        // Switched off, these outputs' keys go the normal way (macOS shows it can't change them).
+        keyTarget = running && AppSettings.shared.enableSoftwareVolume ? Self.uncontrollableOutputUID() : nil
         AudioMixerManager.shared.mainVolumeChanged()
         let gain = multiplier
         guard gain < 0.99, let uid = keyTarget, let me = Self.ownProcessObject() else {
@@ -173,7 +179,7 @@ final class SoftwareVolume {
             return
         }
 
-        let excluded = [me] + AudioMixerManager.shared.tappedProcessObjects
+        let excluded = [me] + AudioMixerManager.shared.tappedProcessObjects + Self.excludedAppProcessObjects()
         let key = uid + excluded.map(String.init).joined(separator: ",")
         if let session, key == sessionKey {
             session.gainBox.value = gain
@@ -210,6 +216,28 @@ final class SoftwareVolume {
     private static var defaultOutputAddress = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyDefaultOutputDevice,
         mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+
+    private static var processListAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyProcessObjectList,
+        mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+
+    /// Processes of the apps excluded in Settings stay out of the tap. A replayed copy comes
+    /// from ClangNotch, so e.g. Discord's Go Live (system audio minus Discord's own) streamed
+    /// friends' voices (2026-11-09). Those apps are then turned with their own volume.
+    private static func excludedAppProcessObjects() -> [AudioObjectID] {
+        let prefixes = AppSettings.shared.softwareVolumeExcludedApps.split(separator: "\n").map(String.init)
+        guard !prefixes.isEmpty else { return [] }
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var address = processListAddress
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return [] }
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids.filter { obj in
+            guard let bundleID = AudioMixerManager.strProp(obj, kAudioProcessPropertyBundleID) else { return false }
+            return prefixes.contains { bundleID == $0 || bundleID.hasPrefix($0 + ".") }
+        }
+    }
 
     /// UID of the default output when it has no volume control of its own.
     private static func uncontrollableOutputUID() -> String? {
