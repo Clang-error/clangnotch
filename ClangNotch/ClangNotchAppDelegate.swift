@@ -62,6 +62,10 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let hostingController = NSHostingController(rootView: settingsView)
+        // The window is sized below. Left to size it, the controller added the toolbar's 52pt
+        // to the fixed 600pt view, and the view (drawn up under the toolbar) left that strip
+        // empty at the bottom.
+        hostingController.sizingOptions = []
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 450, height: 300),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],

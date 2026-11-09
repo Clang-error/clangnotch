@@ -153,6 +153,8 @@ final class SettingsToolbarController: NSObject, NSToolbarDelegate {
             spacer.widthAnchor.constraint(equalToConstant: settingsSidebarWidth + 12 - toolbarItemsStart).isActive = true
             spacer.heightAnchor.constraint(equalToConstant: 1).isActive = true
             item.view = spacer
+            // Bordered, it got an empty glass capsule next to the traffic lights (macOS 26+).
+            item.isBordered = false
         } else {
             item.view = navControl
             item.label = L("뒤로/앞으로", "Back/Forward")
