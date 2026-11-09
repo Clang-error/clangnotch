@@ -6,9 +6,9 @@ import AppKit
 /// Model codes and product IDs come from CoreBluetoothUI's `AssetPaths-*.plist`.
 @MainActor
 enum AirPodsArt {
-    enum Kind { case buds, headphones }
+    nonisolated enum Kind { case buds, headphones }
 
-    static func kind(for productID: UInt16) -> Kind? {
+    nonisolated static func kind(for productID: UInt16) -> Kind? {
         switch productID {
         case 0x200A, 0x200D, 0x201F, 0x202D: return .headphones
         case 0x2002, 0x200F, 0x2013, 0x200E, 0x2014, 0x2024, 0x2027,
@@ -71,7 +71,7 @@ enum AirPodsArt {
     /// The only case render on the Mac is the newest AirPods Pro's; every model borrows it.
     static var chargingCase: NSImage? { catalogImage("B788_case-closed-charged", in: headphoneSettingsUI) }
 
-    static func deviceSymbol(for productID: UInt16) -> String {
+    nonisolated static func deviceSymbol(for productID: UInt16) -> String {
         switch productID {
         case 0x200A, 0x200D, 0x201F, 0x202D: return "airpodsmax"
         case 0x200E, 0x2014, 0x2024, 0x2027: return "airpodspro"

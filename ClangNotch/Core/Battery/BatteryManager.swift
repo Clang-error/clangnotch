@@ -649,14 +649,10 @@ private enum Collector {
     }
 
     /// 이름은 시스템 언어에 따라 "AirPods Max"/"에어팟 맥스"로 갈리므로 productID를 먼저 본다.
+    /// 에어팟 카드와 같은 표를 쓴다. 따로 들고 있던 표엔 에어팟 프로 2 라이트닝(0x2014)이 빠져
+    /// 헤드폰 아이콘으로 떴다.
     private static func symbol(for device: IOBluetoothDevice, b: BTBatteryDevice) -> String {
-        switch b.productID {
-        case 0x200D, 0x202D: return "airpodsmax"
-        case 0x200E, 0x2024: return "airpodspro"
-        case 0x2013:         return "airpods.gen3"
-        case 0x2002, 0x200F: return "airpods"
-        default: break
-        }
+        if AirPodsArt.kind(for: b.productID) != nil { return AirPodsArt.deviceSymbol(for: b.productID) }
         switch device.deviceClassMajor {
         case 4:  return "headphones"                        // Audio
         case 5:  return device.deviceClassMinor == 1 ? "keyboard" : "magicmouse"
