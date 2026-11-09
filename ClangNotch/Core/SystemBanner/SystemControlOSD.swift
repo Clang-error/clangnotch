@@ -43,6 +43,25 @@ final class SystemControlOSD: ObservableObject {
     private static let visibleDuration: TimeInterval = 1.5
 
     private var panel: ActiveLookingPanel?
+    private var panelScreen: NSScreen?
+    /// How far the open notch reaches down from the top of its screen, 0 unless it is open.
+    /// The pill sits under it there, and glides back up as the notch closes.
+    var openNotchDepth: CGFloat = 0 {
+        didSet {
+            guard openNotchDepth != oldValue, shown, let panel, let screen = panelScreen else { return }
+            let target = origin(for: panel, on: screen)
+            let opening = openNotchDepth > oldValue
+            NSAnimationContext.runAnimationGroup { context in
+                // The notch's own curves: notchOpenSpring's settle, notchCloseAnimation.
+                context.duration = opening ? 0.4 : notchCloseDuration
+                context.timingFunction = opening
+                    ? CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+                    : CAMediaTimingFunction(controlPoints: 0.25, 0.8, 0.35, 1)
+                // Only setFrame animates through a window's animator; setFrameOrigin does nothing.
+                panel.animator().setFrame(NSRect(origin: target, size: panel.frame.size), display: true)
+            }
+        }
+    }
     private var hideWork: DispatchWorkItem?
     private var pollTimer: Timer?
     private var showGeneration = 0
@@ -243,10 +262,17 @@ final class SystemControlOSD: ObservableObject {
 
     private func place(_ panel: NSPanel, on screen: NSScreen?) {
         guard let screen else { return }
-        let menuBarHeight = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
-        let pillTop = screen.frame.maxY - menuBarHeight - Self.gapBelowMenuBar
-        panel.setFrameOrigin(NSPoint(x: screen.frame.midX - panel.frame.width / 2,
-                                     y: pillTop + Self.shadowPadding - panel.frame.height))
+        panelScreen = screen
+        panel.setFrameOrigin(origin(for: panel, on: screen))
+    }
+
+    /// Under the menu bar, or under the open notch while it is open on this screen.
+    private func origin(for panel: NSPanel, on screen: NSScreen) -> NSPoint {
+        var top = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
+        if screen == NotchDetector.notchScreen { top = max(top, openNotchDepth) }
+        let pillTop = screen.frame.maxY - top - Self.gapBelowMenuBar
+        return NSPoint(x: screen.frame.midX - panel.frame.width / 2,
+                       y: pillTop + Self.shadowPadding - panel.frame.height)
     }
 
     // MARK: - Readings

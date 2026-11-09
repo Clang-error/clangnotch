@@ -672,6 +672,10 @@ struct ClangNotchContentView: View {
             if state != .closed { appearance.refreshWallpaper() }
         }
         .onChange(of: settings.notchAppearance) { appearance.refreshWallpaper() }
+        // The 조절창 moves under the open notch instead of covering it.
+        .onChange(of: notchVM.notchState == .open ? notchVM.notchSize.height : 0, initial: true) { _, depth in
+            SystemControlOSD.shared.openNotchDepth = depth
+        }
         .onChange(of: settings.notchWallpaperSource) { appearance.refreshWallpaper() }
         .onAppear { appearance.refreshWallpaper() }
         .onReceive(NotificationCenter.default.publisher(for: .notchSelectTab)) { note in
