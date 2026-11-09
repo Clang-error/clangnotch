@@ -15,7 +15,7 @@ struct NotchGlowLayers: NSViewRepresentable, Animatable {
     let tracesOutline: Bool
     /// Holds the band still where the clock puts it (Reduce Motion, hidden notch).
     let paused: Bool
-    /// 0 lets the display decide; battery saver caps it at 60.
+    /// 0 lets the display decide; battery saver caps it at 30.
     let maxFrameRate: Float
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {

@@ -45,8 +45,9 @@ struct NotchGlowBorder: View {
             secondaryBrightColor: secondaryBrightColor.map { NSColor($0) },
             tracesOutline: tracesOutline,
             paused: reduceMotion || !ui.isVisible,
-            // Battery saver: at most 60 fps on battery instead of the display's 120.
-            maxFrameRate: settings.batterySaverEnabled && !powerMonitor.isCharging ? 60 : 0
+            // Battery saver: at most 30 fps on battery. Measured 2026-11-09 on battery: GPU use
+            // +17–19%p at 60 fps (about 170 mW), +10%p at 30, +14%p for the old 15 fps SwiftUI glow.
+            maxFrameRate: settings.batterySaverEnabled && !powerMonitor.isCharging ? 30 : 0
         )
         .allowsHitTesting(false)
     }

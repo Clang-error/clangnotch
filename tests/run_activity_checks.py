@@ -87,7 +87,7 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     var rateLimits = CodexRateLimits()
     var lastCompletedTurn: CompletedTurn?
     func clearEndedSessions() {}
-    func loadThreadNames() {}
+    func loadThreadNames(for sessionIDs: [String]) {}
     func loadLatestRateLimits(from: URL) {}
     func selectSession(_ session: CodexSession) { selectedSession = Selection(id: session.id) }
     func startWatchingSession(_ session: CodexSession) {

@@ -73,18 +73,21 @@ questions += '''
 enum ClosedLowBatteryBadge {
     static func width(for device: Int) -> CGFloat { 0 }
 }
+struct FixtureSession { let id: String }
 @MainActor final class ClosedWingFixture {
     struct Claude {
         var state = ClaudeCodeState()
         var sessionStates: [String: ClaudeCodeState] = [:]
         var pendingInputRequests: [ClaudeInputRequest] = []
         var sessionsNeedingPermission: [Int] = []
+        var availableSessions: [FixtureSession] = []
         var hasAnySessionActivity: Bool { state.isActive }
     }
     struct Codex {
         var state = CodexState()
         var sessionStates: [String: CodexState] = [:]
         var pendingInputRequests: [CodexInputRequest] = []
+        var availableSessions: [FixtureSession] = []
         var hasAnySessionActivity: Bool { state.isActive }
     }
     struct Settings {
@@ -122,7 +125,11 @@ questions += '''
 with tempfile.TemporaryDirectory(prefix="clangnotch-layout-checks-") as folder:
     temp = Path(folder)
     enum_file = temp / "NotchMode.swift"
-    enum_file.write_text("import SwiftUI\nimport AppKit\nfunc L(_ korean: String, _ english: String) -> String { korean }\n" + mode + questions)
+    # NotchMotion uses NotchPalette.ink; take just the enum, not the rest of that view file.
+    components = (root / "ClangNotch/Views/Notch/NotchDashboardComponents.swift").read_text()
+    start = components.index("enum NotchPalette {")
+    palette = components[start:components.index("\n}\n", start) + 3]
+    enum_file.write_text("import SwiftUI\nimport AppKit\nfunc L(_ korean: String, _ english: String) -> String { korean }\n" + palette + mode + questions)
     binary = temp / "checks"
     subprocess.run([
         "xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",
@@ -135,6 +142,7 @@ with tempfile.TemporaryDirectory(prefix="clangnotch-layout-checks-") as folder:
         str(root / "ClangNotch/Views/Notch/DoneCheckmarkView.swift"),
         str(root / "ClangNotch/Views/Notch/NotchMotion.swift"),
         str(root / "ClangNotch/Views/Notch/ThinScrollers.swift"),
+        str(root / "ClangNotch/Views/Notch/ClosedAgentIconStack.swift"),
         str(root / "ClangNotch/Window/NotchDetector.swift"),
         str(enum_file), str(root / "tests/NotchLayoutChecks.swift"),
         "-o", str(binary),
