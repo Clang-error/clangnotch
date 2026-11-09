@@ -1,13 +1,13 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools]`: the notch runs
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods]`: the notch runs
 /// on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard, volume,
 /// battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device or copied text from this Mac can end up in a video.
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, tools, many }
+    enum Scene: String { case claude, codex, both, tools, many, airpods }
 
     static var scene: Scene {
         let args = CommandLine.arguments
@@ -44,6 +44,19 @@ final class DemoDriver {
         guard task == nil else { return }
         if DemoMode.scene == .tools {
             applyTools()
+            return
+        }
+        // airpods: an idle notch; the 에어팟 드롭다운 drops every 12 s, AirPods Pro then Max.
+        if DemoMode.scene == .airpods {
+            task = Task {
+                var max = false
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    AirPodsDropdown.shared.demoShow(max: max)
+                    max.toggle()
+                    try? await Task.sleep(for: .seconds(10))
+                }
+            }
             return
         }
         let scripts = Self.scripts(for: DemoMode.scene)
@@ -160,7 +173,7 @@ final class DemoDriver {
         switch scene {
         case .claude: return [orbit, lumen]
         case .codex: return [atlas, prism]
-        case .tools: return []
+        case .tools, .airpods: return []
         case .many:
             let claudeNames = ["orbit-api", "lumen-web", "nova-docs", "pulse-ios", "relay-bot"]
             let codexNames = ["atlas-cli", "prism-app", "quill-sdk"]

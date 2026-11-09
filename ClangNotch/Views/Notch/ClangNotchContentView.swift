@@ -677,6 +677,10 @@ struct ClangNotchContentView: View {
         .onChange(of: notchVM.notchState == .open ? notchVM.notchSize.height : 0, initial: true) { _, depth in
             SystemControlOSD.shared.openNotchDepth = depth
         }
+        // The 에어팟 드롭다운 stays up under a dropdown that comes down meanwhile.
+        .onChange(of: notchVM.notchState == .peeking ? notchVM.notchSize.height : 0, initial: true) { _, depth in
+            AirPodsDropdown.shared.peekDepth = depth
+        }
         .onChange(of: settings.notchWallpaperSource) { appearance.refreshWallpaper() }
         .onAppear { appearance.refreshWallpaper() }
         .onReceive(NotificationCenter.default.publisher(for: .notchOpenBattery)) { _ in

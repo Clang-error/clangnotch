@@ -17,6 +17,23 @@ import IOBluetooth
 final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     static let shared = AirPodsLidWatcher()
 
+    private override init() {
+        super.init()
+        // 설정 › 기능 › 에어팟 연결 알림 (or 배터리 잔량) switched: start or stop scanning now,
+        // not at the next Bluetooth change.
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                let settings = AppSettings.shared
+                let enabled = settings.enableAirPodsDropdown && settings.enableBattery
+                guard enabled != AirPodsLidWatcher.shared.lastEnabled else { return }
+                AirPodsLidWatcher.shared.lastEnabled = enabled
+                AirPodsLidWatcher.shared.reevaluate()
+                if !enabled { AirPodsDropdown.shared.dismiss() }
+            }
+        }
+    }
+    private var lastEnabled = true
+
     private struct Paired { let address: String; let productID: UInt16 }
 
     private var central: CBCentralManager?
@@ -32,6 +49,7 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     /// Ours read -51…-78 at the desk, often -67…-75 for the first frames after opening; another
     /// Pro 2 in the room read -92…-104 (2026-11-09).
     private static let nearRSSI = -82
+
     private var stopWork: DispatchWorkItem?
 
     /// Called once IOBluetooth is up, and on every connect / disconnect.
@@ -44,13 +62,19 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         }
         let enabled = settings.enableAirPodsDropdown && settings.enableBattery && !DemoMode.isActive
         candidates = enabled ? paired : []
-        let anyDisconnected = enabled && (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? [])
-            .contains { device in !device.isConnected() && paired.contains { $0.address == device.addressString } }
+        // Keep listening until every one of our AirPods is connected and fully worn: both buds in
+        // (the second bud and a case reopened while still connected show up only here), or the Max on.
+        let connected = Set((IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? [])
+            .filter { $0.isConnected() }.compactMap(\.addressString))
+        let needsScan = enabled && paired.contains { p in
+            guard connected.contains(p.address) else { return true }
+            return AirPodsArt.kind(for: p.productID) == .headphones ? lastWorn[p.address] != true : budInEar[p.address] != 2
+        }
         if candidates.isEmpty {
             stop()
             return
         }
-        if !anyDisconnected {
+        if !needsScan {
             // Just connected because the lid opened: keep listening a little for its frames.
             if stopWork == nil {
                 let work = DispatchWorkItem { [weak self] in self?.stopWork = nil; self?.stop() }
@@ -122,17 +146,77 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         guard let ours = candidates.first(where: { $0.productID == model && matches($0.address, left, right, caseTenths) })
         else { return }
 
+        // Lid byte bit 3 is set while the lid is shut (32/33 open → 3B/3C shut → 34 open, measured
+        // 2026-11-09). Status bit 1 is set while a bud is in an ear (51 → 53). Both buds advertise
+        // in turn with their own counters, but these bits agree. A frame after 10 s of silence is a
+        // fresh opening even if the closing frames were missed.
+        let address = ours.address
+        let lidShut = b[10] & 0x08 != 0
+        // Each bud says whether it (0x02) and the other bud (0x08) are in an ear. Frames with 0x20
+        // clear come from the left bud, whose level is the high battery nibble (right bud in
+        // alone showed as left with the opposite reading, 2026-11-09).
+        let leftSpeaking = b[7] & 0x20 == 0
+        // Status 0x02 means some bud is in an ear (both buds set it with one in: 53 and 33). Which
+        // buds are out of the case comes from the charging flags in the case byte's high nibble,
+        // from the sender's side: 0x2 it is charging, 0x1 the other is (B = both in the case,
+        // 9 / A = one out; 2026-11-09). A bud out of the case while some bud is in counts as in.
+        let anyInEar = b[7] & 0x02 != 0
+        let flags = b[9] >> 4
+        let thisOut = flags & 0x2 == 0, otherOut = flags & 0x1 == 0
+        let leftOut = leftSpeaking ? thisOut : otherOut
+        let rightOut = leftSpeaking ? otherOut : thisOut
+        let leftTenths = leftSpeaking ? Int(b[8] >> 4) : Int(b[8] & 0x0F)
+        let rightTenths = leftSpeaking ? Int(b[8] & 0x0F) : Int(b[8] >> 4)
+        let now = Date()
+        let silent = lastSeen[address].map { now.timeIntervalSince($0) > 10 } ?? true
+        lastSeen[address] = now
+        let wasShut = silent ? true : lidWasShut[address] ?? true
+        let inEarCount = anyInEar ? (leftOut ? 1 : 0) + (rightOut ? 1 : 0) : 0
+        // The first frame after a silence (app launch, scan resumed while worn) only tells us how
+        // they're worn now; only later frames can show a bud going in.
+        let wasInEar = silent ? inEarCount : budInEar[address] ?? 0
+        let outNow = (leftOut ? 1 : 0) + (rightOut ? 1 : 0)
+        if !silent, let before = budsOut[address], before != outNow {
+            AirPodsDropdown.shared.keepAlive(address: address)
+        }
+        budsOut[address] = outNow
+        lidWasShut[address] = lidShut
+        budInEar[address] = inEarCount
+        if (inEarCount == 2) != (wasInEar == 2) { reevaluate() }
+
+        if lidShut, !wasShut {
+            AirPodsDropdown.shared.caseClosed(address: address)
+            return
+        }
         guard rssi >= Self.nearRSSI, rssi < 0 else { return }
-        // The case keeps advertising for a while after the card folds by itself.
-        if let last = lastSeen[ours.address], Date().timeIntervalSince(last) < 20 { lastSeen[ours.address] = Date(); return }
-        lastSeen[ours.address] = Date()
-        AirPodsDropdown.shared.caseOpened(address: ours.address, productID: model,
+        // Like an iPhone: one bud in shows that bud, the second shows both. Nothing else while worn.
+        if inEarCount > wasInEar {
+            if inEarCount == 1 {
+                let isLeft = leftOut
+                AirPodsDropdown.shared.caseOpened(address: address, productID: model,
+                                                  level: tenths(isLeft ? leftTenths : rightTenths),
+                                                  caseLevel: tenths(caseTenths), side: isLeft ? "L" : "R")
+            } else {
+                AirPodsDropdown.shared.caseOpened(address: address, productID: model,
+                                                  level: tenths(min(left, right)), caseLevel: tenths(caseTenths))
+            }
+            return
+        }
+        guard inEarCount == 0, !lidShut, wasShut else { return }
+        AirPodsDropdown.shared.caseOpened(address: address, productID: model,
                                           level: tenths(min(left, right)), caseLevel: tenths(caseTenths))
     }
+
+    private var lidWasShut: [String: Bool] = [:]
+    private var budInEar: [String: Int] = [:]
+    private var budsOut: [String: Int] = [:]
 
     /// The buds disconnected (lid closed on them): the next opening counts again.
     func forget(address: String) {
         lastSeen[address] = nil
+        lidWasShut[address] = nil
+        budInEar[address] = nil
+        budsOut[address] = nil
         // Max disconnect once taken off and put down; the next frame is a putting-on.
         lastWorn[address] = false
     }
@@ -150,6 +234,7 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         let worn = b[7] & 0x01 != 0
         let was = lastWorn[ours.address]
         lastWorn[ours.address] = worn
+        if was != worn { reevaluate() }
         guard worn, was == false else { return }
         let nibbles = [Int(b[8] >> 4), Int(b[8] & 0x0F)].filter { $0 != 0xF }
         AirPodsDropdown.shared.caseOpened(address: ours.address, productID: model,

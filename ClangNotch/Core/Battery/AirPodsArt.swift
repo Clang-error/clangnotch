@@ -33,6 +33,41 @@ enum AirPodsArt {
         }
     }
 
+    /// A front-facing bud with its L/R on the stem, where the Mac has one (the Pros only).
+    static func frontBud(for productID: UInt16, left: Bool) -> NSImage? {
+        switch productID {
+        case 0x2014, 0x2024: return catalogImage(left ? "airpod_left" : "airpod_right", in: headphoneAssets)
+        case 0x2027:         return catalogImage(left ? "B788_airpod_left" : "B788_airpod_right", in: headphoneSettingsUI)
+        default:             return nil
+        }
+    }
+
+    /// Both front-facing buds side by side, left on the left.
+    static func frontPair(for productID: UInt16) -> NSImage? {
+        cached("\(productID)-front-pair") {
+            guard let left = frontBud(for: productID, left: true), let right = frontBud(for: productID, left: false) else { return nil }
+            let gap = left.size.width * 0.12
+            let size = NSSize(width: left.size.width + gap + right.size.width, height: max(left.size.height, right.size.height))
+            return NSImage(size: size, flipped: false) { _ in
+                left.draw(in: NSRect(x: 0, y: 0, width: left.size.width, height: left.size.height))
+                right.draw(in: NSRect(x: left.size.width + gap, y: 0, width: right.size.width, height: right.size.height))
+                return true
+            }
+        }
+    }
+
+    /// One bud: the front-facing render, else cut from the pair render (left bud on the left).
+    static func singleBud(for productID: UInt16, left: Bool) -> NSImage? {
+        if let front = frontBud(for: productID, left: left) { return front }
+        return cached("\(productID)-\(left ? "L" : "R")") {
+            guard let pair = device(for: productID),
+                  let cg = pair.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+            let half = cg.width / 2
+            let rect = CGRect(x: left ? 0 : half, y: 0, width: cg.width - half, height: cg.height)
+            return cg.cropping(to: rect).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
+        }
+    }
+
     /// The only case render on the Mac is the newest AirPods Pro's; every model borrows it.
     static var chargingCase: NSImage? { catalogImage("B788_case-closed-charged", in: headphoneSettingsUI) }
 

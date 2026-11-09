@@ -23,6 +23,8 @@ final class AirPodsDropdown: ObservableObject {
         let caseLevel: Int?
         /// AirPods Max colour code, from its advertisement.
         var color: UInt8? = nil
+        /// "L" or "R" when only that bud is in an ear: the card shows just that bud and its level.
+        var side: String? = nil
     }
 
     enum Phase: Equatable { case hidden, dropping(Date), settled, rising }
@@ -38,12 +40,26 @@ final class AirPodsDropdown: ObservableObject {
     static let gapBelowMenuBar: CGFloat = 10
     static let dropDuration: TimeInterval = 0.9
     static let riseDuration: TimeInterval = 0.65
-    private static let visibleDuration: TimeInterval = 4
+    private static let visibleDuration: TimeInterval = 6
 
-    /// Set by the notch view. The card waits out nothing: it simply skips while the notch is
-    /// open or a dropdown is down, and leaves when either happens while it is up.
+    /// Set by the notch view. The card skips while the notch is open and leaves when it opens;
+    /// a dropdown coming down only pushes it lower (`peekDepth`).
     var notchState: NotchState = .closed {
-        didSet { if notchState != .closed { dismiss() } }
+        didSet { if notchState == .open { dismiss() } }
+    }
+
+    /// How far a dropdown (완료, 질문, 권한 …) reaches down from the top of the screen, 0 when
+    /// none is down. The card sits under it, and goes back up when it folds.
+    var peekDepth: CGFloat = 0 {
+        didSet {
+            guard peekDepth != oldValue, phase == .settled, let panel, let screen = NotchDetector.notchScreen else { return }
+            layOut(on: screen)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.4
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.1, 0.4, 1)
+                panel.animator().setFrame(cardFrame(on: screen), display: true)
+            }
+        }
     }
 
     private var panel: NSPanel?
@@ -72,8 +88,13 @@ final class AirPodsDropdown: ObservableObject {
         let settings = AppSettings.shared
         guard settings.enableAirPodsDropdown, settings.enableBattery, !DemoMode.isActive,
               AirPodsArt.kind(for: productID) != nil else { return }
-        // The case opening already showed it; taking the buds out is what connects them.
-        if let opened = openedByCase[address], Date().timeIntervalSince(opened) < 30 { return }
+        // The advertisement just showed it (case opened, bud put in); the connection follows.
+        if let opened = openedByCase[address], Date().timeIntervalSince(opened) < 5 { return }
+        // Missed by the scan: drop it now with the levels last known, and fill in fresh ones below.
+        _ = AirPodsArt.device(for: productID, color: knownColors[address])
+        _ = AirPodsArt.chargingCase
+        show(Self.card(address: address, productID: productID,
+                       device: BatteryManager.shared.devices.first { $0.id == address }))
         waitTask?.cancel()
         waitTask = Task { @MainActor in
             var device: BatteryDevice?
@@ -83,25 +104,37 @@ final class AirPodsDropdown: ObservableObject {
                 device = BatteryManager.shared.devices.first { $0.id == address && $0.live }
                 if device != nil { break }
             }
-            // Gone again meanwhile (handed off to the iPhone, say): no card for it.
-            guard device != nil || IOBluetoothDevice(addressString: address)?.isConnected() == true else { return }
-            // Trimming the renders scans every pixel; do it before the first frame of the drop.
-            _ = AirPodsArt.device(for: productID)
-            _ = AirPodsArt.chargingCase
+            // Fresh levels for the card that's up; nothing new to drop.
+            guard let device, card?.address == address else { return }
             show(Self.card(address: address, productID: productID, device: device))
         }
     }
 
     /// `AirPodsLidWatcher` saw our case open. Levels come from BatteryManager when it has them,
     /// else from the advertisement's tenths.
-    func caseOpened(address: String, productID: UInt16, level: Int?, caseLevel: Int?) {
+    func caseOpened(address: String, productID: UInt16, level: Int?, caseLevel: Int?, side: String? = nil) {
         openedByCase[address] = Date()
         _ = AirPodsArt.device(for: productID, color: knownColors[address])
         _ = AirPodsArt.chargingCase
         let device = BatteryManager.shared.devices.first { $0.id == address }
         let known = Self.card(address: address, productID: productID, device: device)
+        let sideLevel = side.flatMap { s in device?.parts.first { $0.label == s }?.percent }
         show(Card(address: address, productID: productID, name: known.name,
-                  level: device == nil ? level : known.level, caseLevel: device == nil ? caseLevel : known.caseLevel ?? caseLevel))
+                  level: side != nil ? (sideLevel ?? level) : (device == nil ? level : known.level),
+                  caseLevel: device == nil ? caseLevel : known.caseLevel ?? caseLevel, side: side))
+    }
+
+    /// `--demo --demo-scene airpods`: a made-up card, no real device behind it.
+    func demoShow(max: Bool) {
+        show(Card(address: "demo", productID: max ? 0x202D : 0x2024, name: max ? "AirPods Max" : "AirPods Pro",
+                  level: max ? 80 : 100, caseLevel: max ? nil : 40, color: max ? 0x12 : nil))
+    }
+
+    /// Something is happening with the AirPods on the card (a bud leaving the case): start its
+    /// time over, so taking the buds out and putting them in stays one card.
+    func keepAlive(address: String) {
+        guard card?.address == address, phase == .settled, !hovering else { return }
+        scheduleHide(after: Self.visibleDuration)
     }
 
     /// Our case closed: fold its card at once.
@@ -125,10 +158,13 @@ final class AirPodsDropdown: ObservableObject {
     private func show(_ new: Card) {
         var new = new
         if new.color == nil { new.color = knownColors[new.address] }
-        guard notchState == .closed, let screen = NotchDetector.notchScreen else { return }
+        guard notchState != .open, let screen = NotchDetector.notchScreen else { return }
         // Reconnected right after a drop-out: refresh the card that's up.
+        // The same AirPods again (other bud in, fresh levels): update the card and give it
+        // its full time again.
         if card?.address == new.address, phase == .settled || isDropping {
             card = new
+            if phase == .settled, !hovering { scheduleHide(after: Self.visibleDuration) }
             return
         }
         generation += 1
@@ -218,13 +254,21 @@ final class AirPodsDropdown: ObservableObject {
 
     private func layOut(on screen: NSScreen) {
         menuBar = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
-        cardTop = menuBar + Self.gapBelowMenuBar
+        cardTop = max(menuBar, peekDepth) + Self.gapBelowMenuBar
+        if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea?.width,
+           let right = screen.auxiliaryTopRightArea?.width {
+            notchWidth = screen.frame.width - left - right
+        } else {
+            notchWidth = 0
+        }
     }
+
+    private var notchWidth: CGFloat = 0
 
     private var geometry: AirPodsBlobGeometry {
         AirPodsBlobGeometry(size: CGSize(width: Self.cardSize.width + Self.margin * 2,
                                          height: cardTop + Self.cardSize.height + Self.margin),
-                            menuBar: menuBar, cardTop: cardTop, card: Self.cardSize)
+                            menuBar: menuBar, cardTop: cardTop, card: Self.cardSize, notchWidth: notchWidth)
     }
 
     private var fillColor: CGColor {

@@ -9,6 +9,9 @@ struct AirPodsBlobGeometry {
     /// The card's resting top.
     let cardTop: CGFloat
     let card: CGSize
+    /// Width of the camera housing, 0 on a screen without one. Above the menu bar's bottom edge
+    /// the blob may show only inside it, where the hardware hides it.
+    let notchWidth: CGFloat
 }
 
 /// The panel's content. The card and its neck are two Core Animation shape layers in the notch
@@ -19,6 +22,11 @@ struct AirPodsBlobGeometry {
 final class AirPodsDropdownContainer: NSView {
     private let cardLayer = CAShapeLayer()
     private let neckLayer = CAShapeLayer()
+    /// Holds both shapes so one mask keeps them out of the menu bar: nothing above its bottom
+    /// edge except inside a real camera housing. Without it the blob drew over the menu bar on a
+    /// display without a notch, or past the notch's sides (2026-11-09 recording).
+    private let blobLayer = CALayer()
+    private let blobMask = CAShapeLayer()
     private let hosting: FirstClickHostingView<AirPodsDropdownContent>
     private var geometry: AirPodsBlobGeometry?
     private var settled = false
@@ -30,8 +38,10 @@ final class AirPodsDropdownContainer: NSView {
         hosting = FirstClickHostingView(rootView: AirPodsDropdownContent(model: model))
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.addSublayer(neckLayer)
-        layer?.addSublayer(cardLayer)
+        blobLayer.addSublayer(neckLayer)
+        blobLayer.addSublayer(cardLayer)
+        blobLayer.mask = blobMask
+        layer?.addSublayer(blobLayer)
         addSubview(hosting)
     }
 
@@ -53,6 +63,8 @@ final class AirPodsDropdownContainer: NSView {
         settled = true
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        blobLayer.frame = bounds
+        blobMask.path = CGPath(rect: bounds, transform: nil)
         for shape in [cardLayer, neckLayer] {
             shape.removeAllAnimations()
             shape.frame = bounds
@@ -90,6 +102,14 @@ final class AirPodsDropdownContainer: NSView {
         let paths = steps.map { Self.paths(g, at: $0) }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        blobLayer.frame = CGRect(origin: .zero, size: g.size)
+        let mask = CGMutablePath()
+        mask.addRect(CGRect(x: 0, y: 0, width: g.size.width, height: g.size.height - g.menuBar))   // below the menu bar (AppKit y up)
+        if g.notchWidth > 0 {
+            mask.addRect(CGRect(x: (g.size.width - g.notchWidth) / 2, y: g.size.height - g.menuBar,
+                                width: g.notchWidth, height: g.menuBar))
+        }
+        blobMask.path = mask
         for (shape, values) in [(cardLayer, paths.map(\.card)), (neckLayer, paths.map(\.neck))] {
             shape.removeAllAnimations()
             shape.frame = CGRect(origin: .zero, size: g.size)
@@ -193,8 +213,12 @@ struct AirPodsDropdownContent: View {
 
                     HStack(alignment: .bottom, spacing: 40) {
                         let kind = AirPodsArt.kind(for: card.productID)
-                        item(AirPodsArt.device(for: card.productID, color: card.color), symbol: AirPodsArt.deviceSymbol(for: card.productID),
-                             height: kind == .headphones ? 92 : 58, level: card.level, visible: visible, delay: 0)
+                        let art = card.side.map { AirPodsArt.singleBud(for: card.productID, left: $0 == "L") }
+                            ?? AirPodsArt.frontPair(for: card.productID)
+                            ?? AirPodsArt.device(for: card.productID, color: card.color)
+                        item(art, symbol: AirPodsArt.deviceSymbol(for: card.productID),
+                             height: kind == .headphones ? 92 : 58, level: card.level, visible: visible, delay: 0,
+                             bounceKey: card.side ?? "both")
                         if kind == .buds, let caseLevel = card.caseLevel {
                             item(AirPodsArt.chargingCase, symbol: "airpods.chargingcase",
                                  height: 62, level: caseLevel, visible: visible, delay: 0.1)
@@ -215,7 +239,7 @@ struct AirPodsDropdownContent: View {
     }
 
     private func item(_ image: NSImage?, symbol: String, height: CGFloat, level: Int?,
-                      visible: Bool, delay: Double) -> some View {
+                      visible: Bool, delay: Double, bounceKey: String = "") -> some View {
         VStack(spacing: 6) {
             Group {
                 if let image {
@@ -230,6 +254,15 @@ struct AirPodsDropdownContent: View {
             .offset(y: visible ? 0 : 8)
             .opacity(visible ? 1 : 0)
             .animation(.spring(response: 0.45, dampingFraction: 0.62).delay(delay), value: visible)
+            // One bud in, then the second: the buds hop as the picture turns into the pair.
+            .keyframeAnimator(initialValue: CGFloat(1), trigger: bounceKey) { view, scale in
+                view.scaleEffect(scale, anchor: .bottom)
+            } keyframes: { _ in
+                SpringKeyframe(0.8, duration: 0.08)
+                SpringKeyframe(1.16, duration: 0.18, spring: .snappy)
+                SpringKeyframe(0.95, duration: 0.14)
+                SpringKeyframe(1, duration: 0.3, spring: .bouncy)
+            }
 
             if let level {
                 AirPodsBatteryGlyph(level: level)
@@ -251,7 +284,7 @@ private struct AirPodsBatteryGlyph: View {
                 RoundedRectangle(cornerRadius: 3).strokeBorder(.secondary, lineWidth: 1)
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(level <= 20 ? Color.red : level <= 40 ? Color.yellow : Color.green)
-                    .frame(width: max(2, 18 * CGFloat(level) / 100))
+                    .frame(width: max(2, 20 * CGFloat(min(level, 100)) / 100))   // inside: 24 - 2 × 2 padding
                     .padding(2)
             }
             .frame(width: 24, height: 11)
