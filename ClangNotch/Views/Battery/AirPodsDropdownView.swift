@@ -216,8 +216,9 @@ struct AirPodsDropdownContent: View {
                         let art = card.side.map { AirPodsArt.singleBud(for: card.productID, left: $0 == "L") }
                             ?? AirPodsArt.frontPair(for: card.productID)
                             ?? AirPodsArt.device(for: card.productID, color: card.color)
-                        item(art, symbol: AirPodsArt.deviceSymbol(for: card.productID),
-                             height: kind == .headphones ? 92 : 58, level: card.level, visible: visible, delay: 0,
+                        item(art, symbol: card.symbol ?? AirPodsArt.deviceSymbol(for: card.productID),
+                             height: kind == .headphones || card.symbol != nil ? 92 : 58, level: card.level,
+                             visible: visible, delay: 0,
                              bounceKey: card.side ?? "both")
                         if kind == .buds, let caseLevel = card.caseLevel {
                             item(AirPodsArt.chargingCase, symbol: "airpods.chargingcase",

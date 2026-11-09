@@ -112,7 +112,8 @@ final class BatteryManager: ObservableObject {
         guard !isFastRefreshing, !DemoMode.isActive else { return }
         isFastRefreshing = true
         Task.detached(priority: .utility) {
-            let found = Collector.bluetooth(connectedOnly: true) + Collector.mac()
+            let bluetooth = Collector.bluetooth(connectedOnly: true)
+            let found = bluetooth + Collector.accessories(skipping: bluetooth) + Collector.mac()
             await MainActor.run {
                 self.mergeFast(found)
                 self.isFastRefreshing = false
@@ -129,7 +130,11 @@ final class BatteryManager: ObservableObject {
                 switch event {
                 case .newConnection:
                     let productID = unsafeBitCast(device, to: BTBatteryDevice.self).productID
-                    AirPodsDropdown.shared.deviceConnected(address: address, productID: productID)
+                    if AirPodsArt.kind(for: productID) != nil {
+                        AirPodsDropdown.shared.deviceConnected(address: address, productID: productID)
+                    } else if Self.isHeadset(device) {
+                        AirPodsDropdown.shared.headsetConnected(address: address, name: device.name ?? address)
+                    }
                 case .disconnection:
                     // Lid closed on the buds: fold their card now.
                     AirPodsDropdown.shared.caseClosed(address: address)
@@ -145,6 +150,11 @@ final class BatteryManager: ObservableObject {
                 self?.refreshFast()
             }
         }
+    }
+
+    /// Class of device Audio (0x04) with minor Headset, Hands-free or Headphones: no speakers or car kits.
+    private static func isHeadset(_ device: IOBluetoothDevice) -> Bool {
+        device.deviceClassMajor == 0x04 && [0x01, 0x02, 0x06].contains(device.deviceClassMinor)
     }
 
     private var tabVisible = false
@@ -186,7 +196,8 @@ final class BatteryManager: ObservableObject {
         // 더 중요한 건 IOBluetooth다 — 첫 호출이 코디네이터를 초기화하는데 그게 메인 큐로
         // 보낸 블록을 세마포어로 기다려서, 메인에서 부르면 그대로 데드락이 난다(실측).
         Task.detached(priority: .utility) {
-            let found = Collector.bluetooth() + Collector.macAndIOS()
+            let bluetooth = Collector.bluetooth()
+            let found = bluetooth + Collector.accessories(skipping: bluetooth) + Collector.macAndIOS()
             await MainActor.run {
                 self.merge(found)
                 self.lastUpdated = Date()
@@ -467,6 +478,7 @@ private extension BatteryDevice {
     /// 정렬용 대분류. id 규칙에서 끌어낸다(mac 고정, iOS는 UDID, 블루투스는 MAC 주소).
     var kindKey: String {
         if id == "mac" { return "mac" }
+        if id.hasPrefix("acc:") { return "bt" }
         return id.contains("-") && id.count == 17 ? "bt" : "ios"
     }
 }
@@ -530,6 +542,47 @@ private enum Collector {
                 symbol: product.hasPrefix("iPad") ? "ipad" : "iphone",
                 percent: percent,
                 charging: battery["BatteryIsCharging"] == "true",
+                live: true, seenAt: Date(), parts: []
+            )
+        }
+    }
+
+    // MARK: 블루투스 액세서리 (IOPS)
+
+    /// Third-party headsets and keyboards (B&W Px8, NuPhy Kick75) report their level only as an
+    /// IOPS "Accessory Source" that bluetoothd publishes from the device's own reports. The
+    /// Batteries widget and `pmset -g accps` read the same list; IOBluetooth and system_profiler
+    /// don't carry it. Its changes arrive through the IOPS notification the fast path listens to.
+    /// Apple's are skipped (IOBluetooth has them by address, which the AirPods card keys on), and
+    /// so is any device IOBluetooth already returned under the same name.
+    static func accessories(skipping bluetooth: [BatteryDevice]) -> [BatteryDevice] {
+        // 4 lists accessories too; IOPSCopyPowerSourcesInfo gives only the Mac's own battery.
+        guard let info = IOPSCopyPowerSourcesByType(4)?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef]
+        else { return [] }
+        let taken = Set(bluetooth.map(\.name))
+        return sources.compactMap { source -> BatteryDevice? in
+            guard let desc = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
+                  desc[kIOPSTypeKey] as? String == "Accessory Source",
+                  desc[kIOPSIsPresentKey] as? Bool ?? true,
+                  let identifier = desc["Accessory Identifier"] as? String,
+                  let name = desc[kIOPSNameKey] as? String, !taken.contains(name),
+                  let current = desc[kIOPSCurrentCapacityKey] as? Int,
+                  let max = desc[kIOPSMaxCapacityKey] as? Int, max > 0
+            else { return nil }
+            if desc["Vendor ID"] as? Int == 0x4C, desc["Vendor ID Source"] as? Int == 1 { return nil }
+            let symbol: String
+            switch desc["Accessory Category"] as? String {
+            case "Headset", "Headphones": symbol = "headphones"
+            case "Keyboard":              symbol = "keyboard"
+            case "Mouse":                 symbol = "magicmouse"
+            case "Game Controller":       symbol = "gamecontroller"
+            default:                      symbol = "battery.100"
+            }
+            return BatteryDevice(
+                id: "acc:" + identifier, name: name, symbol: symbol,
+                percent: current * 100 / max,
+                charging: desc[kIOPSIsChargingKey] as? Bool ?? false,
                 live: true, seenAt: Date(), parts: []
             )
         }
@@ -746,6 +799,10 @@ private final class BluetoothEvents: NSObject {
         onChange(device, .disconnection)
     }
 }
+
+/// IOKit SPI behind `pmset -g accps`: power sources of a kind, accessories included for 4.
+@_silgen_name("IOPSCopyPowerSourcesByType")
+private func IOPSCopyPowerSourcesByType(_ type: Int32) -> Unmanaged<CFTypeRef>?
 
 // MARK: - Demo
 

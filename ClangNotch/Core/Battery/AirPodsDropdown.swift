@@ -25,6 +25,8 @@ final class AirPodsDropdown: ObservableObject {
         var color: UInt8? = nil
         /// "L" or "R" when only that bud is in an ear: the card shows just that bud and its level.
         var side: String? = nil
+        /// A headset that isn't AirPods: drawn with this SF Symbol, since there's no render of it.
+        var symbol: String? = nil
     }
 
     enum Phase: Equatable { case hidden, dropping(Date), settled, rising }
@@ -107,6 +109,33 @@ final class AirPodsDropdown: ObservableObject {
             // Fresh levels for the card that's up; nothing new to drop.
             guard let device, card?.address == address else { return }
             show(Self.card(address: address, productID: productID, device: device))
+        }
+    }
+
+    /// Another Bluetooth headset connected (B&W Px8 …): the same card with a headphones symbol and
+    /// the one level macOS has for it, under its address from IOBluetooth or under its name from
+    /// the accessory list. That level often comes a few seconds after the connection.
+    func headsetConnected(address: String, name: String) {
+        let settings = AppSettings.shared
+        guard settings.enableAirPodsDropdown, settings.enableBattery, !DemoMode.isActive else { return }
+        func reading() -> BatteryDevice? {
+            let devices = BatteryManager.shared.devices
+            return devices.first { $0.id == address } ?? devices.first { $0.id.hasPrefix("acc:") && $0.name == name }
+        }
+        func card(_ level: Int?) -> Card {
+            Card(address: address, productID: 0, name: name, level: level, caseLevel: nil, symbol: "headphones")
+        }
+        show(card(reading()?.percent))
+        waitTask?.cancel()
+        waitTask = Task { @MainActor in
+            for _ in 0..<12 {
+                try? await Task.sleep(for: .milliseconds(500))
+                if Task.isCancelled { return }
+                if let device = reading(), device.live {
+                    if self.card?.address == address { self.show(card(device.percent)) }
+                    return
+                }
+            }
         }
     }
 

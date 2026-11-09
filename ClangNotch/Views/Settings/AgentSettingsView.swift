@@ -740,8 +740,8 @@ struct FeaturesSettingsTab: View {
                               L("Mac·블루투스 기기·iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
                               isOn: $settings.enableBattery)
                 SettingToggle(L("에어팟 연결 알림", "AirPods connection card"),
-                              L("에어팟을 연결하면 노치 아래에 이름과 잔량 표시 · 배터리 잔량이 켜져 있어야 함",
-                                "Name and battery under the notch when AirPods connect · needs Battery levels"),
+                              L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시 · 배터리 잔량이 켜져 있어야 함",
+                                "Name and battery under the notch when AirPods or a Bluetooth headset connect · needs Battery levels"),
                               isOn: $settings.enableAirPodsDropdown)
                     .disabled(!settings.enableBattery)
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
