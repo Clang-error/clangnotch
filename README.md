@@ -30,7 +30,7 @@ ClangNotch sits in the notch and shows what your coding agents are doing: which 
 
 Download `ClangNotch.dmg` from [Releases](../../releases) and drag it into your Applications folder.
 
-The app isn't notarized, so macOS blocks it the first time. Open **System Settings → Privacy & Security** and click **Open Anyway**.
+The app is notarized by Apple, so it opens without a warning. From then on it downloads new versions itself and installs one when you click **Restart to Update** (Settings → About).
 
 Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same shape at the top of the screen.
 
