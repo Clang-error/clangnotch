@@ -794,8 +794,8 @@ struct FeaturesSettingsTab: View {
                 // Only means something while the HUD switch takes the keys: shown under it, indented.
                 if settings.centerSystemBanners {
                     SettingToggle(L("밝기 키는 다른 앱에 넘기기", "Leave brightness keys to other apps"),
-                                  L("MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기 · 조절창은 그대로 뜨니 그 앱의 OSD는 그 앱 설정에서 끄기",
-                                    "On when MonitorControl, Lunar or BetterDisplay sets external displays too · the HUD still shows, so turn that app's OSD off in its settings"),
+                                  L("MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기",
+                                    "On when MonitorControl, Lunar or BetterDisplay sets external displays too"),
                                   isOn: $settings.passBrightnessKeys)
                         .padding(.leading, 20)
                 }
