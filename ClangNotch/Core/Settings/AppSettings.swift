@@ -54,7 +54,8 @@ public final class AppSettings: ObservableObject {
     // 에어팟 드롭다운: name and levels under the notch when AirPods connect. Needs enableBattery.
     @AppStorage("enableAirPodsDropdown") public var enableAirPodsDropdown: Bool = true
 
-    // Off: the 에어팟 드롭다운 stays until its X is pressed or it is pushed up into the notch.
+    // Off: the 에어팟 드롭다운 stays until its X is pressed or it is pushed up into the notch;
+    // a Max or another headset still folds after 10 s.
     @AppStorage("airPodsDropdownAutoHide") public var airPodsDropdownAutoHide: Bool = true
 
     // Battery device ids shown in the open notch header, newline-separated.

@@ -768,8 +768,8 @@ struct FeaturesSettingsTab: View {
                               isOn: $settings.enableAirPodsDropdown)
                     .disabled(!settings.enableBattery)
                 SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods card by itself"),
-                              L("6초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음",
-                                "Folds after 6 seconds · off, it stays until you press X or push it up into the notch"),
+                              L("6초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 (에어팟 맥스·헤드셋은 10초 뒤 접힘)",
+                                "Folds after 6 seconds · off, it stays until you press X or push it up into the notch (AirPods Max and headsets fold after 10 seconds)"),
                               isOn: $settings.airPodsDropdownAutoHide)
                     .disabled(!settings.enableBattery || !settings.enableAirPodsDropdown)
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),

@@ -43,6 +43,17 @@ final class AirPodsDropdown: ObservableObject {
     static let dropDuration: TimeInterval = 0.9
     static let riseDuration: TimeInterval = 0.65
     private static let visibleDuration: TimeInterval = 6
+    /// Headphones (a Max, another headset) fold after this even with 자동으로 접기 off: they're on
+    /// the head by then (user, 2026-11-10). Other cards then stay until closed.
+    private static let headphonesDuration: TimeInterval = 10
+
+    private var foldsAnyway: Bool {
+        card.map { $0.symbol != nil || AirPodsArt.kind(for: $0.productID) == .headphones } ?? false
+    }
+
+    private var visibleTime: TimeInterval {
+        foldsAnyway && !AppSettings.shared.airPodsDropdownAutoHide ? Self.headphonesDuration : Self.visibleDuration
+    }
 
     /// Set by the notch view. The card skips while the notch is open and leaves when it opens;
     /// a dropdown coming down only pushes it lower (`peekDepth`).
@@ -171,7 +182,7 @@ final class AirPodsDropdown: ObservableObject {
     /// time over, so taking the buds out and putting them in stays one card.
     func keepAlive(address: String) {
         guard card?.address == address, phase == .settled, !hovering else { return }
-        scheduleHide(after: Self.visibleDuration)
+        scheduleHide(after: visibleTime)
     }
 
     /// Our case closed: fold its card at once.
@@ -201,7 +212,7 @@ final class AirPodsDropdown: ObservableObject {
         // its full time again.
         if card?.address == new.address, phase == .settled || isDropping {
             card = new
-            if phase == .settled, !hovering { scheduleHide(after: Self.visibleDuration) }
+            if phase == .settled, !hovering { scheduleHide(after: visibleTime) }
             return
         }
         generation += 1
@@ -247,7 +258,7 @@ final class AirPodsDropdown: ObservableObject {
         panel.setFrame(cardFrame(on: screen), display: false)
         container?.settle()
         panel.ignoresMouseEvents = false
-        scheduleHide(after: Self.visibleDuration)
+        scheduleHide(after: visibleTime)
     }
 
     func dismiss() {
@@ -282,7 +293,7 @@ final class AirPodsDropdown: ObservableObject {
         if inside {
             hideWork?.cancel()
         } else {
-            let left = hideDeadline.map { $0.timeIntervalSinceNow } ?? Self.visibleDuration
+            let left = hideDeadline.map { $0.timeIntervalSinceNow } ?? visibleTime
             scheduleHide(after: max(left, 1.5))
         }
     }
@@ -292,10 +303,10 @@ final class AirPodsDropdown: ObservableObject {
         hovering = false
         hideDeadline = Date().addingTimeInterval(seconds)
         // 설정 › 기능 › 에어팟 연결 알림 자동으로 접기, read when the time is up so switching it
-        // off keeps a card that is already down. The demo scene always folds.
+        // off keeps a card that is already down. The demo scene and headphones always fold.
         let work = DispatchWorkItem { [weak self] in
-            guard AppSettings.shared.airPodsDropdownAutoHide || DemoMode.isActive else { return }
-            self?.dismiss()
+            guard let self, AppSettings.shared.airPodsDropdownAutoHide || DemoMode.isActive || self.foldsAnyway else { return }
+            self.dismiss()
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)

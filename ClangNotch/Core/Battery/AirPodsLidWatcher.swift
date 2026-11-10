@@ -332,17 +332,18 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         }
     }
 
-    /// AirPods Max have no lid but advertise whenever they're out of the Smart Case. The status
-    /// byte's low bit turns on as they go on the head, several seconds before they connect
-    /// (0x20 → 0x21 → 0x23, measured 2026-11-09), so a 0 → 1 edge drops the card. Byte 11 is
-    /// the colour code.
+    /// AirPods Max have no lid but advertise whenever they're out of the Smart Case. Status bit
+    /// 0x02 is on while they're on the head, as for buds in an ear: 0x20 → 0x23 / 0x2B on, 0x29 /
+    /// 0x21 off, 0x20 put down (2026-11-10). The low bit, read as worn before, stays on for
+    /// seconds after they come off (0x29), so the card didn't fold and putting them back on in
+    /// that time dropped nothing. A 0 → 1 edge of 0x02 drops the card. Byte 11 is the colour code.
     private func handleHeadphones(_ b: [UInt8], model: UInt16, from id: UUID) {
         // One Max of a model is ours; a second one nearby is told apart only by range, until
         // the Mac has connected to ours.
         guard b.count > 11, let ours = candidates.first(where: { $0.productID == model }) else { return }
         let address = ours.address
         let acting = acts(id, for: address)
-        let worn = b[7] & 0x01 != 0
+        let worn = b[7] & 0x02 != 0
         let was = sightings[id].map { $0.inEar == 1 } ?? (acting && takenOff.contains(address) ? false : nil)
         if acting {
             if worn { takenOff.remove(address) } else { takenOff.insert(address) }
