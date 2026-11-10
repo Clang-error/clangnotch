@@ -64,6 +64,16 @@ macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위�
 
 볼륨·밝기 키를 누르면 시스템 표시 대신 ClangNotch 조절창이 뜹니다.
 
+<p align="center">
+  <img src="assets/demo-osd.gif" width="60%" alt="노치 아래에 뜨는 볼륨·밝기 조절창">
+</p>
+
+에어팟이나 블루투스 헤드셋을 연결하면 노치에서 배터리 카드가 내려옵니다.
+
+<p align="center">
+  <img src="assets/demo-airpods.gif" width="60%" alt="노치에서 내려오는 에어팟 프로와 에어팟 맥스 카드">
+</p>
+
 ## 권한
 
 | 권한 | 쓰는 곳 |
@@ -72,6 +82,7 @@ macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위�
 | 알림 | 배터리 부족 알림 |
 | 위치 | Wi-Fi 이름 읽기(macOS가 위치 권한 없이는 안 알려 줌) |
 | 오디오 캡처 | 앱별 볼륨 |
+| 자동화(Terminal) | 세션이 도는 탭으로 이동. Terminal에서 도는 세션일 때만 |
 
 노치에서 승인하기를 쓰면 `~/.claude/settings.json`과 `~/.codex/hooks.json`에 훅이 추가되고, 원래 파일은 백업해 둡니다. Codex는 새 훅을 `/hooks`에서 한 번 신뢰해야 실행합니다.
 
