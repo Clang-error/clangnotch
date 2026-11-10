@@ -45,10 +45,14 @@ struct DismissPill: View {
     // Nothing else holds the dropdown here, so restoring it means closing it.
     func restorePeek() { notchVM.close() }
 '''
+# The go button the 질문 드롭다운 shares with the 완료 드롭다운: the real one, for its height.
+dropdowns = (root / "ClangNotch/Views/Notch/AgentDropdownViews.swift").read_text()
+button_start = dropdowns.index("struct DropdownButton: View {")
+questions = dropdowns[button_start:dropdowns.index("\n}\n", button_start) + 3] + "\n" + questions
 for signature in ["private var questionNoticeColor:",
                   "private var questionContent:", "private var plainQuestionContent:",
                   "private struct QuestionOptionsView:"]:
-    questions += block(signature) + "\n"
+    questions += block(signature).replace("{ goToAskingSession() }", "{ self.goToAskingSession() }") + "\n"
 if "private var questionHeader:" in view:
     header = block("private var questionHeader:")
     questions += (header.replace("goToAskingSession()", "self.goToAskingSession()")
