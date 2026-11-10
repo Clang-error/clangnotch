@@ -6,5 +6,10 @@
 	     CoreWLAN needs that grant to return the SSID. -->
 	<key>com.apple.security.personal-information.location</key>
 	<true/>
+	<!-- Going to a session's tab in Terminal is an AppleScript (run by osascript, charged to
+	     this app). Whether Hardened Runtime needs this for a child's Apple Events is not
+	     documented, so it is here to be safe; the user still gets the Automation prompt. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>

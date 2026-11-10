@@ -3,9 +3,13 @@ import AppKit
 /// A terminal session's own terminal app and, where that terminal can reach it, its tab or
 /// pane. Empty when the session runs in a terminal but which one is unknown.
 struct TerminalLocation: Equatable, Sendable {
+    /// How the terminal is told to show the tab or pane. The launcher knows no terminal by
+    /// name: `SessionAppResolver` picks the way from what the terminal left in the process.
     enum Tab: Equatable, Sendable {
-        case warp(URL)
-        case rex(cli: String, server: String?, session: String, block: String)
+        /// An address the terminal opens itself.
+        case url(URL)
+        /// The terminal's own CLI: executable and arguments, one command after another.
+        case commands([[String]])
     }
 
     var bundleIdentifier: String?
@@ -95,29 +99,44 @@ enum SessionAppDestination: Equatable, Sendable {
 
 @MainActor
 enum SessionAppLauncher {
-    /// Without a known `terminal`, the first installed app of `destination` comes forward.
-    static func open(_ destination: SessionAppDestination, in terminal: TerminalLocation? = nil) {
+    /// The Claude desktop app shows one of its sessions (`local_…`) at this address, the one
+    /// behind its Dock menu's "Continue". Undocumented: read from 4.23118.0 and tried on
+    /// 2026-11-10. An archived session lands on the app's Code page instead.
+    static func claudeLink(session: String) -> URL? {
+        session.hasPrefix("local_") ? URL(string: "claude://code/continue?session=\(session)") : nil
+    }
+
+    /// The Codex app's own address for a thread, as it writes them itself.
+    static func codexLink(thread: String) -> URL? {
+        UUID(uuidString: thread) == nil ? nil : URL(string: "codex://threads/\(thread)")
+    }
+
+    /// `link` is a desktop app's address for the session: the app comes forward on it.
+    /// Without a known `terminal`, an app of `destination` comes forward.
+    static func open(_ destination: SessionAppDestination, in terminal: TerminalLocation? = nil, at link: URL? = nil) {
+        if let link, NSWorkspace.shared.open(link) { return }
         switch terminal?.tab {
-        case .warp(let url):
-            NSWorkspace.shared.open(url)
-            return
-        case .rex(let cli, let server, let session, let block):
-            focusRexPane(cli: cli, server: server, session: session, block: block)
+        case .url(let url):
+            if NSWorkspace.shared.open(url) { return }
+        case .commands(let commands):
+            run(commands)
         case nil:
             break
         }
         if let identifier = terminal?.bundleIdentifier, activate(identifier) { return }
-        for identifier in destination.bundleIdentifiers where activate(identifier) { return }
-        debugLog("[SessionApp] Application not installed: \(destination.label)")
+        // Which terminal is unknown: one that is open, or none. Launching the first installed
+        // one only put an empty Warp window in front (2026-11-10).
+        for identifier in destination.bundleIdentifiers where activate(identifier, launching: !destination.isTerminal) { return }
+        debugLog("[SessionApp] No application to open for \(destination.label)")
     }
 
-    private static func activate(_ identifier: String) -> Bool {
+    private static func activate(_ identifier: String, launching: Bool = true) -> Bool {
         let workspace = NSWorkspace.shared
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first {
             app.activate(options: [])
             return true
         }
-        guard let url = workspace.urlForApplication(withBundleIdentifier: identifier) else { return false }
+        guard launching, let url = workspace.urlForApplication(withBundleIdentifier: identifier) else { return false }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         workspace.openApplication(at: url, configuration: configuration) { _, error in
@@ -126,18 +145,24 @@ enum SessionAppLauncher {
         return true
     }
 
-    /// Also switches to the pane's window. A pane in another Rex session stays put: switching
-    /// sessions from outside the app needs Remote Control in Rex's settings (2026-10-31).
-    private static func focusRexPane(cli: String, server: String?, session: String, block: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: cli)
-        process.arguments = (server.map { ["-S", $0] } ?? []) + ["--autostart=false", "focus", "-s", session, block]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
-            debugLog("[SessionApp] Could not focus the Rex pane: \(error.localizedDescription)")
+    /// A terminal's commands, in order and off the main thread. One that fails doesn't stop
+    /// the rest: the app has come forward either way, only the tab is not found.
+    private static func run(_ commands: [[String]]) {
+        Task.detached(priority: .userInitiated) {
+            for command in commands {
+                guard let executable = command.first else { continue }
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: executable)
+                process.arguments = Array(command.dropFirst())
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                } catch {
+                    debugLog("[SessionApp] Could not run \(executable): \(error.localizedDescription)")
+                }
+            }
         }
     }
 }

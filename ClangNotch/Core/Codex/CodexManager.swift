@@ -408,7 +408,7 @@ final class CodexManager: ObservableObject {
                 sessionTerminals[session.id] = known
             }
             guard open else { return }
-            SessionAppLauncher.open(destination, in: known)
+            SessionAppLauncher.open(destination, in: known, at: destination == .codex ? SessionAppLauncher.codexLink(thread: session.id) : nil)
         }
     }
 

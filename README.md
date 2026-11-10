@@ -84,6 +84,7 @@ The app's interface is in Korean by default. Switch it to English in **Settings 
 | Notifications | Low battery alerts |
 | Location | Reading the Wi-Fi name (macOS won't share it without location access) |
 | Audio capture | Per-app volume |
+| Automation (Terminal) | Going to a session's tab, only if the session runs in Terminal |
 
 Approving from the notch adds hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, and backs up the original files first. Codex only runs a new hook after you trust it once in `/hooks`.
 

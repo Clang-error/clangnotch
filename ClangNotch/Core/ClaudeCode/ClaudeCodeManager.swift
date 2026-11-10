@@ -395,9 +395,22 @@ final class ClaudeCodeManager: ObservableObject {
             return
         }
 
-        let entrypoint = sessionStates[targetSession.id]?.entrypoint ?? .unknown
-        if let destination = SessionAppDestination.claude(entrypoint: entrypoint, ideName: targetSession.ideName) {
-            SessionAppLauncher.open(destination, in: destination == .terminal ? terminalLocation(for: targetSession) : nil)
+        let conversation = conversationId(for: targetSession)
+        let live = conversation.flatMap { liveSessionRecords()?[$0] }
+        // The process holding the conversation outranks its lines: a session forked or resumed
+        // in another app still ends in the first app's lines until its next turn there.
+        let entrypoint = live?.entrypoint ?? sessionStates[targetSession.id]?.entrypoint ?? .unknown
+        if var destination = SessionAppDestination.claude(entrypoint: entrypoint, ideName: targetSession.ideName) {
+            let terminal = destination == .terminal ? live.flatMap { SessionAppResolver.terminal(pid: pid_t($0.terminalPid)) } : nil
+            var link: URL?
+            // The desktop app's session: the id its process was started with, else its store.
+            // The store also claims a "terminal" session that no process holds any more.
+            if destination == .claude || (destination == .terminal && live == nil) {
+                link = (live?.hostSessionId ?? conversation.flatMap { SessionAppResolver.claudeDesktopSession(conversationId: $0) })
+                    .flatMap { SessionAppLauncher.claudeLink(session: $0) }
+                if link != nil { destination = .claude }
+            }
+            SessionAppLauncher.open(destination, in: terminal, at: link)
             return
         }
         // Preserve support for unrecognised IDEs with a known application PID.
@@ -409,7 +422,7 @@ final class ClaudeCodeManager: ObservableObject {
     /// The terminal a CLI session's process runs in; nil once that process has exited.
     func terminalLocation(for session: ClaudeSession) -> TerminalLocation? {
         guard let conversationId = conversationId(for: session),
-              let pid = liveSessionRecords()?[conversationId]?.pid else { return nil }
+              let pid = liveSessionRecords()?[conversationId]?.terminalPid else { return nil }
         return SessionAppResolver.terminal(pid: pid_t(pid))
     }
 
@@ -1391,10 +1404,17 @@ final class ClaudeCodeManager: ObservableObject {
     /// A running Claude Code process as its registry record describes it.
     private struct LiveSessionRecord {
         let pid: Int
+        /// The process whose terminal shows the session: itself, or for a background job
+        /// the terminal process that parked it and stays attached to it.
+        var terminalPid: Int
         /// Not running a turn: `idle`, or `shell` (idle while the user's `!` command runs).
         /// The others are `busy` (running, including API retries) and `waiting` (a prompt is open).
         let isIdle: Bool
         let statusChangedAt: Date?
+        /// Where the process runs, in a transcript line's `entrypoint` values; nil when unrecognised.
+        let entrypoint: ClaudeEntrypoint?
+        /// The Claude desktop app's id for the session, when that app started the process.
+        let hostSessionId: String?
     }
 
     /// Conversation ids held by a running Claude Code process, from Claude Code's own registry
@@ -1407,6 +1427,10 @@ final class ClaudeCodeManager: ObservableObject {
             return nil
         }
         var live: [String: LiveSessionRecord] = [:]
+        // A session sent to the background runs as a job (`jobId`) in a process without a
+        // terminal; the terminal process it came from keeps `parkedJobId`.
+        var jobs: [String: String] = [:]
+        var parkedBy: [String: Int] = [:]
         for file in files where file.pathExtension == "json" {
             guard let filePid = Int(file.deletingPathExtension().lastPathComponent) else { continue }
             guard let data = try? Data(contentsOf: file),
@@ -1418,12 +1442,21 @@ final class ClaudeCodeManager: ObservableObject {
                 continue
             }
             guard let conversationId = record["sessionId"] as? String, isProcessRunning(pid: pid) else { continue }
+            if let job = record["jobId"] as? String { jobs[conversationId] = job }
+            if let job = record["parkedJobId"] as? String { parkedBy[job] = pid }
             let status = record["status"] as? String
+            let entrypoint = (record["entrypoint"] as? String).map(ClaudeEntrypoint.init(raw:))
             live[conversationId] = LiveSessionRecord(
                 pid: pid,
+                terminalPid: pid,
                 isIdle: status == "idle" || status == "shell",
-                statusChangedAt: (record["statusUpdatedAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
+                statusChangedAt: (record["statusUpdatedAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) },
+                entrypoint: entrypoint == .unknown ? nil : entrypoint,
+                hostSessionId: record["hostSessionId"] as? String
             )
+        }
+        for (conversationId, job) in jobs {
+            if let terminal = parkedBy[job] { live[conversationId]?.terminalPid = terminal }
         }
         return live
     }

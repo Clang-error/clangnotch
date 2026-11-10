@@ -31,34 +31,145 @@ enum SessionAppResolver {
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    // MARK: - Claude desktop app
+
+    /// The Claude desktop app's id (`local_…`) for the session that holds a conversation, from
+    /// its session store: one JSON per session, named by that id, with the conversation in
+    /// `cliSessionId`. nil for an archived session, which the app's link can't reach.
+    /// For a click only: it looks through every record (hundreds).
+    static func claudeDesktopSession(conversationId: String) -> String? {
+        let store = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+        guard UUID(uuidString: conversationId) != nil,
+              let files = FileManager.default.enumerator(at: store, includingPropertiesForKeys: nil) else { return nil }
+        let needle = Data(conversationId.utf8)
+        for case let file as URL in files where file.pathExtension == "json" && file.lastPathComponent.hasPrefix("local_") {
+            guard let data = try? Data(contentsOf: file, options: .mappedIfSafe), data.range(of: needle) != nil,
+                  let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  record["cliSessionId"] as? String == conversationId,
+                  record["isArchived"] as? Bool != true else { continue }
+            return file.deletingPathExtension().lastPathComponent
+        }
+        return nil
+    }
+
     // MARK: - Terminals
 
-    /// The terminal a process runs in, read from what the terminal set in its environment.
-    /// nil when the environment names none. The parent chain can't tell: Rex's shells hang off
-    /// its background server, and a CLI's own path is inside ChatGPT.app.
-    static func terminal(pid: pid_t) -> TerminalLocation? {
-        guard let environment = processArguments(pid: pid)?.environment else { return nil }
-        func variable(_ name: String) -> String? {
+    /// What a terminal leaves in a process it starts.
+    private struct Traces {
+        let environment: [String]
+        /// The controlling terminal as a device path ("/dev/ttys012").
+        let tty: String?
+
+        subscript(name: String) -> String? {
             let prefix = name + "="
             return environment.first { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+                .flatMap { $0.isEmpty ? nil : $0 }
         }
+    }
 
-        // First: a Rex server started from another terminal passes that terminal's variables on.
-        if variable("TERM_PROGRAM") == "rex" {
-            var location = TerminalLocation(bundleIdentifier: "com.superlogical.rex")
-            if let directory = variable("REX_BIN_DIR"), let session = variable("REX_SESSION"),
-               let block = variable("REX_BLOCK") {
-                location.tab = .rex(cli: directory + "/rex", server: variable("REX_SERVER"), session: session, block: block)
-            }
-            return location
-        }
+    /// The terminal a process runs in and, where that terminal can be told, the way to the
+    /// process's tab or pane: read from what the terminal left in the process. nil when
+    /// nothing names a terminal. The parent chain can't tell: Rex's shells hang off its
+    /// background server, and a CLI's own path is inside ChatGPT.app.
+    static func terminal(pid: pid_t) -> TerminalLocation? {
+        guard let environment = processArguments(pid: pid)?.environment else { return nil }
+        let traces = Traces(environment: environment, tty: tty(pid: pid))
+        return tmuxLocation(traces) ?? location(traces)
+    }
 
-        // Warp sets `WARP_FOCUS_URL=warp://session/<uuid>` in every tab's shell.
-        let warpURL = variable("WARP_FOCUS_URL").flatMap(URL.init(string:)).flatMap { $0.scheme == "warp" ? $0 : nil }
+    /// Every terminal that can show one tab or pane, by what it sets in its shells; any other
+    /// only comes forward as an app. A terminal has to name the tab itself (an id or the
+    /// tty): Ghostty and Alacritty don't, so they stay app-only.
+    /// Run on this Mac: Rex, Warp (2026-09-30), tmux. Written from their documentation and
+    /// never run, as none is installed here: iTerm2, kitty, WezTerm; Terminal's script is
+    /// compiled against its dictionary but not run either (2026-11-10).
+    private static func location(_ traces: Traces) -> TerminalLocation? {
         // macOS sets this for whatever LaunchServices opened, so any terminal app has it.
-        let identifier = variable("__CFBundleIdentifier").flatMap { $0.isEmpty ? nil : $0 }
-        guard warpURL != nil || identifier != nil else { return nil }
-        return TerminalLocation(bundleIdentifier: identifier, tab: warpURL.map { .warp($0) })
+        var location = TerminalLocation(bundleIdentifier: traces["__CFBundleIdentifier"])
+        switch traces["TERM_PROGRAM"] {
+        case "rex":
+            // Rex shells hang off its background server, so they carry no bundle identifier
+            // of their own; one started from another terminal carries that terminal's.
+            location.bundleIdentifier = "com.superlogical.rex"
+            if let directory = traces["REX_BIN_DIR"], let session = traces["REX_SESSION"], let block = traces["REX_BLOCK"] {
+                let rex = [directory + "/rex"] + (traces["REX_SERVER"].map { ["-S", $0] } ?? []) + ["--autostart=false"]
+                // The app may be showing another of its sessions: that one first, then the
+                // pane, which also switches to its window.
+                location.tab = .commands([
+                    rex + ["do", "session.select", "session_id=" + session],
+                    rex + ["focus", "-s", session, block]
+                ])
+            }
+        case "Apple_Terminal":
+            // Scriptable only; a tab is known by its tty. macOS asks once to let ClangNotch
+            // control Terminal.
+            if let tty = traces.tty {
+                location.tab = .commands([["/usr/bin/osascript", "-e", """
+                    tell application "Terminal"
+                        repeat with w in windows
+                            repeat with t in tabs of w
+                                if tty of t is "\(tty)" then
+                                    set selected tab of w to t
+                                    set index of w to 1
+                                    return
+                                end if
+                            end repeat
+                        end repeat
+                    end tell
+                    """]])
+            }
+        case "iTerm.app":
+            // `iterm2:reveal?sessionid=` takes the whole variable and brings that session forward.
+            var link = URLComponents()
+            link.scheme = "iterm2"
+            link.path = "reveal"
+            link.queryItems = traces["ITERM_SESSION_ID"].map { [URLQueryItem(name: "sessionid", value: $0)] }
+            if link.queryItems != nil, let url = link.url { location.tab = .url(url) }
+        case "WezTerm":
+            if let directory = traces["WEZTERM_EXECUTABLE_DIR"], let pane = traces["WEZTERM_PANE"] {
+                // The socket picks the right instance when several run.
+                let instance = traces["WEZTERM_UNIX_SOCKET"].map { ["/usr/bin/env", "WEZTERM_UNIX_SOCKET=" + $0] } ?? []
+                location.tab = .commands([instance + [directory + "/wezterm", "cli", "activate-pane", "--pane-id", pane]])
+            }
+        default:
+            // kitty sets no TERM_PROGRAM. It listens only with remote control and `listen_on`
+            // set in kitty.conf; without them it comes forward as an app.
+            if let window = traces["KITTY_WINDOW_ID"], let socket = traces["KITTY_LISTEN_ON"],
+               let kitty = traces["KITTY_PID"].flatMap({ pid_t($0) }).flatMap({ executablePath(pid: $0) }) {
+                location.tab = .commands([[kitty, "@", "--to", socket, "focus-window", "--match", "id:" + window]])
+            } else if let url = traces["WARP_FOCUS_URL"].flatMap(URL.init(string:)), url.scheme == "warp" {
+                // Warp sets `WARP_FOCUS_URL=warp://session/<uuid>` in every tab's shell.
+                location.tab = .url(url)
+            }
+        }
+        return location.bundleIdentifier == nil && location.tab == nil ? nil : location
+    }
+
+    /// A process inside tmux. Its tty is the pane's and its terminal variables are those of
+    /// whichever terminal started the tmux server, so the terminal is taken from a client
+    /// attached to the pane's session, and tmux shows the pane before the terminal shows
+    /// that client's tab. With no client attached the pane is on no screen: an empty location.
+    private static func tmuxLocation(_ traces: Traces) -> TerminalLocation? {
+        // TMUX is "<socket>,<server pid>,<session>".
+        guard let pane = traces["TMUX_PANE"], let fields = traces["TMUX"]?.split(separator: ","), fields.count >= 2,
+              let tmux = pid_t(fields[1]).flatMap({ executablePath(pid: $0) }) else { return nil }
+        let server = [tmux, "-S", String(fields[0])]
+        func ask(_ arguments: [String]) -> String {
+            output(tmux, Array(server.dropFirst()) + arguments).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let session = ask(["display-message", "-p", "-t", pane, "#{session_id}"])
+        guard !session.isEmpty,
+              let client = ask(["list-clients", "-t", session, "-F", "#{client_pid}"])
+                .split(whereSeparator: \.isNewline).first.flatMap({ pid_t($0) }),
+              var location = terminal(pid: client) else { return TerminalLocation() }
+        let show = [server + ["select-window", "-t", pane], server + ["select-pane", "-t", pane]]
+        switch location.tab {
+        case .commands(let commands): location.tab = .commands(show + commands)
+        case .url(let url): location.tab = .commands(show + [["/usr/bin/open", url.absoluteString]])
+        case nil: location.tab = .commands(show)
+        }
+        return location
     }
 
     /// The terminal of a Codex session, or nil when no terminal opened it. When the rollout's
@@ -168,6 +279,18 @@ enum SessionAppResolver {
     /// Whether the process has a controlling terminal; a server or an app's helper has none.
     private static func isInTerminal(_ pid: pid_t) -> Bool {
         processInfo(pid: pid).map { $0.e_tdev != UInt32.max } == true
+    }
+
+    /// The process's controlling terminal as a device path; nil without one.
+    private static func tty(pid: pid_t) -> String? {
+        guard let device = processInfo(pid: pid)?.e_tdev, device != UInt32.max,
+              let name = devname(dev_t(bitPattern: device), S_IFCHR) else { return nil }
+        return "/dev/" + String(cString: name)
+    }
+
+    private static func executablePath(pid: pid_t) -> String? {
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        return proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 ? String(cString: buffer) : nil
     }
 
     private static func startDate(pid: pid_t) -> Date? {
