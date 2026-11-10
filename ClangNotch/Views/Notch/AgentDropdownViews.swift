@@ -38,6 +38,81 @@ private struct DropdownButton: View {
     }
 }
 
+/// 닫기 알약: a dropdown's X. The first click closes nothing; it opens leftward into a
+/// capsule with two choices. 창만 닫기 lands where the X was, so clicking twice in place
+/// still just folds the dropdown. Moving the cursor off the capsule folds it back into the X.
+/// The X takes the caller's foreground colour.
+struct DismissPill: View {
+    @Binding var expanded: Bool
+    /// The enlarged 질문 드롭다운 draws everything this much bigger.
+    var scale: CGFloat = 1
+    /// 창만 닫기: folds the dropdown, the notice stays.
+    let onCollapse: () -> Void
+    /// 알림도 지우기: drops the notice as well.
+    let onClear: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            if expanded {
+                HStack(spacing: 0) {
+                    DismissPillOption(title: L("알림도 지우기", "Clear notice too"), scale: scale, action: onClear)
+                        .help(L("알림도 지웁니다 — 다시 뜨지 않습니다", "Clears the notice too — it won't come back"))
+                    Rectangle()
+                        .fill(NotchPalette.ink.opacity(0.14))
+                        .frame(width: 1, height: 12 * scale)
+                    DismissPillOption(title: L("창만 닫기", "Close only"), scale: scale, action: onCollapse)
+                        .help(L("알림 접기 — 질문 대기는 유지됩니다", "Collapse — the question stays pending"))
+                }
+                .background(NotchPalette.ink.opacity(0.09))
+                .clipShape(Capsule())
+                // Leaving the capsule without choosing puts the X back.
+                .onHover { inside in
+                    guard !inside else { return }
+                    withAnimation(reduceMotion ? .easeOut(duration: 0.12) : notchCloseAnimation) { expanded = false }
+                }
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.4, anchor: .trailing).combined(with: .opacity))
+            } else {
+                Button {
+                    withAnimation(reduceMotion ? .easeOut(duration: 0.12) : notchOpenSpring) { expanded = true }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10 * scale))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L("닫기", "Dismiss"))
+                .transition(.opacity)
+            }
+        }
+    }
+}
+
+/// One half of the open 닫기 알약. At the usual size it is as tall as the X's frame, so
+/// the header keeps its height.
+private struct DismissPillOption: View {
+    let title: String
+    let scale: CGFloat
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10 * scale, weight: .medium))
+                .foregroundColor(NotchPalette.ink.opacity(0.85))
+                .fixedSize()
+                .padding(.horizontal, 9 * scale)
+                .frame(height: 22 * scale)
+                .background(NotchPalette.ink.opacity(hovering ? 0.08 : 0))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
+
 /// 권한 드롭다운: one tool approval at a time, oldest first, with the time left before the
 /// request goes back to the agent's own dialog.
 struct PermissionDropdownView: View {
@@ -130,7 +205,10 @@ struct WrapUpDropdownView: View {
     let accent: Color
     let openTitle: String
     let onOpen: () -> Void
+    /// The 닫기 알약: whether it is open, its 창만 닫기 and its 알림도 지우기.
+    @Binding var dismissOpen: Bool
     let onDismiss: () -> Void
+    let onClear: () -> Void
 
     var body: some View {
         let question = request.questions.first
@@ -145,15 +223,8 @@ struct WrapUpDropdownView: View {
                     .foregroundColor(NotchPalette.ink.opacity(0.55))
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10))
-                        .foregroundColor(NotchPalette.ink.opacity(0.55))
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(L("알림 접기 — 질문 대기는 유지됩니다", "Collapse — the question stays pending"))
+                DismissPill(expanded: $dismissOpen, onCollapse: onDismiss, onClear: onClear)
+                    .foregroundColor(NotchPalette.ink.opacity(0.55))
             }
             .popIn()
 

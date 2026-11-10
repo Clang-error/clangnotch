@@ -15,12 +15,22 @@ def block(signature):
 
 # Keep the actual views, sizing and timers; agent state and navigation are stubbed.
 questions = '''
+// The 닫기 알약 lives with the other dropdown views; the header only needs its shape here.
+struct DismissPill: View {
+    @Binding var expanded: Bool
+    var scale: CGFloat = 1
+    let onCollapse: () -> Void
+    let onClear: () -> Void
+    var body: some View { EmptyView() }
+}
 @MainActor final class CodexQuestionLayoutFixture {
     let notchVM: NotchViewModel
     var codexInputRequest: CodexInputRequest?
     var claudeInputRequest: ClaudeInputRequest?
     var showQuestionNotice = false
     var questionExpanded = false
+    var questionDismissOpen = false
+    func clearQuestionNotice() {}
     var questionScale: CGFloat { questionExpanded ? 1.4 : 1 }
     var showPermissionNotice = false
     var claudeQuestionAnswer: (([String: Any]) -> Void)? = nil
@@ -41,7 +51,10 @@ for signature in ["private var questionNoticeColor:",
     questions += block(signature) + "\n"
 if "private var questionHeader:" in view:
     header = block("private var questionHeader:")
-    questions += header.replace("goToAskingSession()", "self.goToAskingSession()").replace("dismissQuestionNotice()", "self.dismissQuestionNotice()") + "\n"
+    questions += (header.replace("goToAskingSession()", "self.goToAskingSession()")
+                  .replace("dismissQuestionNotice()", "self.dismissQuestionNotice()")
+                  .replace("clearQuestionNotice()", "self.clearQuestionNotice()")
+                  .replace("$questionDismissOpen", ".constant(self.questionDismissOpen)")) + "\n"
 for signature in ["private func triggerCodexInputNotice(", "private func triggerClaudeInputNotice(",
                   "private func showInputNotice(",
                   "private func dismissQuestionNotice("]:

@@ -58,6 +58,9 @@ struct ClangNotchContentView: View {
     @State private var showQuestionNotice = false
     /// The 질문 드롭다운 grown with its 확대 버튼 (Claude questions only).
     @State private var questionExpanded = false
+    /// The 닫기 알약 of the 질문 드롭다운 or 다음 단계 드롭다운 is open. Cleared as a dropdown
+    /// comes in, not as one goes, so the one folding away keeps showing its capsule.
+    @State private var questionDismissOpen = false
     @State private var codexInputRequest: CodexInputRequest?
     @State private var claudeInputRequest: ClaudeInputRequest?
     /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
@@ -1704,25 +1707,25 @@ struct ClangNotchContentView: View {
 
             Spacer()
 
-            Button {
-                goToAskingSession()
-            } label: {
-                Label(askingSessionOpenTitle, systemImage: "arrow.up.forward.app")
-                    .font(.system(size: 10 * questionScale, weight: .medium))
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
+            // The open 닫기 알약 takes the go button's place: an enlarged dropdown on a
+            // small screen has no room for both next to the title.
+            if !questionDismissOpen {
+                Button {
+                    goToAskingSession()
+                } label: {
+                    Label(askingSessionOpenTitle, systemImage: "arrow.up.forward.app")
+                        .font(.system(size: 10 * questionScale, weight: .medium))
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(questionNoticeColor)
+                .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
+                .transition(.opacity)
             }
-            .buttonStyle(.plain)
-            .foregroundColor(questionNoticeColor)
-            .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
 
-            Button { dismissQuestionNotice() } label: {
-                Image(systemName: "xmark").font(.system(size: 10 * questionScale))
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(L("알림 접기 — 질문 대기는 유지됩니다", "Collapse — the question stays pending"))
+            DismissPill(expanded: $questionDismissOpen, scale: questionScale,
+                        onCollapse: { dismissQuestionNotice() }, onClear: { clearQuestionNotice() })
         }
     }
 
@@ -1739,8 +1742,10 @@ struct ClangNotchContentView: View {
             accent: agentAccent(.claude),
             openTitle: askingSessionOpenTitle,
             onOpen: { goToAskingSession() },
+            dismissOpen: $questionDismissOpen,
             // Collapses only, like the 질문 드롭다운; Answer and the NEEDS YOU 카드 stay.
-            onDismiss: { dismissQuestionNotice() }
+            onDismiss: { dismissQuestionNotice() },
+            onClear: { clearQuestionNotice() }
         )
     }
 
@@ -2329,6 +2334,8 @@ struct ClangNotchContentView: View {
     }
 
     private func triggerCodexInputNotice(_ request: CodexInputRequest) {
+        // A dropdown that comes in, new or shown again, starts with the 닫기 알약 as a plain X.
+        if request.id != codexInputRequest?.id || !showQuestionNotice { questionDismissOpen = false }
         codexInputRequest = request
         claudeInputRequest = nil
 
@@ -2338,6 +2345,8 @@ struct ClangNotchContentView: View {
     private func triggerClaudeInputNotice(_ request: ClaudeInputRequest) {
         // A new question starts at the usual size.
         if request.id != claudeInputRequest?.id { questionExpanded = false }
+        // ...and with the 닫기 알약 as a plain X, also when the same question is shown again.
+        if request.id != claudeInputRequest?.id || !showQuestionNotice { questionDismissOpen = false }
         claudeInputRequest = request
         codexInputRequest = nil
 
@@ -2423,6 +2432,16 @@ struct ClangNotchContentView: View {
         if notchVM.notchState == .peeking {
             restorePeek()
         }
+    }
+
+    /// The 닫기 알약's 알림도 지우기: what the NEEDS YOU 카드's X does, then the dropdown folds.
+    private func clearQuestionNotice() {
+        if let request = codexInputRequest {
+            codexManager.dismissInputRequest(id: request.id)
+        } else if let request = claudeInputRequest {
+            claudeCodeManager.dismissInputRequest(id: request.id)
+        }
+        dismissQuestionNotice()
     }
 
     /// 측정 중에 노치를 빠져나오면, 진행 상황을 닫힌 노치 아래 드롭다운으로 이어 보여준다.
