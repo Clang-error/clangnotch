@@ -26,6 +26,9 @@ public final class AppSettings: ObservableObject {
     // "볼륨·밝기 표시 바꾸기": replace macOS volume/brightness banners with our 조절창 and
     // center the other system banners (SystemBannerCenterer + SystemControlOSD, needs Accessibility)
     @AppStorage("centerSystemBanners") public var centerSystemBanners: Bool = true
+    // "밝기 키는 다른 앱에 넘기기": with the HUD switch on, brightness keys still go on to macOS and
+    // apps like MonitorControl that set external displays from them.
+    @AppStorage("passBrightnessKeys") public var passBrightnessKeys: Bool = false
     // SoftwareVolume's audio tap for outputs macOS can't turn down (HDMI/DisplayPort speakers).
     // Off by default: it intercepts every app's sound. Its own switch; the key tap needs Accessibility.
     @AppStorage("enableSoftwareVolume") public var enableSoftwareVolume: Bool = false

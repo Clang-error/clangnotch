@@ -791,6 +791,11 @@ struct FeaturesSettingsTab: View {
                         SystemBannerCenterer.shared.syncWithSettings()
                         askForAccessibility(on)
                     }
+                SettingToggle(L("밝기 키는 다른 앱에 넘기기", "Leave brightness keys to other apps"),
+                              L("MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기 · 조절창은 그대로 뜨니 그 앱의 OSD는 그 앱 설정에서 끄기",
+                                "On when MonitorControl, Lunar or BetterDisplay sets external displays too · the HUD still shows, so turn that app's OSD off in its settings"),
+                              isOn: $settings.passBrightnessKeys)
+                    .disabled(!settings.centerSystemBanners)
                 // Its own switch: it keeps the volume key tap up even with the HUD switch off.
                 SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
                               L("HDMI·DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생 · 손쉬운 사용 권한 필요",
