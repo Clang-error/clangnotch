@@ -146,9 +146,10 @@ final class SystemControlOSD: ObservableObject {
         case Self.brightnessUp, Self.brightnessDown:
             // 밝기 키는 다른 앱에 넘기기: MonitorControl and the like set external displays from
             // these keys; kept here they set only the built-in panel (reported 2026-11-10). The
-            // key goes on, and the 조절창 still comes up and polls in what that app sets.
+            // key goes on, and the 조절창 still comes up and polls in what that app sets. It sets
+            // every screen, so the 조절창 goes where the volume one does, not on the built-in panel.
             if AppSettings.shared.passBrightnessKeys {
-                if isDown, let id = Self.builtInDisplayID { showBrightness(on: Self.screen(for: id)) }
+                if isDown { showBrightness(on: NSScreen.main) }
                 return false
             }
             guard let id = Self.builtInDisplayID, let reading = Self.currentBrightnessReading(),
