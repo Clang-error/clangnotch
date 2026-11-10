@@ -77,7 +77,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             isDownloading = true
             let outcome = await Task.detached(priority: .utility) { () -> Result<Void, Error> in
                 // Already fetched on an earlier check, or after a relaunch that didn't install it.
-                if UpdateInstaller.stagedUpdate(version: latest, team: team) != nil { return .success(()) }
+                if UpdateInstaller.hasStagedUpdate(version: latest, team: team) { return .success(()) }
                 do {
                     try await UpdateInstaller.prepare(from: asset, version: latest, team: team)
                     return .success(())

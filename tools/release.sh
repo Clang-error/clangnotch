@@ -37,7 +37,13 @@ for check in "$ROOT"/tests/*.py; do
 done
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# The app copies in here get registered with LaunchServices; take them out with the folder.
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+cleanup() {
+    find "$work" -name "*.app" -type d -prune -exec "$lsregister" -u {} \; 2>/dev/null || true
+    rm -rf "$work"
+}
+trap cleanup EXIT
 
 # The status says how it went: notarytool can exit 0 for a rejected submission, and
 # non-zero for one whose log is still worth reading.
@@ -55,8 +61,10 @@ notarize() {
     echo "Notarized: $(basename "$1")"
 }
 
+# Derived data inside the work folder: the archive's intermediates hold a copy of the app that
+# LaunchServices registers, and in the shared DerivedData it outlived the run.
 xcodebuild -project "$ROOT/ClangNotch.xcodeproj" -scheme ClangNotch -configuration Release \
-    -archivePath "$work/ClangNotch.xcarchive" DEVELOPMENT_TEAM="$team" \
+    -archivePath "$work/ClangNotch.xcarchive" -derivedDataPath "$work/dd" DEVELOPMENT_TEAM="$team" \
     -allowProvisioningUpdates -quiet archive
 
 cat > "$work/export.plist" <<PLIST

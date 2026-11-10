@@ -16,14 +16,16 @@ enum UpdateInstaller {
         let description: String
     }
 
-    /// Where a checked update waits for the restart. Spotlight skips a `.noindex` folder, so
-    /// the copy never shows up as a second ClangNotch in the app list.
+    /// Where a checked update waits for the restart. Spotlight skips a `.noindex` folder.
     static var stagingFolder: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("com.clangerror.ClangNotch/Update.noindex")
     }
 
-    static var stagedApp: URL { stagingFolder.appendingPathComponent("ClangNotch.app") }
+    /// The release's disk image, kept as downloaded. A waiting `.app` was picked up by
+    /// LaunchServices as a second, newer ClangNotch (2026-11-10), unregistering it or not;
+    /// an image isn't, and the app is only copied out of it to be put in place.
+    static var stagedImage: URL { stagingFolder.appendingPathComponent("ClangNotch.dmg") }
 
     /// Whether this copy can replace itself: not run from a disk image or by App
     /// Translocation (both read-only), and in a folder it may write to.
@@ -52,8 +54,8 @@ enum UpdateInstaller {
         return team
     }
 
-    /// Downloads the release's disk image, checks the app in it and leaves that app at
-    /// `stagedApp`. Blocking work; call it off the main thread.
+    /// Downloads the release's disk image, checks the app in it and keeps the image as
+    /// `stagedImage`. Blocking work; call it off the main thread.
     static func prepare(from asset: URL, version: String, team: String) async throws {
         let fm = FileManager.default
         detachLeftovers()
@@ -64,63 +66,48 @@ enum UpdateInstaller {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw Failure(description: "download answered \((response as? HTTPURLResponse)?.statusCode ?? -1)")
         }
-        let image = stagingFolder.appendingPathComponent("ClangNotch.dmg")
-        try fm.moveItem(at: download, to: image)
-        defer { try? fm.removeItem(at: image) }
-
-        let mount = stagingFolder.appendingPathComponent("mount-\(UUID().uuidString)")
-        let device = try attach(image, at: mount)
-        defer { detach(device) }
-
-        // ditto keeps the bundle exactly as signed.
-        try run("/usr/bin/ditto", [mount.appendingPathComponent("ClangNotch.app").path, stagedApp.path])
+        try fm.moveItem(at: download, to: stagedImage)
         do {
-            try verify(stagedApp, version: version, team: team)
+            try withStagedApp { try verify($0, version: version, team: team) }
         } catch {
-            try? fm.removeItem(at: stagedApp)
+            try? fm.removeItem(at: stagedImage)
             throw error
         }
-        unregister(stagedApp)
     }
 
-    /// The staged update, if one for `version` is there and still checks out.
-    static func stagedUpdate(version: String, team: String) -> URL? {
-        guard FileManager.default.fileExists(atPath: stagedApp.path),
-              (try? verify(stagedApp, version: version, team: team)) != nil else { return nil }
-        unregister(stagedApp)
-        return stagedApp
+    /// Whether an update for `version` is waiting and still checks out.
+    static func hasStagedUpdate(version: String, team: String) -> Bool {
+        FileManager.default.fileExists(atPath: stagedImage.path)
+            && (try? withStagedApp { try verify($0, version: version, team: team) }) != nil
     }
 
-    /// Keeps the waiting copy from counting as a second installed ClangNotch: LaunchServices
-    /// had registered it in testing (2026-11-10), `.noindex` or not.
-    private static func unregister(_ app: URL) {
-        _ = try? run("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
-                     ["-u", app.path], allowFailure: true)
-    }
-
-    /// Puts the staged app where the running one is and starts a helper that opens it once
-    /// this process has exited. Throws, with nothing replaced, when the copy doesn't check
+    /// Puts the waiting update where the running app is and starts a helper that opens it
+    /// once this process has exited. Throws, with nothing replaced, when it doesn't check
     /// out. Returns false when the app was replaced but the helper didn't start: the new
     /// version then runs from the next launch. Blocking work; call it off the main thread.
     static func install(version: String, team: String) throws -> Bool {
-        let fm = FileManager.default
         let target = Bundle.main.bundleURL
-        // A fresh folder of our own on the target's volume: swapping is atomic only within a
-        // volume, and nothing can be waiting at a path nobody knew in advance.
-        let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
-        defer { try? fm.removeItem(at: scratch) }
-        let incoming = scratch.appendingPathComponent("ClangNotch.app")
-        try run("/usr/bin/ditto", [stagedApp.path, incoming.path])
-        // The copy that goes in is the one checked.
-        try verify(incoming, version: version, team: team)
-        _ = try fm.replaceItemAt(target, withItemAt: incoming)
-        try? fm.removeItem(at: stagingFolder)
+        try putInPlace(at: target, version: version, team: team)
 
         let relaunch = Process()
         relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
         relaunch.arguments = ["-c", "while /bin/kill -0 \"$0\" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$1\"",
                               String(ProcessInfo.processInfo.processIdentifier), target.path]
         return (try? relaunch.run()) != nil
+    }
+
+    /// Copies the app out of the waiting image into a fresh folder of our own on `target`'s
+    /// volume (swapping is atomic only within a volume, and nothing can be waiting at a path
+    /// nobody knew in advance), checks that very copy, and swaps it in for `target`.
+    static func putInPlace(at target: URL, version: String, team: String) throws {
+        let fm = FileManager.default
+        let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
+        defer { try? fm.removeItem(at: scratch) }
+        let incoming = scratch.appendingPathComponent("ClangNotch.app")
+        try withStagedApp { _ = try run("/usr/bin/ditto", [$0.path, incoming.path]) }
+        try verify(incoming, version: version, team: team)
+        _ = try fm.replaceItemAt(target, withItemAt: incoming)
+        try? fm.removeItem(at: stagingFolder)
     }
 
     // MARK: - Checks
@@ -164,6 +151,14 @@ enum UpdateInstaller {
     }
 
     // MARK: - Disk images
+
+    /// Runs `body` on the app inside the waiting image, attached for just that long.
+    private static func withStagedApp<T>(_ body: (URL) throws -> T) throws -> T {
+        let mount = stagingFolder.appendingPathComponent("mount-\(UUID().uuidString)")
+        let device = try attach(stagedImage, at: mount)
+        defer { detach(device) }
+        return try body(mount.appendingPathComponent("ClangNotch.app"))
+    }
 
     /// Attaches by a mount point of its own and returns the image's device, which detaches
     /// it even when the mount point can't.
