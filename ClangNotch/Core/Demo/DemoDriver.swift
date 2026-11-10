@@ -1,13 +1,13 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods]`: the notch runs
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods|osd]`: the notch runs
 /// on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard, volume,
 /// battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device or copied text from this Mac can end up in a video.
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, tools, many, airpods }
+    enum Scene: String { case claude, codex, both, tools, many, airpods, osd }
 
     static var scene: Scene {
         let args = CommandLine.arguments
@@ -55,6 +55,30 @@ final class DemoDriver {
                     AirPodsDropdown.shared.demoShow(max: max)
                     max.toggle()
                     try? await Task.sleep(for: .seconds(10))
+                }
+            }
+            return
+        }
+        // osd: an idle notch; every 15 s the 조절창 turns the volume up to the top, down again,
+        // then dims the brightness and brings it back.
+        if DemoMode.scene == .osd {
+            // (volume or brightness, level in 16ths, ms until the next one)
+            let up = (8...16).map { (true, $0, 160) }, down = (6...15).reversed().map { (true, $0, 140) }
+            let dim = (4...12).reversed().map { (false, $0, 160) }, brighten = (5...12).map { (false, $0, 160) }
+            var plan = up + [(true, 16, 920)] + down  // 16 twice: the icon bounces at the top
+            plan[plan.count - 1].2 = 2200
+            plan += dim
+            plan[plan.count - 1].2 = 500
+            plan += brighten
+            plan[plan.count - 1].2 = 3500
+            task = Task { @MainActor in
+                let osd = SystemControlOSD.shared
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    for (volume, level, pause) in plan {
+                        if volume { osd.demoVolume(Double(level) / 16) } else { osd.demoBrightness(Double(level) / 16) }
+                        try? await Task.sleep(for: .milliseconds(pause))
+                    }
                 }
             }
             return
@@ -173,7 +197,7 @@ final class DemoDriver {
         switch scene {
         case .claude: return [orbit, lumen]
         case .codex: return [atlas, prism]
-        case .tools, .airpods: return []
+        case .tools, .airpods, .osd: return []
         case .many:
             let claudeNames = ["orbit-api", "lumen-web", "nova-docs", "pulse-ios", "relay-bot"]
             let codexNames = ["atlas-cli", "prism-app", "quill-sdk"]

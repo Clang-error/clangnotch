@@ -64,6 +64,16 @@ Each one is a tab in the open notch, and each can be turned off in Settings.
 
 The volume and brightness keys show ClangNotch's own slider instead of the system one.
 
+<p align="center">
+  <img src="assets/demo-osd.gif" width="60%" alt="Volume and brightness sliders under the notch">
+</p>
+
+Connect AirPods or a Bluetooth headset and a card drops from the notch with its battery.
+
+<p align="center">
+  <img src="assets/demo-airpods.gif" width="60%" alt="AirPods Pro and AirPods Max cards dropping from the notch">
+</p>
+
 The app's interface is in Korean by default. Switch it to English in **Settings → General → Display language**.
 
 ## Permissions

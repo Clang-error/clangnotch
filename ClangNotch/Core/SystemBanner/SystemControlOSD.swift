@@ -97,6 +97,18 @@ final class SystemControlOSD: ObservableObject {
         show(Self.currentBrightnessReading(), on: screen, pollsSystem: true)
     }
 
+    /// The `osd` demo scene: made-up values, so no output name from this Mac is shown.
+    func demoVolume(_ fraction: Double) {
+        show(SystemControlReading(kind: .volume, title: "AirPods Max", fraction: fraction,
+                                  badge: "\(Int((fraction * 100).rounded()))%", battery: 80),
+             on: NotchDetector.notchScreen)
+    }
+
+    func demoBrightness(_ fraction: Double) {
+        guard let id = Self.builtInDisplayID else { return }
+        show(Self.brightnessReading(fraction: fraction, displayID: id), on: NotchDetector.notchScreen)
+    }
+
     // MARK: - Keys
 
     private static let soundUp = 0, soundDown = 1, brightnessUp = 2, brightnessDown = 3, mute = 7  // NX_KEYTYPE_*
