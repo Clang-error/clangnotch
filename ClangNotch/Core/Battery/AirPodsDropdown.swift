@@ -90,6 +90,10 @@ final class AirPodsDropdown: ObservableObject {
         let settings = AppSettings.shared
         guard settings.enableAirPodsDropdown, settings.enableBattery, !DemoMode.isActive,
               AirPodsArt.kind(for: productID) != nil else { return }
+        // A Max drops its card as it goes on the head (`AirPodsLidWatcher`), seconds before it
+        // connects. Off the head it reconnects by itself every few minutes (bluetoothd: out of
+        // ear, 2026-11-10), and each of those dropped a card that 자동으로 접기 off kept up.
+        if AirPodsArt.kind(for: productID) == .headphones { return }
         // The advertisement just showed it (case opened, bud put in); the connection follows.
         if let opened = openedByCase[address], Date().timeIntervalSince(opened) < 5 { return }
         // The lid shut on the buds while the connection it started was still being made.
