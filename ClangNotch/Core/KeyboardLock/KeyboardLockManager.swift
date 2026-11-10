@@ -48,6 +48,18 @@ final class KeyboardLockManager: ObservableObject {
                 self?.refreshPermissionStatus()
             }
         }
+        // ClangNotch rarely becomes active while the switch is flipped in System Settings. This
+        // is posted when the Accessibility list changes; the answer catches up a moment later.
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"), object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                for delay in [0.5, 2.0] {
+                    try? await Task.sleep(for: .seconds(delay))
+                    self?.refreshPermissionStatus()
+                }
+            }
+        }
     }
 
     func toggle() {
@@ -85,7 +97,15 @@ final class KeyboardLockManager: ObservableObject {
     /// Re-checks permission without prompting — call when the tab reappears in
     /// case the user granted access in System Settings since we last checked.
     func refreshPermissionStatus() {
-        hasAccessibilityPermission = AXIsProcessTrusted()
+        let trusted = AXIsProcessTrusted()
+        guard trusted != hasAccessibilityPermission else { return }
+        hasAccessibilityPermission = trusted
+        // Allowed after launch (or again after a signature change): the HUD's AX observer and
+        // the volume key tap failed then and are only set up at start, so set them up now.
+        if trusted {
+            SystemBannerCenterer.shared.syncWithSettings()
+            SoftwareVolume.shared.syncWithSettings()
+        }
     }
 
     func openAccessibilitySettings() {

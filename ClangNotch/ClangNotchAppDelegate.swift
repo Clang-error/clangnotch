@@ -35,6 +35,10 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor in
             SystemBannerCenterer.shared.syncWithSettings()
+            // 모니터 소리 줄이기 also runs with 볼륨·밝기 표시 바꾸기 off.
+            SoftwareVolume.shared.syncWithSettings()
+            // Starts following the Accessibility setting, which the key taps above wait on.
+            KeyboardLockManager.shared.refreshPermissionStatus()
             UpdateChecker.shared.syncWithSettings()
         }
     }

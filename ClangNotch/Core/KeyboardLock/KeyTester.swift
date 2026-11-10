@@ -24,7 +24,15 @@ final class KeyTester: ObservableObject {
     func toggle() { isTesting ? stop() : start() }
 
     func start() {
-        guard eventTap == nil, AXIsProcessTrusted() else { return }
+        guard eventTap == nil else { return }
+        // Without Accessibility the tap can't be made: ask instead of doing nothing.
+        guard AXIsProcessTrusted() else {
+            // As the lock button does: macOS's prompt, and System Settings if that didn't do it.
+            let permission = KeyboardLockManager.shared
+            permission.requestPermission()
+            if !permission.hasAccessibilityPermission { permission.openAccessibilitySettings() }
+            return
+        }
         let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
             | (1 << CGEventType.flagsChanged.rawValue) | (1 << UInt64(NX_SYSDEFINED))
         guard let tap = CGEvent.tapCreate(

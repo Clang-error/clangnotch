@@ -27,7 +27,7 @@ public final class AppSettings: ObservableObject {
     // center the other system banners (SystemBannerCenterer + SystemControlOSD, needs Accessibility)
     @AppStorage("centerSystemBanners") public var centerSystemBanners: Bool = true
     // SoftwareVolume's audio tap for outputs macOS can't turn down (HDMI/DisplayPort speakers).
-    // Off by default: it intercepts every app's sound. Needs centerSystemBanners (its key tap).
+    // Off by default: it intercepts every app's sound. Its own switch; the key tap needs Accessibility.
     @AppStorage("enableSoftwareVolume") public var enableSoftwareVolume: Bool = false
     // Bundle IDs that tap leaves alone, newline-separated; each also covers its helpers
     // (com.hnc.Discord → com.hnc.Discord.helper.Renderer). Discord because its Go Live would

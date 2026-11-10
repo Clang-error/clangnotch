@@ -9,7 +9,8 @@ import CoreAudio
 ///
 /// While the sound goes to such a device, ClangNotch takes the volume and mute keys itself
 /// (an HID-level event tap, ahead of macOS and other apps) and shows the 조절창; for any
-/// other output, and for brightness, the same tap hands the keys to `SystemControlOSD`. At 100% there is no audio tap at all. Below that the tap stays up even through silence: starting it when sound
+/// other output, and for brightness, the same tap hands the keys to `SystemControlOSD` while
+/// 볼륨·밝기 표시 바꾸기 is on, and lets them through to macOS while it is off. At 100% there is no audio tap at all. Below that the tap stays up even through silence: starting it when sound
 /// begins would let the first buffers out at full volume. If ClangNotch dies, macOS drops the
 /// tap and the sound comes back at 100%.
 @MainActor
@@ -61,6 +62,19 @@ final class SoftwareVolume {
         var processes = Self.processListAddress
         AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &processes, .main, listener)
         deviceListener = listener
+        startKeyTap()
+        apply()
+    }
+
+    /// The key tap serves two switches, 볼륨·밝기 표시 바꾸기 and 모니터 소리 줄이기; either one
+    /// keeps it up. Also brings back a tap that couldn't be made before Accessibility was allowed.
+    func syncWithSettings() {
+        let settings = AppSettings.shared
+        guard settings.centerSystemBanners || settings.enableSoftwareVolume else {
+            stop()
+            return
+        }
+        start()
         startKeyTap()
         apply()
     }
@@ -149,7 +163,9 @@ final class SoftwareVolume {
         // A running Key Test takes every key, these too: lit, not applied.
         if KeyTester.shared.mediaKey(key, isDown: isDown) { return nil }
         guard let uid = keyTarget, [Self.soundUp, Self.soundDown, Self.mute].contains(key) else {
-            // Outputs and displays macOS can set itself: the 조절창 sets them, so no system banner.
+            // Outputs and displays macOS can set itself: with 볼륨·밝기 표시 바꾸기 on the 조절창
+            // sets them, so no system banner; off, the key goes to macOS as usual.
+            guard AppSettings.shared.centerSystemBanners else { return Unmanaged.passUnretained(event) }
             let fine = ns.modifierFlags.isSuperset(of: [.option, .shift])
             return SystemControlOSD.shared.handleKey(key, isDown: isDown, isRepeat: isRepeat, fine: fine)
                 ? nil : Unmanaged.passUnretained(event)

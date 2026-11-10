@@ -728,6 +728,14 @@ struct NotchSettingsTab: View {
 /// The utility features behind the notch's tabs.
 struct FeaturesSettingsTab: View {
     @ObservedObject var settings: AppSettings
+    /// Holds the Accessibility answer the three switches below need.
+    @ObservedObject private var keyboardLock = KeyboardLockManager.shared
+
+    /// Turning on a switch that needs Accessibility asks for it straight away.
+    private func askForAccessibility(_ on: Bool) {
+        guard on, !keyboardLock.hasAccessibilityPermission else { return }
+        keyboardLock.requestPermission()
+    }
 
     var body: some View {
         Form {
@@ -767,25 +775,32 @@ struct FeaturesSettingsTab: View {
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
                               L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
                               isOn: $settings.enableSpeedTest)
+                if !keyboardLock.hasAccessibilityPermission
+                    && (settings.enableKeyboardLock || settings.centerSystemBanners || settings.enableSoftwareVolume) {
+                    AccessibilityMissingRow(permission: keyboardLock)
+                }
                 SettingToggle(L("키보드 잠금", "Keyboard lock"),
                               L("키보드 입력 잠금 · 손쉬운 사용 권한 필요", "Locks keyboard input · needs Accessibility"),
                               isOn: $settings.enableKeyboardLock)
+                    .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
                 SettingToggle(L("볼륨·밝기 표시 바꾸기", "Replace volume and brightness HUD"),
                               L("macOS 볼륨·밝기 표시 대신 노치 중앙에 배치한 조절창 사용 · 손쉬운 사용 권한 필요",
                                 "A HUD centered at the notch instead of macOS's volume and brightness display · needs Accessibility"),
                               isOn: $settings.centerSystemBanners)
-                    .onChange(of: settings.centerSystemBanners) { _, _ in
+                    .onChange(of: settings.centerSystemBanners) { _, on in
                         SystemBannerCenterer.shared.syncWithSettings()
+                        askForAccessibility(on)
                     }
+                // Its own switch: it keeps the volume key tap up even with the HUD switch off.
                 SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
-                              L("HDMI·DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생 · 볼륨·밝기 표시 바꾸기가 켜져 있어야 함",
-                                "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter · needs Replace volume and brightness HUD"),
+                              L("HDMI·DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생 · 손쉬운 사용 권한 필요",
+                                "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter · needs Accessibility"),
                               isOn: $settings.enableSoftwareVolume)
-                    .disabled(!settings.centerSystemBanners)
-                    .onChange(of: settings.enableSoftwareVolume) { _, _ in
-                        SoftwareVolume.shared.apply()
+                    .onChange(of: settings.enableSoftwareVolume) { _, on in
+                        SoftwareVolume.shared.syncWithSettings()
+                        askForAccessibility(on)
                     }
-                if settings.enableSoftwareVolume && settings.centerSystemBanners {
+                if settings.enableSoftwareVolume {
                     SoftwareVolumeExcludedApps(settings: settings)
                 }
             } header: {
@@ -794,6 +809,35 @@ struct FeaturesSettingsTab: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+/// 권한 안내 줄: 키보드 잠금, 볼륨·밝기 표시 바꾸기 and 모니터 소리 줄이기 do nothing without
+/// Accessibility. After a signature change (a development build swapped for a release) the old
+/// entry can still show as on in System Settings without counting, hence the remove-and-add hint.
+private struct AccessibilityMissingRow: View {
+    @ObservedObject var permission: KeyboardLockManager
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("손쉬운 사용 권한이 없어 아래 키보드 잠금·볼륨·밝기 표시 바꾸기·모니터 소리 줄이기가 동작하지 않습니다",
+                       "Without Accessibility, Keyboard lock, the volume and brightness HUD and monitor volume below do nothing"))
+                Text(L("이미 켜져 있는데도 이 줄이 보이면 목록에서 ClangNotch를 −로 지우고 다시 추가",
+                       "If ClangNotch is already on there, remove it with − and add it again"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button(L("권한 열기…", "Open Settings…")) {
+                permission.requestPermission()
+                if !permission.hasAccessibilityPermission { permission.openAccessibilitySettings() }
+            }
+        }
+        // Back from System Settings with the permission given: the row goes away.
+        .onAppear { permission.refreshPermissionStatus() }
     }
 }
 

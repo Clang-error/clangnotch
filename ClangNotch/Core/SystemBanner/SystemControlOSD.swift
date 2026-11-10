@@ -73,12 +73,13 @@ final class SystemControlOSD: ObservableObject {
 
     private init() {}
 
+    // The key tap is SoftwareVolume's; 모니터 소리 줄이기 can keep it up on its own.
     func start() {
-        SoftwareVolume.shared.start()
+        SoftwareVolume.shared.syncWithSettings()
     }
 
     func stop() {
-        SoftwareVolume.shared.stop()
+        SoftwareVolume.shared.syncWithSettings()
         hide()
     }
 
