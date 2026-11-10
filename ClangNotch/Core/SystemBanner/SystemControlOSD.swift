@@ -181,6 +181,10 @@ final class SystemControlOSD: ObservableObject {
             withTransaction(transaction) { self.reading = reading }
             place(panel, on: screen ?? NSScreen.main ?? NSScreen.screens.first)
             panel.orderFrontRegardless()
+            // Out of the desktop Spaces, like the notch: a Space switch while keys kept coming
+            // now and then left the pill in only the Space it was shown in, until a relaunch
+            // (2026-11-10).
+            NotchOverlaySpace.pin(panel)
         }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             self.reading = reading

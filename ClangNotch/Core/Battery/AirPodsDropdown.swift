@@ -210,6 +210,8 @@ final class AirPodsDropdown: ObservableObject {
         phase = .dropping(Date())
         container?.drop(geometry, color: fillColor)
         panel.orderFrontRegardless()
+        // Same Space trap as the 조절창 (`SystemControlOSD.show`).
+        NotchOverlaySpace.pin(panel)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.dropDuration * 0.82) { [weak self] in
             guard let self, self.generation == current else { return }
