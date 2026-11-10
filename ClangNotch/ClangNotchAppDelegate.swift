@@ -4,6 +4,7 @@ import SwiftUI
 final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var settingsToolbar: SettingsToolbarController?
+    private var settingsNavigator: SettingsNavigator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -56,10 +57,11 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let (settingsView, toolbarController) = MainActor.assumeIsolated {
+        let (settingsView, toolbarController, navigator) = MainActor.assumeIsolated {
             let navigator = SettingsNavigator()
-            return (AgentSettingsView(navigator: navigator), SettingsToolbarController(navigator: navigator))
+            return (AgentSettingsView(navigator: navigator), SettingsToolbarController(navigator: navigator), navigator)
         }
+        settingsNavigator = navigator
 
         let hostingController = NSHostingController(rootView: settingsView)
         // The window is sized below. Left to size it, the controller added the toolbar's 52pt
@@ -103,9 +105,17 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             if self?.settingsWindow === window {
                 self?.settingsWindow = nil
                 self?.settingsToolbar = nil
+                self?.settingsNavigator = nil
             }
         }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// The settings window, on `page`.
+    @MainActor
+    func showSettingsWindow(page: SettingsPage) {
+        showSettingsWindow()
+        settingsNavigator?.open(page)
     }
 }

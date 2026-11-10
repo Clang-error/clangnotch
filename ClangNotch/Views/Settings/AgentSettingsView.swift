@@ -614,12 +614,25 @@ struct AboutSettingsTab: View {
             }
 
             Section {
-                Toggle(L("업데이트 알림 받기", "Notify about updates"), isOn: $settings.checkForUpdates)
+                SettingToggle(L("업데이트 자동으로 받기", "Download updates automatically"),
+                              L("새 버전을 받아 두고 알림 · 설치는 재시작 버튼을 누를 때만",
+                                "Downloads a new version and tells you · installs only when you restart for it"),
+                              isOn: $settings.checkForUpdates)
                     .onChange(of: settings.checkForUpdates) { _, _ in updates.syncWithSettings() }
-                if let version = updates.availableVersion {
+                if let version = updates.readyVersion {
                     HStack {
-                        Text(L("새 버전 \(version)", "Version \(version) available"))
+                        Text(L("새 버전 \(version) 준비됨", "Version \(version) is ready"))
                         Spacer()
+                        Button(L("재시작해서 업데이트", "Restart to Update")) { updates.install() }
+                            .disabled(updates.isInstalling)
+                    }
+                } else if let version = updates.availableVersion {
+                    HStack {
+                        Text(updates.isDownloading
+                             ? L("새 버전 \(version) 받는 중…", "Downloading version \(version)…")
+                             : L("새 버전 \(version)", "Version \(version) available"))
+                        Spacer()
+                        // Also the way when this copy can't replace itself (run from a disk image).
                         Button(L("받기", "Download")) { NSWorkspace.shared.open(updates.releaseURL) }
                     }
                 }
