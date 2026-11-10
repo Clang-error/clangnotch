@@ -16,20 +16,22 @@ private struct AgentIcon: View {
     }
 }
 
-private struct DropdownButton: View {
+struct DropdownButton: View {
     let title: String
     let tint: Color
     var filled = false
+    /// The enlarged 질문 드롭다운 draws everything this much bigger.
+    var scale: CGFloat = 1
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11 * scale, weight: .semibold))
                 .foregroundColor(filled ? .black : tint)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 12 * scale)
+                .padding(.vertical, 5 * scale)
                 .background(Capsule().fill(filled ? tint.opacity(hovering ? 1 : 0.9) : NotchPalette.ink.opacity(hovering ? 0.16 : 0.09)))
                 .contentShape(Capsule())
         }

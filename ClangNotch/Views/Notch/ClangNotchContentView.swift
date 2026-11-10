@@ -1709,23 +1709,7 @@ struct ClangNotchContentView: View {
 
             Spacer()
 
-            // The open 닫기 알약 takes the go button's place: an enlarged dropdown on a
-            // small screen has no room for both next to the title.
-            if !questionDismissOpen {
-                Button {
-                    goToAskingSession()
-                } label: {
-                    Label(askingSessionOpenTitle, systemImage: "arrow.up.forward.app")
-                        .font(.system(size: 10 * questionScale, weight: .medium))
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(questionNoticeColor)
-                .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
-                .transition(.opacity)
-            }
-
+            // The go button sits at the bottom, as in the 완료 드롭다운 (`QuestionOptionsView`).
             DismissPill(expanded: $questionDismissOpen, scale: questionScale,
                         onCollapse: { dismissQuestionNotice() }, onClear: { clearQuestionNotice() })
         }
@@ -1767,13 +1751,15 @@ struct ClangNotchContentView: View {
 
             if let request = codexInputRequest {
                 ScrollView(.vertical) {
-                    QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue)
+                    QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue,
+                                        goTitle: askingSessionOpenTitle, onGo: { goToAskingSession() })
                         .background(ThinScrollers())
                 }
             } else if let request = claudeInputRequest {
                 ScrollView(.vertical) {
                     QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
-                                        onSubmit: claudeQuestionAnswer, scale: questionScale)
+                                        onSubmit: claudeQuestionAnswer, goTitle: askingSessionOpenTitle,
+                                        onGo: { goToAskingSession() }, scale: questionScale)
                         .id(request.id)
                         .background(ThinScrollers())
                 }
@@ -1935,6 +1921,9 @@ struct ClangNotchContentView: View {
         /// terminal (it looked like one before and did nothing). `openTitle` names where.
         var openTitle: String? = nil
         var onOpen: (() -> Void)? = nil
+        /// 질문 드롭다운: the 완료 드롭다운's go button (터미널 열기 / GUI 열기) at the bottom right.
+        var goTitle: String? = nil
+        var onGo: (() -> Void)? = nil
         /// The enlarged 질문 드롭다운 draws everything this much bigger.
         var scale: CGFloat = 1
         @State private var picks: [Int: Set<Int>] = [:]
@@ -1996,6 +1985,12 @@ struct ClangNotchContentView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                    } else if onGo != nil {
+                        // The go button beside it does the going; this only says where to answer.
+                        Text(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
+                                             : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"))
+                            .font(.system(size: 10 * scale, weight: .medium))
+                            .foregroundColor(NotchPalette.ink.opacity(0.55))
                     } else {
                         Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
                                               : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
@@ -2016,6 +2011,15 @@ struct ClangNotchContentView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!canSend)
+                    }
+                    if let onGo, let goTitle {
+                        // Filled as in the 완료 드롭다운, unless 보내기 is the button to press.
+                        DropdownButton(title: goTitle, tint: accentColor, filled: onSubmit == nil || answersOnTap,
+                                       scale: scale, action: onGo)
+                            .newHighlight(cornerRadius: 12 * scale, delay: 0.25)
+                            .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
+                            // Clear of the 크기 손잡이 in the corner; only Claude questions have it.
+                            .padding(.trailing, onSubmit != nil ? 18 : 0)
                     }
                 }
             }
@@ -2368,7 +2372,8 @@ struct ClangNotchContentView: View {
         let content = VStack(spacing: 8) {
             questionHeader
             QuestionOptionsView(questions: questions, sourceName: sourceName, accentColor: accentColor,
-                                onSubmit: sourceName == "Claude" ? claudeQuestionAnswer : nil)
+                                onSubmit: sourceName == "Claude" ? claudeQuestionAnswer : nil,
+                                goTitle: askingSessionOpenTitle, onGo: {})
         }
         .padding(.top, 10)
         .frame(width: openNotchSize.width - expandedNotchInset * 2)
