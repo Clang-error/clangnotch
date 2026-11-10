@@ -795,6 +795,8 @@ struct ClangNotchContentView: View {
         // Claude Code active tool (from JSONL parsing) - check all sessions
         let claudeActiveTool = claudeCodeManager.state.activeTools.first
             ?? claudeCodeManager.sessionStates.values.compactMap { $0.activeTools.first }.first
+            // A session that only waits on its subagents shows what one of them is running.
+            ?? claudeCodeManager.sessionStates.values.compactMap { $0.subagents.compactMap(\.tool).first }.first
         // Recent completed Claude tool (within last 5 seconds).
         // Only while the session is still active — once activity ends, notchActive goes
         // false (clear background), so drawing wings here would ghost over the desktop.

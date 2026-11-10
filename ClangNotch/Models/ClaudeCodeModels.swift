@@ -114,6 +114,36 @@ struct ClaudeToolExecution: Identifiable, Equatable {
             return "\(minutes)m \(remainingSeconds)s"
         }
     }
+
+    /// The one input worth showing next to a tool's name.
+    static func argument(from input: Any?) -> String? {
+        guard let input = input as? [String: Any] else { return nil }
+
+        if let pattern = input["pattern"] as? String { return pattern }
+        if let command = input["command"] as? String { return String(command.prefix(50)) }
+        if let filePath = input["file_path"] as? String { return URL(fileURLWithPath: filePath).lastPathComponent }
+        if let query = input["query"] as? String { return String(query.prefix(50)) }
+        if let prompt = input["prompt"] as? String { return String(prompt.prefix(50)) }
+
+        return nil
+    }
+}
+
+// MARK: - Subagent
+
+/// A subagent a session started with its Agent tool, while it runs (서브에이전트 줄).
+struct ClaudeSubagent: Identifiable, Equatable {
+    /// Its agent id, as in its transcript's file name.
+    let id: String
+    /// The short task name the session gave it.
+    let description: String
+    /// "general-purpose", "Explore", a project agent's name.
+    let agentType: String
+    /// The session's own Agent tool call that waits for it; nil for one in the background
+    /// (that call returned at once) or one started by another subagent.
+    let awaitedToolUseId: String?
+    /// The tool it is running; nil while it thinks.
+    var tool: ClaudeToolExecution?
 }
 
 // MARK: - Todo Item
@@ -270,6 +300,9 @@ struct ClaudeCodeState: Equatable {
 
     var activeTools: [ClaudeToolExecution] = []
     var recentTools: [ClaudeToolExecution] = []
+    /// Subagents the session started that are still running, oldest first. A background one
+    /// keeps working after the turn that started it has ended.
+    var subagents: [ClaudeSubagent] = []
 
     /// Recent conversation messages (user prompts + assistant text), oldest first
     var recentMessages: [ClaudeMessage] = []
@@ -307,6 +340,7 @@ struct ClaudeCodeState: Equatable {
     var hasActiveTools: Bool { !activeTools.isEmpty }
     var currentToolName: String? { activeTools.first?.toolName }
 
-    /// True when the session is actively processing (thinking or running tools)
-    var isActive: Bool { turnStartTime != nil || isThinking || hasActiveTools }
+    /// True when the session is actively processing (thinking, running tools, or waiting
+    /// on its subagents)
+    var isActive: Bool { turnStartTime != nil || isThinking || hasActiveTools || !subagents.isEmpty }
 }

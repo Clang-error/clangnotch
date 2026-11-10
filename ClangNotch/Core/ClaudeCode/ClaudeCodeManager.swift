@@ -150,6 +150,12 @@ final class ClaudeCodeManager: ObservableObject {
     private var completedQuestionHookIDs: [String: Set<String>] = [:]
     /// The end_turn message last announced per session; its lines all repeat the stop reason.
     private var completedTurnMessageIDs: [String: String] = [:]
+    /// A finished turn not announced yet, because the session's subagents were still running.
+    private var heldCompletions: [String: CompletedTurn] = [:]
+    /// Transcripts that ended with "continued-in" (the conversation went on in another
+    /// process and file, as when a session is sent to the background), with the file's
+    /// modification date then. They are listed as the session they continued in.
+    private var continuedTranscripts: [String: Date] = [:]
     /// Next-step boxes closed with the 다음 단계 드롭다운's X, so a history reload can't bring them back.
     private var dismissedInputRequestIDs: Set<String> = []
     private var isLoadingHistoryBySession: [String: Bool] = [:]
@@ -183,6 +189,10 @@ final class ClaudeCodeManager: ObservableObject {
 
     /// Silence limit since the latest meaningful activity, unless a tool/question is pending.
     private let turnSafetyTimeout: TimeInterval = 300.0
+
+    /// A subagent whose transcript is this quiet no longer counts as running. One that was
+    /// stopped never gets marked finished; a tool can run for ten minutes.
+    private let subagentQuietLimit: TimeInterval = 660
 
     // MARK: - Initialization
 
@@ -276,6 +286,12 @@ final class ClaudeCodeManager: ObservableObject {
                             ideName: "Terminal"
                         )
                         let modified = (try? jsonlFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                        // Continued elsewhere: its row is the session it continued in, unless
+                        // it has been written again since.
+                        if let ended = continuedTranscripts[jsonlFile.path] {
+                            if modified <= ended { continue }
+                            continuedTranscripts[jsonlFile.path] = nil
+                        }
                         guard (modified > recentThreshold && lastEntryDate(of: jsonlFile, modified: modified) > recentThreshold)
                                 || sessionStates[session.id].map({ $0.isActive || $0.needsPermission || $0.isAwaitingInput }) == true
                         else { continue }
@@ -355,7 +371,56 @@ final class ClaudeCodeManager: ObservableObject {
             stopWatchingSession(id: watchedId)
         }
 
+        refreshSubagents()
         followActiveSession()
+    }
+
+    // MARK: - Subagents
+
+    /// The 서브에이전트 줄 of every watched session, re-read on each scan. A background
+    /// subagent outlives the turn that started it: the transcript says end_turn while the
+    /// process stays `busy` in its registry record (measured 2026-11-10), so that record is
+    /// what tells a running subagent from one that was stopped.
+    private func refreshSubagents() {
+        var live: [String: LiveSessionRecord]?
+        var changed = false
+        for (sessionId, path) in sessionJSONLPaths {
+            guard let state = sessionStates[sessionId] else { continue }
+            let shown = state.subagents
+            var running = subagents(inTranscriptAt: path, waitingOn: state.activeTools)
+            let held = heldCompletions[sessionId]
+            if !running.isEmpty || held != nil {
+                if live == nil { live = liveSessionRecords() }
+                // The registry can't be read this moment: leave this session as it is.
+                guard let live else { continue }
+                let conversation = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+                if live[conversation].map({ !$0.isIdle }) != true {
+                    running = []
+                    // The process has stopped after all: the turn held back was the end.
+                    if let held {
+                        heldCompletions[sessionId] = nil
+                        lastCompletedTurn = held
+                    }
+                }
+            }
+            guard running != shown else { continue }
+            sessionStates[sessionId]?.subagents = running
+            syncStateIfSelected(sessionId)
+            changed = true
+        }
+        if changed { objectWillChange.send() }
+    }
+
+    /// Unfinished subagents of the conversation whose transcript is at `path`. One the
+    /// session waits on runs exactly as long as that Agent tool call (`activeTools`): an
+    /// interrupted call leaves its subagent unfinished for good.
+    private func subagents(inTranscriptAt path: String, waitingOn activeTools: [ClaudeToolExecution]) -> [ClaudeSubagent] {
+        ClaudeSubagents.unfinished(
+            in: URL(fileURLWithPath: path).deletingPathExtension().appendingPathComponent("subagents"),
+            quietLimit: subagentQuietLimit
+        ).filter { subagent in
+            subagent.awaitedToolUseId.map { id in activeTools.contains { $0.id == id } } ?? true
+        }
     }
 
     /// The open notch's details (todos, context, tokens) show `selectedSession`. Keep the
@@ -695,6 +760,7 @@ final class ClaudeCodeManager: ObservableObject {
         sessionJSONLPaths.removeValue(forKey: sessionId)
         completedQuestionHookIDs.removeValue(forKey: sessionId)
         completedTurnMessageIDs.removeValue(forKey: sessionId)
+        heldCompletions.removeValue(forKey: sessionId)
         sessionStates.removeValue(forKey: sessionId)
         isLoadingHistoryBySession.removeValue(forKey: sessionId)
         sessionsNeedingPermission.removeAll { $0.id == sessionId }
@@ -881,6 +947,13 @@ final class ClaudeCodeManager: ObservableObject {
         // Not a transcript event: the whole outgoing prompt, earlier tool_use blocks included,
         // with no timestamp. Parsing it re-added finished tools as running after the turn ended.
         guard json["type"] as? String != "api-request-blob" else { return }
+        // The conversation went on in another process and transcript (a session sent to the
+        // background). This one is over whatever its last line said, and the process that
+        // parked it stays `busy` in the registry for good, so nothing else would end it.
+        if json["type"] as? String == "continued-in" {
+            endContinuedSession(sessionId)
+            return
+        }
         if let title = Self.sessionTitle(in: json) {
             if sessionStates[sessionId]?.title != title {
                 sessionStates[sessionId]?.title = title
@@ -1094,7 +1167,7 @@ final class ClaudeCodeManager: ObservableObject {
                             var tool = ClaudeToolExecution(
                                 id: toolId,
                                 toolName: toolName,
-                                argument: extractToolArgument(from: item["input"]),
+                                argument: ClaudeToolExecution.argument(from: item["input"]),
                                 // The line's own time: a fast Bash's tool_use and result often land in one read.
                                 startTime: lineDate ?? Date()
                             )
@@ -1203,8 +1276,20 @@ final class ClaudeCodeManager: ObservableObject {
                completedTurnMessageIDs[sessionId] != messageId {
                 completedTurnMessageIDs[sessionId] = messageId
                 let answer = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
-                lastCompletedTurn = CompletedTurn(sessionId: sessionId, answer: answer.joined(separator: "\n"),
-                                                  elapsed: turnStart.map { Date().timeIntervalSince($0) })
+                let turn = CompletedTurn(sessionId: sessionId, answer: answer.joined(separator: "\n"),
+                                         elapsed: turnStart.map { Date().timeIntervalSince($0) })
+                // With subagents still at work this is not the end: the session stays working
+                // and the turn that follows their results says Done. The turn is held, not
+                // dropped, in case the process turns out to have stopped (a subagent that
+                // was interrupted looks unfinished too); `refreshSubagents` settles it.
+                sessionState.subagents = sessionJSONLPaths[sessionId]
+                    .map { subagents(inTranscriptAt: $0, waitingOn: sessionState.activeTools) } ?? []
+                if sessionState.subagents.isEmpty {
+                    heldCompletions[sessionId] = nil
+                    lastCompletedTurn = turn
+                } else {
+                    heldCompletions[sessionId] = turn
+                }
             }
         }
 
@@ -1386,6 +1471,8 @@ final class ClaudeCodeManager: ObservableObject {
                 debugLog("[ClaudeCode] Session \(candidate.conversationId.prefix(8))... has no live process; clearing its working state")
             }
             state.activeTools.removeAll()
+            // An idle or exited process runs no subagent.
+            state.subagents.removeAll()
             // A next-step box outlives idle; only an exit drops it.
             let exited = live[candidate.conversationId] == nil
             state.pendingInputRequests.removeAll { exited || !$0.isWrapUp }
@@ -1399,6 +1486,29 @@ final class ClaudeCodeManager: ObservableObject {
             changed = true
         }
         if changed { updateSessionsNeedingPermission() }
+    }
+
+    /// Ends a session whose transcript closed with "continued-in" and keeps it off the list:
+    /// its work now shows as the session it continued in.
+    private func endContinuedSession(_ sessionId: String) {
+        guard var state = sessionStates[sessionId] else { return }
+        state.isThinking = false
+        state.turnStartTime = nil
+        state.activeTools.removeAll()
+        state.subagents.removeAll()
+        state.pendingInputRequests.removeAll()
+        state.needsPermission = false
+        state.needsPermissionConfirmed = false
+        state.pendingPermissionTool = nil
+        sessionStates[sessionId] = state
+        heldCompletions[sessionId] = nil
+        if let path = sessionJSONLPaths[sessionId] {
+            continuedTranscripts[path] = (try? URL(fileURLWithPath: path)
+                .resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
+        }
+        syncStateIfSelected(sessionId)
+        updateSessionsNeedingPermission()
+        objectWillChange.send()
     }
 
     /// A running Claude Code process as its registry record describes it.
@@ -1539,7 +1649,7 @@ final class ClaudeCodeManager: ObservableObject {
             var tool = ClaudeToolExecution(
                 id: json["tool_use_id"] as? String ?? UUID().uuidString,
                 toolName: toolName,
-                argument: extractToolArgument(from: json["tool_input"]),
+                argument: ClaudeToolExecution.argument(from: json["tool_input"]),
                 startTime: now
             )
             tool.description = (json["tool_input"] as? [String: Any])?["description"] as? String
@@ -1733,18 +1843,6 @@ final class ClaudeCodeManager: ObservableObject {
             debugLog("[ClaudeCode] findActiveSessionFiles: error: \(error)")
             return []
         }
-    }
-
-    private func extractToolArgument(from input: Any?) -> String? {
-        guard let input = input as? [String: Any] else { return nil }
-
-        if let pattern = input["pattern"] as? String { return pattern }
-        if let command = input["command"] as? String { return String(command.prefix(50)) }
-        if let filePath = input["file_path"] as? String { return URL(fileURLWithPath: filePath).lastPathComponent }
-        if let query = input["query"] as? String { return String(query.prefix(50)) }
-        if let prompt = input["prompt"] as? String { return String(prompt.prefix(50)) }
-
-        return nil
     }
 }
 

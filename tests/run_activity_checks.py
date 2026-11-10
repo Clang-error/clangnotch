@@ -52,8 +52,13 @@ final class ClaudeFixture {
     var sessionJSONLPaths = ["s": "/test.jsonl"]
     var completedQuestionHookIDs: [String: Set<String>] = [:]
     var completedTurnMessageIDs: [String: String] = [:]
+    var heldCompletions: [String: CompletedTurn] = [:]
+    var continuedTranscripts: [String: Date] = [:]
     var dismissedInputRequestIDs: Set<String> = []
     var lastCompletedTurn: CompletedTurn?
+    // What the session's subagents folder would say is still running.
+    var runningSubagents: [ClaudeSubagent] = []
+    func subagents(inTranscriptAt: String, waitingOn: [ClaudeToolExecution]) -> [ClaudeSubagent] { runningSubagents }
     let questionToolName = "AskUserQuestion"
     let wrapUpToolName = "mcp__ccd_turn__wrap_up"
     let questionWaitStaleAfter: TimeInterval = 300
@@ -62,7 +67,6 @@ final class ClaudeFixture {
     func resetToolIdleTimer() {}
     func updateSessionsNeedingPermission() {}
     func captureConversation(from: [String: Any], into: inout ClaudeCodeState) {}
-    func extractToolArgument(from: Any?) -> String? { nil }
     func scanForSessions() { availableSessions = Array(remoteSessions.values) }
     func displayableUserPrompt(_ raw: String) -> String? { raw }
     func appendConversationMessage(_ message: ClaudeMessage, into: inout ClaudeCodeState) {}
@@ -73,7 +77,7 @@ end = claude.index('\n    ]', start) + len('\n    ]')
 swift += claude[start:end].replace('private static let', 'static let', 1) + '\n'
 start = claude.index('    private static func sessionTitle(')
 swift += claude[start:claude.index('\n    }', start) + len('\n    }')].replace('private static', 'static', 1) + '\n'
-for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission','applyTodoTool']:
+for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission','applyTodoTool','endContinuedSession']:
     swift += method(claude, name) + '\n'
 swift += '}\nfinal class CodexFixture {\n' + common + '''
     var state = CodexState()
@@ -191,6 +195,24 @@ swift += '''}
         precondition(c.lastCompletedTurn == nil, "Replayed history must not announce Done")
         c.parseMessageForSession(["id":"m3", "role":"assistant", "stop_reason":"max_tokens", "content":[["type":"text", "text":"cut"]]], sessionId:"s")
         precondition(c.lastCompletedTurn == nil, "Only end_turn counts as a normal finish")
+        // Subagents still at work when the turn ends: the session keeps working and Done waits.
+        let agents = ClaudeFixture()
+        agents.runningSubagents = [ClaudeSubagent(id: "a1", description: "조사", agentType: "general-purpose", awaitedToolUseId: nil, tool: nil)]
+        agents.parseMessageForSession(["id":"e1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"조사 중"]]], sessionId:"s")
+        precondition(agents.lastCompletedTurn == nil && agents.heldCompletions["s"] != nil && agents.state.isActive,
+                     "A turn that ends with subagents at work holds Done and keeps the session working")
+        agents.runningSubagents = []
+        agents.parseMessageForSession(["id":"e2", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"끝"]]], sessionId:"s")
+        precondition(agents.lastCompletedTurn != nil && agents.heldCompletions["s"] == nil && !agents.state.isActive,
+                     "The turn after the subagents finish says Done")
+        // Sent to the background: the transcript closes mid-turn with continued-in.
+        let moved = ClaudeFixture()
+        moved.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"t", "name":"Bash"]]], sessionId:"s")
+        moved.parseMessageForSession(["role":"user", "content":[["type":"tool_result", "tool_use_id":"t"]]], sessionId:"s")
+        precondition(moved.state.isActive)
+        moved.parseJSONLLineForSession(#"{"type":"continued-in","timestamp":"2026-11-10T05:04:17.251Z","sessionId":"s","continuedInSessionId":"n"}"#, sessionId:"s")
+        precondition(!moved.state.isActive && moved.continuedTranscripts["/test.jsonl"] != nil,
+                     "A transcript continued elsewhere ends at once and leaves the list")
         c.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"t2", "name":"Bash"]]], sessionId:"s")
         c.parseMessageForSession(["role":"user", "content":[["type":"tool_result", "tool_use_id":"t2"]]], sessionId:"s")
         c.parseJSONLLineForSession(#"{"type":"api-request-blob","message":{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash"}]}}"#, sessionId:"s")

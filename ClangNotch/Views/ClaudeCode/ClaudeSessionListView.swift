@@ -56,10 +56,13 @@ struct ClaudeSessionListView: View {
                 })
                 VStack(spacing: 8) {
                     ForEach(Array(rows.enumerated()), id: \.element.rowID) { index, row in
-                        UnifiedWorkspaceSessionRow(
-                            group: row,
-                            onOpen: onOpen, onSelect: onSelect, manager: manager, codexManager: codexManager
-                        )
+                        VStack(spacing: 3) {
+                            UnifiedWorkspaceSessionRow(
+                                group: row,
+                                onOpen: onOpen, onSelect: onSelect, manager: manager, codexManager: codexManager
+                            )
+                            SubagentRows(subagents: row.claude.first.flatMap { manager.sessionStates[$0.id]?.subagents } ?? [])
+                        }
                         // Rows rise in one after another as the list opens (the first eight;
                         // past that the wait would be noticeable). A session that shows up
                         // later, with the list already open, swells once to say it's new.
@@ -189,11 +192,21 @@ private struct UnifiedWorkspaceSessionRow: View {
         group.claude.contains { manager.sessionStates[$0.id]?.isAwaitingInput == true }
     }
 
+    /// Subagents the session is running now; each also has its own 서브에이전트 줄 below.
+    private var subagentCount: Int {
+        group.claude.reduce(0) { $0 + (manager.sessionStates[$1.id]?.subagents.count ?? 0) }
+    }
+
     private var preview: String? {
         if awaitingAnswer { return L("Claude: 답변 대기", "Claude: Waiting for your answer") }
         if needsPermission { return L("Claude: 권한 승인 대기", "Claude: Waiting for permission") }
         if let tool = group.claude.compactMap({ manager.sessionStates[$0.id]?.currentToolName }).first {
             return "Claude: \(tool)"
+        }
+        // Nothing of its own running: the session is waiting on the subagents it started.
+        if subagentCount > 0 {
+            return L("Claude: 서브에이전트 \(subagentCount)개 실행 중",
+                     subagentCount == 1 ? "Claude: running 1 subagent" : "Claude: running \(subagentCount) subagents")
         }
         if let tool = group.codex.compactMap({ codexManager.sessionStates[$0.id]?.currentToolName }).first {
             return "Codex: \(tool)"
@@ -274,6 +287,22 @@ private struct UnifiedWorkspaceSessionRow: View {
                         }
                         if !group.codex.isEmpty {
                             SourceBadge(label: "Codex", count: group.codex.count, color: .blue, active: codexActive)
+                        }
+                        if subagentCount > 0 {
+                            // 서브에이전트 배지: this session started subagents and they are at work.
+                            HStack(spacing: 2) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .accessibilityHidden(true)
+                                Text("\(subagentCount)")
+                            }
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.18), in: Capsule())
+                            .fixedSize()
+                            .help(L("서브에이전트 \(subagentCount)개 실행 중",
+                                    subagentCount == 1 ? "Running 1 subagent" : "Running \(subagentCount) subagents"))
                         }
                         HStack(spacing: 3) {
                             Image(systemName: destination?.iconName ?? "macwindow")
@@ -393,6 +422,59 @@ private struct UnifiedWorkspaceSessionRow: View {
             .frame(width: 12, height: 12)
             .opacity(active ? 1 : 0.55)
             .shadow(color: active ? glow.opacity(0.8) : .clear, radius: 4)
+    }
+}
+
+/// 서브에이전트 줄: the subagents a Claude session is running, hung under its 세션 줄. They
+/// only show; going anywhere is the session's row.
+private struct SubagentRows: View {
+    let subagents: [ClaudeSubagent]
+    /// As many as the Current Tasks 카드 lists before "+N개 더".
+    private let limit = 4
+
+    var body: some View {
+        if !subagents.isEmpty {
+            VStack(spacing: 3) {
+                ForEach(subagents.prefix(limit)) { subagent in
+                    HStack(spacing: 6) {
+                        FolderElbow()
+                            .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+                            .frame(width: 7, height: 6)
+                            .offset(y: -2.5)
+                        Text(subagent.description.isEmpty ? subagent.agentType : subagent.description)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        Spacer(minLength: 6)
+                        Text(activity(of: subagent))
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    .padding(.leading, 10)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 5)
+                    .background(NotchPalette.ink.opacity(0.035), in: RoundedRectangle(cornerRadius: 7))
+                    .help(subagent.agentType)
+                }
+                if subagents.count > limit {
+                    Text(L("+\(subagents.count - limit)개 더", "+\(subagents.count - limit) more"))
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 23)
+                }
+            }
+            // Indented under the session's own text.
+            .padding(.leading, 18)
+        }
+    }
+
+    /// The tool the subagent is running and what on, or that it is thinking.
+    private func activity(of subagent: ClaudeSubagent) -> String {
+        guard let tool = subagent.tool else { return L("생각 중", "Thinking") }
+        return [tool.toolName, tool.description ?? tool.argument].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
