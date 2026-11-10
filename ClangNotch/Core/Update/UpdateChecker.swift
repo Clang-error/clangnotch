@@ -15,6 +15,10 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
     @Published private(set) var readyVersion: String?
     @Published private(set) var isDownloading = false
     @Published private(set) var isInstalling = false
+    /// For "지금 확인" in 설정 › 정보: a check under way, the last one finding nothing newer, or failing.
+    @Published private(set) var isChecking = false
+    @Published private(set) var upToDate = false
+    @Published private(set) var checkFailed = false
     @Published private(set) var releaseURL = URL(string: "https://github.com/Clang-error/clangnotch/releases/latest")!
 
     private static let latestReleaseAPI = URL(string: "https://api.github.com/repos/Clang-error/clangnotch/releases/latest")!
@@ -50,15 +54,30 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
         Task { await check() }
     }
 
-    private func check() async {
+    /// "지금 확인": asks GitHub now, with 자동으로 받기 off too. Off, a newer version is only shown
+    /// with its 받기 button; on, it is fetched as in the daily check.
+    func checkNow() {
+        guard !isChecking else { return }
+        Task { await check(manual: true) }
+    }
+
+    private func check(manual: Bool = false) async {
+        isChecking = true
+        defer { isChecking = false }
         var request = URLRequest(url: Self.latestReleaseAPI)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tag = json["tag_name"] as? String,
-              AppSettings.shared.checkForUpdates
-        else { return }
+              let tag = json["tag_name"] as? String
+        else {
+            checkFailed = true
+            upToDate = false
+            return
+        }
+        checkFailed = false
+        let automatic = AppSettings.shared.checkForUpdates
+        guard automatic || manual else { return }
 
         let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
@@ -66,9 +85,13 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
         guard Self.isNewer(latest, than: current) else {
             availableVersion = nil
             readyVersion = nil
+            upToDate = true
             return
         }
+        upToDate = false
         availableVersion = latest
+        // Asked for by hand with 자동으로 받기 off: shown, not fetched.
+        guard automatic else { return }
         guard readyVersion != latest, !isDownloading else { return }
 
         if let team = UpdateInstaller.runningDeveloperIDTeam(), UpdateInstaller.canReplaceRunningApp(),
