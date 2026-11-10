@@ -235,6 +235,10 @@ struct AirPodsDropdownContent: View {
         // The panel takes clicks only once settled, when it is exactly the card.
         .contentShape(Rectangle())
         .onTapGesture { model.openBatteryTab() }
+        // Pressed and pushed up toward the notch: back in it goes.
+        .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { drag in
+            if drag.translation.height < -12 { model.dismiss() }
+        })
         .onHover { model.setHovering($0) }
         .environment(\.colorScheme, appearance.theme(settings).scheme)
     }

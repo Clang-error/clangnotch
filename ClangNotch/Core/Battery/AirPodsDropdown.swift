@@ -92,6 +92,8 @@ final class AirPodsDropdown: ObservableObject {
               AirPodsArt.kind(for: productID) != nil else { return }
         // The advertisement just showed it (case opened, bud put in); the connection follows.
         if let opened = openedByCase[address], Date().timeIntervalSince(opened) < 5 { return }
+        // The lid shut on the buds while the connection it started was still being made.
+        if AirPodsLidWatcher.shared.caseShut(address) { return }
         // Missed by the scan: drop it now with the levels last known, and fill in fresh ones below.
         _ = AirPodsArt.device(for: productID, color: knownColors[address])
         _ = AirPodsArt.chargingCase
@@ -106,9 +108,8 @@ final class AirPodsDropdown: ObservableObject {
                 device = BatteryManager.shared.devices.first { $0.id == address && $0.live }
                 if device != nil { break }
             }
-            // Fresh levels for the card that's up; nothing new to drop.
-            guard let device, card?.address == address else { return }
-            show(Self.card(address: address, productID: productID, device: device))
+            guard let device else { return }
+            refresh(Self.card(address: address, productID: productID, device: device))
         }
     }
 
@@ -132,7 +133,7 @@ final class AirPodsDropdown: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(500))
                 if Task.isCancelled { return }
                 if let device = reading(), device.live {
-                    if self.card?.address == address { self.show(card(device.percent)) }
+                    self.refresh(card(device.percent))
                     return
                 }
             }
@@ -140,17 +141,20 @@ final class AirPodsDropdown: ObservableObject {
     }
 
     /// `AirPodsLidWatcher` saw our case open. Levels come from BatteryManager when it has them,
-    /// else from the advertisement's tenths.
-    func caseOpened(address: String, productID: UInt16, level: Int?, caseLevel: Int?, side: String? = nil) {
-        openedByCase[address] = Date()
+    /// else from the advertisement's tenths. `drops` false is a bud leaving an ear: only a card
+    /// that is up changes, to show who is still in.
+    func caseOpened(address: String, productID: UInt16, level: Int?, caseLevel: Int?, side: String? = nil,
+                    drops: Bool = true) {
+        if drops { openedByCase[address] = Date() }
         _ = AirPodsArt.device(for: productID, color: knownColors[address])
         _ = AirPodsArt.chargingCase
         let device = BatteryManager.shared.devices.first { $0.id == address }
         let known = Self.card(address: address, productID: productID, device: device)
         let sideLevel = side.flatMap { s in device?.parts.first { $0.label == s }?.percent }
-        show(Card(address: address, productID: productID, name: known.name,
-                  level: side != nil ? (sideLevel ?? level) : (device == nil ? level : known.level),
-                  caseLevel: device == nil ? caseLevel : known.caseLevel ?? caseLevel, side: side))
+        let new = Card(address: address, productID: productID, name: known.name,
+                       level: side != nil ? (sideLevel ?? level) : (device == nil ? level : known.level),
+                       caseLevel: device == nil ? caseLevel : known.caseLevel ?? caseLevel, side: side)
+        if drops { show(new) } else { refresh(new) }
     }
 
     /// `--demo --demo-scene airpods`: a made-up card, no real device behind it.
@@ -223,6 +227,13 @@ final class AirPodsDropdown: ObservableObject {
         }
     }
 
+    /// Fresh levels for the card that's up; nothing new to drop. A card being folded stays
+    /// folded: `show` would bring it down again (lid shut just as the levels came in).
+    private func refresh(_ new: Card) {
+        guard card?.address == new.address, phase == .settled || isDropping else { return }
+        show(new)
+    }
+
     private var isDropping: Bool { if case .dropping = phase { true } else { false } }
 
     private func settle(on screen: NSScreen) {
@@ -276,7 +287,12 @@ final class AirPodsDropdown: ObservableObject {
         hideWork?.cancel()
         hovering = false
         hideDeadline = Date().addingTimeInterval(seconds)
-        let work = DispatchWorkItem { [weak self] in self?.dismiss() }
+        // 설정 › 기능 › 에어팟 연결 알림 자동으로 접기, read when the time is up so switching it
+        // off keeps a card that is already down. The demo scene always folds.
+        let work = DispatchWorkItem { [weak self] in
+            guard AppSettings.shared.airPodsDropdownAutoHide || DemoMode.isActive else { return }
+            self?.dismiss()
+        }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }

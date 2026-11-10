@@ -746,6 +746,11 @@ struct FeaturesSettingsTab: View {
                                 "Name and battery under the notch when AirPods or a Bluetooth headset connect · needs Battery levels"),
                               isOn: $settings.enableAirPodsDropdown)
                     .disabled(!settings.enableBattery)
+                SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods card by itself"),
+                              L("6초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음",
+                                "Folds after 6 seconds · off, it stays until you press X or push it up into the notch"),
+                              isOn: $settings.airPodsDropdownAutoHide)
+                    .disabled(!settings.enableBattery || !settings.enableAirPodsDropdown)
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
                               L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
                               isOn: $settings.enableSpeedTest)

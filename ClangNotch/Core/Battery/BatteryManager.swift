@@ -131,6 +131,7 @@ final class BatteryManager: ObservableObject {
                 case .newConnection:
                     let productID = unsafeBitCast(device, to: BTBatteryDevice.self).productID
                     if AirPodsArt.kind(for: productID) != nil {
+                        AirPodsLidWatcher.shared.connected(address: address)
                         AirPodsDropdown.shared.deviceConnected(address: address, productID: productID)
                     } else if Self.isHeadset(device) {
                         AirPodsDropdown.shared.headsetConnected(address: address, name: device.name ?? address)
