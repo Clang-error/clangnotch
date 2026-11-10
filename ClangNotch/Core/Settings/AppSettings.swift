@@ -29,6 +29,8 @@ public final class AppSettings: ObservableObject {
     // "밝기 키는 다른 앱에 넘기기": with the HUD switch on, brightness keys still go on to macOS and
     // apps like MonitorControl that set external displays from them.
     @AppStorage("passBrightnessKeys") public var passBrightnessKeys: Bool = false
+    // "밝기 조절창 보이기": while those keys are passed on, our 조절창 still comes up with the result.
+    @AppStorage("showPassedBrightnessHUD") public var showPassedBrightnessHUD: Bool = true
     // SoftwareVolume's audio tap for outputs macOS can't turn down (HDMI/DisplayPort speakers).
     // Off by default: it intercepts every app's sound. Its own switch; the key tap needs Accessibility.
     @AppStorage("enableSoftwareVolume") public var enableSoftwareVolume: Bool = false

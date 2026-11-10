@@ -798,6 +798,12 @@ struct FeaturesSettingsTab: View {
                                     "On when MonitorControl, Lunar or BetterDisplay sets external displays too"),
                                   isOn: $settings.passBrightnessKeys)
                         .padding(.leading, 20)
+                    if settings.passBrightnessKeys {
+                        SettingToggle(L("밝기 조절창 보이기", "Show the brightness HUD"),
+                                      L("끄면 그 앱의 표시만 뜸", "Off, only that app's display shows"),
+                                      isOn: $settings.showPassedBrightnessHUD)
+                            .padding(.leading, 40)
+                    }
                 }
                 // Its own switch: it keeps the volume key tap up even with the HUD switch off.
                 SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
