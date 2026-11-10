@@ -42,7 +42,6 @@ Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same s
 - The closed notch shows the tool that's running, then Done with a checkmark when a turn ends
 - When a turn ends, the first line of the reply and how long it took drop down, with Open terminal / Open app to jump to the terminal tab or app the session runs in
 - Answer permission requests and `AskUserQuestion` questions from the notch. Codex questions show in the notch and are answered in Codex
-- The Claude desktop app's next-step box shows in the notch too
 - A session waiting on you is announced again every 3, 5 or 10 minutes. The done and waiting sounds stay quiet while the screen is locked
 - Sessions grouped by folder. Click one for its session view with each step and the file changes, and jump from there to its terminal or app
 - Subagents Claude starts show under their session. Codex sessions go by their thread names from the Codex app
@@ -59,27 +58,27 @@ Each one is a tab in the open notch, and each can be turned off in Settings.
   <img src="assets/demo-tools.gif" width="80%" alt="Clipboard, per-app volume, batteries, speed test, Sidecar and display arrangement, and key test tabs">
 </p>
 
-- Clipboard history (text only, kept in memory). Pin the ones you reuse
+- Clipboard history (text only, kept in memory). Items you reuse can be pinned
 - Per-app volume
 - iPad Sidecar controls
 - Quick access to multi-display arrangement
 - Battery for your Mac, Bluetooth devices (third-party headsets and keyboards too), iPhone and iPad. Right-click a device to show it in the header or rank it for the closed notch
 - A ranked device below 20% (and not charging) shows in the closed notch's wing. Each one can be turned off
-- Speed test (Cloudflare's servers) and network info
+- Speed test (Cloudflare's servers), network info, and tethering data usage for SKT (Korea) subscribers only
 - Keyboard lock and key test
 
 In the open notch, ⌘1–⌘7 switch tabs.
 
-The volume and brightness keys show ClangNotch's own slider instead of the system one.
+Once enabled, the volume and brightness keys show ClangNotch's own slider instead of the system one.
 
 - The volume keys also turn down outputs macOS can't, such as HDMI and DisplayPort monitor speakers. Apps whose screen share would pick up the sound can be left out
-- If MonitorControl, Lunar or BetterDisplay sets your external display's brightness, the brightness keys can be left to it
+- If MonitorControl, Lunar or BetterDisplay sets your external display's brightness, the brightness keys can be passed through to it
 
 <p align="center">
   <img src="assets/demo-osd.gif" width="60%" alt="Volume and brightness sliders under the notch">
 </p>
 
-Connect AirPods or a Bluetooth headset and a card drops from the notch with its battery. AirPods show the moment the case opens, and only the bud you put in if it's one. AirPods Max show when you put them on and fold when you take them off.
+Connect AirPods or a Bluetooth headset and a card drops from the notch with its battery. AirPods show the moment the case opens, and with one bud in, only the bud you're wearing. AirPods Max show when you put them on and fold when you take them off.
 
 <p align="center">
   <img src="assets/demo-airpods.gif" width="60%" alt="AirPods Pro and AirPods Max cards dropping from the notch">
