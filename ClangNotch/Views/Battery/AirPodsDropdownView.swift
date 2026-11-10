@@ -9,9 +9,13 @@ struct AirPodsBlobGeometry {
     /// The card's resting top.
     let cardTop: CGFloat
     let card: CGSize
-    /// Width of the camera housing, 0 on a screen without one. Above the menu bar's bottom edge
-    /// the blob may show only inside it, where the hardware hides it.
+    /// Width of the camera housing, or of the notch ClangNotch draws on a screen without one.
+    /// Above the menu bar's bottom edge the blob may show only inside it.
     let notchWidth: CGFloat
+    /// A camera housing hides the neck's top. Without one the neck starts above the screen's top
+    /// edge, so the blob hangs from it the whole way: starting in the menu bar it stuck up like a
+    /// spike, and the card rose off the top as a loose rounded box (2026-11-10 recording).
+    let hasHousing: Bool
 }
 
 /// The panel's content. The card and its neck are two Core Animation shape layers in the notch
@@ -23,8 +27,8 @@ final class AirPodsDropdownContainer: NSView {
     private let cardLayer = CAShapeLayer()
     private let neckLayer = CAShapeLayer()
     /// Holds both shapes so one mask keeps them out of the menu bar: nothing above its bottom
-    /// edge except inside a real camera housing. Without it the blob drew over the menu bar on a
-    /// display without a notch, or past the notch's sides (2026-11-09 recording).
+    /// edge except inside the notch's width. Without it the blob drew over the menu bar past the
+    /// notch's sides (2026-11-09 recording).
     private let blobLayer = CALayer()
     private let blobMask = CAShapeLayer()
     private let hosting: FirstClickHostingView<AirPodsDropdownContent>
@@ -146,8 +150,11 @@ final class AirPodsDropdownContainer: NSView {
         // From inside the camera housing down into the card's top edge. The sides bow in to a
         // waist and flare out where they meet the card, so it reads as one drop; it overlaps
         // the card by 2pt so the two layers show no seam.
-        let topY = mb - 14, bottomY = rect.minY + 2
-        let topHalf = neck.0 / 2, waist = neck.1 / 2, bottomHalf = min(neck.2, rect.width - 2 * radius) / 2
+        let topY = g.hasHousing ? mb - 14 : -20, bottomY = rect.minY + 2
+        // Without a housing the whole neck shows, and at full width it read as a thick trunk
+        // going back in (user, 2026-11-10): narrower at the top, pinched in the middle.
+        let topHalf = neck.0 * (g.hasHousing ? 1 : 0.8) / 2, waist = neck.1 * (g.hasHousing ? 1 : 0.5) / 2
+        let bottomHalf = min(neck.2, rect.width - 2 * radius) / 2
         let neckPath = CGMutablePath()
         neckPath.move(to: CGPoint(x: mid - topHalf, y: topY), transform: flip)
         neckPath.addLine(to: CGPoint(x: mid + topHalf, y: topY), transform: flip)

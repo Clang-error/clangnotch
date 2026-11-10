@@ -309,17 +309,23 @@ final class AirPodsDropdown: ObservableObject {
         if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea?.width,
            let right = screen.auxiliaryTopRightArea?.width {
             notchWidth = screen.frame.width - left - right
+            hasHousing = true
         } else {
-            notchWidth = 0
+            // No camera housing: the width of the notch ClangNotch draws there, and the drop
+            // hangs from the screen's top edge (2026-11-10, external display).
+            notchWidth = getClosedNotchSize(screen: screen).width
+            hasHousing = false
         }
     }
 
     private var notchWidth: CGFloat = 0
+    private var hasHousing = true
 
     private var geometry: AirPodsBlobGeometry {
         AirPodsBlobGeometry(size: CGSize(width: Self.cardSize.width + Self.margin * 2,
                                          height: cardTop + Self.cardSize.height + Self.margin),
-                            menuBar: menuBar, cardTop: cardTop, card: Self.cardSize, notchWidth: notchWidth)
+                            menuBar: menuBar, cardTop: cardTop, card: Self.cardSize, notchWidth: notchWidth,
+                            hasHousing: hasHousing)
     }
 
     private var fillColor: CGColor {
