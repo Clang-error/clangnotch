@@ -795,11 +795,6 @@ struct FeaturesSettingsTab: View {
                     .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
             } header: {
                 Text(L("노치 탭", "Notch tabs"))
-            } footer: {
-                Text(L("켜면 펼친 노치에 그 탭이 생김 · 탭 순서는 설정 › 노치 › 탭",
-                       "Each switch adds its tab to the open notch · tab order in Settings › Notch › Tabs"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             // 조절창: the volume and brightness HUD and what goes with it.
