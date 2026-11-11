@@ -405,6 +405,7 @@ final class CodexManager: ObservableObject {
                 sessionState.activeTools.removeAll()
                 sessionState.isThinking = false
                 sessionState.isTurnInProgress = false
+                sessionState.turnStartTime = nil
                 if sessionState.pendingInputRequest?.isAsync != true {
                     sessionState.pendingInputRequest = nil
                 }
@@ -876,6 +877,7 @@ final class CodexManager: ObservableObject {
                 sessionState.activeTools.removeAll()
                 sessionState.isTurnInProgress = false
                 sessionState.isThinking = false
+                sessionState.turnStartTime = nil
                 sessionState.pendingInputRequest = nil
             }
             sessionStates[sessionId] = sessionState
@@ -924,6 +926,7 @@ final class CodexManager: ObservableObject {
             }
             sessionState.isThinking = false
             sessionState.isTurnInProgress = false
+            if !sessionState.isActive { sessionState.turnStartTime = nil }
             sessionStates[sessionId] = sessionState
         }
         if let id = selectedSession?.id, let sessionState = sessionStates[id] { state = sessionState }
@@ -984,6 +987,13 @@ final class CodexManager: ObservableObject {
 
         default:
             break
+        }
+
+        // When this run of work began, for the 세션 줄's tracing outline: kept while it works.
+        if !sessionState.isActive {
+            sessionState.turnStartTime = nil
+        } else if sessionState.turnStartTime == nil, eventTimestamp != .distantPast {
+            sessionState.turnStartTime = eventTimestamp
         }
 
         sessionStates[sessionId] = sessionState

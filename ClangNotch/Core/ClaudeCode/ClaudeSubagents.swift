@@ -23,12 +23,14 @@ enum ClaudeSubagents {
                   let meta = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   meta["finished"] as? Bool != true else { continue }
             let awaited = meta["requestShape"] as? String == "foreground" && meta["spawnDepth"] as? Int == 1
-            found.append((values.creationDate ?? modified, ClaudeSubagent(
+            let started = values.creationDate ?? modified
+            found.append((started, ClaudeSubagent(
                 id: name.hasPrefix("agent-") ? String(name.dropFirst(6)) : name,
                 description: meta["description"] as? String ?? "",
                 agentType: meta["agentType"] as? String ?? "",
                 awaitedToolUseId: awaited ? meta["toolUseId"] as? String : nil,
-                tool: runningTool(in: transcript)
+                tool: runningTool(in: transcript),
+                startTime: started
             )))
         }
         return found.sorted { ($0.started, $0.subagent.id) < ($1.started, $1.subagent.id) }.map(\.subagent)

@@ -132,6 +132,10 @@ struct CodexState: Equatable {
     /// A started turn remains active across gaps in JSONL output.
     var isTurnInProgress: Bool = false
 
+    /// When this run of work began (the line that made it active); nil while idle. The 세션 줄's
+    /// tracing outline counts its lap from here.
+    var turnStartTime: Date?
+
     /// Interactive question waiting for an answer in Codex
     var pendingInputRequest: CodexInputRequest?
 

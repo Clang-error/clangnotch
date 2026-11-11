@@ -82,12 +82,15 @@ extension View {
 struct TracingGlowOutline: View {
     var cornerRadius: CGFloat
     var color: Color
+    /// When the row's work began: its lap counts from there, so rows don't all go round in step.
+    var since: Date? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: reduceMotion)) { timeline in
-            let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3) / 3
+            let elapsed = timeline.date.timeIntervalSince(since ?? Date(timeIntervalSinceReferenceDate: 0))
+            let phase = elapsed.truncatingRemainder(dividingBy: 3) / 3
             shape
                 .strokeBorder(AngularGradient(stops: [
                     .init(color: color.opacity(0), location: 0),

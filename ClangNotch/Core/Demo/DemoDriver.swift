@@ -393,6 +393,7 @@ final class DemoDriver {
                 if let (index, step, begin) = active { state.activeTools = [tool(index, step, begin)] }
                 if working {
                     state.isTurnInProgress = true
+                    state.turnStartTime = time(script.start)
                     state.isThinking = state.activeTools.isEmpty && !asking
                 }
                 if asking, let question = script.question {

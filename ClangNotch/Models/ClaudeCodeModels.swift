@@ -153,6 +153,8 @@ struct ClaudeSubagent: Identifiable, Equatable {
     let awaitedToolUseId: String?
     /// The tool it is running; nil while it thinks.
     var tool: ClaudeToolExecution?
+    /// When it started (its transcript's creation), where its row's tracing outline counts from.
+    var startTime: Date? = nil
 }
 
 // MARK: - Todo Item

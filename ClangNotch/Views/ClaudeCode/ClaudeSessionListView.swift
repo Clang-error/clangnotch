@@ -239,6 +239,16 @@ private struct UnifiedWorkspaceSessionRow: View {
         return nil
     }
 
+    /// When the row's work began (its earliest working session's turn), where its outline's
+    /// lap counts from, so working rows don't all go round in step.
+    private var workStart: Date? {
+        let claude = group.claude.compactMap { manager.sessionStates[$0.id] }.filter(\.isActive)
+            .compactMap { $0.turnStartTime ?? $0.activeTools.first?.startTime }
+        let codex = group.codex.compactMap { codexManager.sessionStates[$0.id] }.filter(\.isActive)
+            .compactMap { $0.turnStartTime ?? $0.activeTools.first?.startTime }
+        return (claude + codex).min()
+    }
+
     private var isMuted: Bool {
         (group.claude.map(\.id) + group.codex.map(\.id)).contains(where: NotchSounds.isMuted)
     }
@@ -352,7 +362,7 @@ private struct UnifiedWorkspaceSessionRow: View {
                         in: RoundedRectangle(cornerRadius: 9))
             .overlay {
                 if let activeOutline {
-                    TracingGlowOutline(cornerRadius: 9, color: activeOutline)
+                    TracingGlowOutline(cornerRadius: 9, color: activeOutline, since: workStart)
                 } else if isSelected {
                     RoundedRectangle(cornerRadius: 9).stroke(Color.orange.opacity(0.35), lineWidth: 1)
                 }
@@ -475,7 +485,8 @@ private struct SubagentRows: View {
                     .padding(.trailing, 8)
                     .padding(.vertical, 6)
                     .background(NotchPalette.ink.opacity(0.035), in: RoundedRectangle(cornerRadius: 7))
-                    .overlay { TracingGlowOutline(cornerRadius: 7, color: Color(red: 0.9, green: 0.4, blue: 0.1)) }
+                    .overlay { TracingGlowOutline(cornerRadius: 7, color: Color(red: 0.9, green: 0.4, blue: 0.1),
+                                                  since: subagent.startTime) }
                     .help(subagent.agentType)
                 }
                 if subagents.count > limit {
