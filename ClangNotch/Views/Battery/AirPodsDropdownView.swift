@@ -282,6 +282,8 @@ struct AirPodsDropdownContent: View {
         .environment(\.colorScheme, appearance.theme(settings).scheme)
     }
 
+    private static let artBox: CGFloat = 100
+
     private func item(_ image: NSImage?, symbol: String, height: CGFloat, video: URL? = nil, level: Int?,
                       charging: Bool = false, visible: Bool, delay: Double, bounceKey: String = "") -> some View {
         VStack(spacing: 6) {
@@ -309,6 +311,9 @@ struct AirPodsDropdownContent: View {
                 SpringKeyframe(0.95, duration: 0.14)
                 SpringKeyframe(1, duration: 0.3, spring: .bouncy)
             }
+            // Every picture sits in the same box, centred: a still bud shorter than the turning
+            // case floats level with it instead of sinking onto its battery.
+            .frame(height: Self.artBox)
 
             if let level {
                 AirPodsBatteryGlyph(level: level, charging: charging)

@@ -106,9 +106,70 @@ enum AirPodsArt {
     /// name: MacBook Pro / Air with a notch on Apple silicon, the older shapes on Intel.
     static var thisMac: NSImage? {
         guard let name = thisMacImageName else { return nil }
-        return cached("mac-\(name)") {
-            Bundle(path: "/System/Library/PrivateFrameworks/ProductKitCore.framework")?.image(forResource: name)
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return cached("mac-\(name)-\(dark)") {
+            guard let mac = Bundle(path: "/System/Library/PrivateFrameworks/ProductKitCore.framework")?.image(forResource: name)
+            else { return nil }
+            return osWallpaper(dark: dark).flatMap { withScreen(mac, showing: $0) } ?? mac
         }
+    }
+
+    /// The default wallpaper of the macOS this runs on, so the Mac on the card shows what a new
+    /// Mac of this OS shows, not the Sequoia picture ProductKitCore drew it with. Wallpaper
+    /// extensions keep it as a large HEIC; a 600 px thumbnail is plenty for the screen.
+    private static func osWallpaper(dark: Bool) -> CGImage? {
+        let extensions = "/System/Library/ExtensionKit/Extensions"
+        let file = dark ? "TahoeDark.heic" : "TahoeLight.heic"
+        // Newest first: a later macOS's default wallpaper extension goes on top of this list.
+        let candidates = ["NeptuneOneWallpaper.appex"].map { "\(extensions)/\($0)/Contents/Resources/\(file)" }
+        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }),
+              let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 600,
+        ] as CFDictionary)
+    }
+
+    /// Paints `wallpaper` over the screen of a Mac picture. The screen is where the old wallpaper
+    /// is colourful; inside it, only pixels that aren't near-black are replaced, so the bezel,
+    /// the notch and the rounded corners stay.
+    private static func withScreen(_ mac: NSImage, showing wallpaper: CGImage) -> NSImage? {
+        let best = mac.representations.max { $0.pixelsWide < $1.pixelsWide }
+        var rect = CGRect(x: 0, y: 0, width: best?.pixelsWide ?? 0, height: best?.pixelsHigh ?? 0)
+        guard let cg = mac.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
+        let w = cg.width, h = cg.height
+        let space = CGColorSpaceCreateDeviceRGB()
+        let info = CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let base = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: space, bitmapInfo: info),
+              let paper = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: space, bitmapInfo: info)
+        else { return nil }
+        base.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let px = base.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        func saturated(_ i: Int) -> Bool {
+            let r = Int(px[i]), g = Int(px[i + 1]), b = Int(px[i + 2])
+            return px[i + 3] > 200 && max(r, g, b) - min(r, g, b) > 60
+        }
+        var minX = w, minY = h, maxX = -1, maxY = -1
+        for y in 0..<h { for x in 0..<w where saturated((y * w + x) * 4) {
+            minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+        } }
+        guard maxX > minX + 20, maxY > minY + 20 else { return nil }
+        // Rows in memory run top-down; CG draws bottom-up.
+        let screen = CGRect(x: minX, y: h - 1 - maxY, width: maxX - minX + 1, height: maxY - minY + 1)
+        let scale = max(screen.width / CGFloat(wallpaper.width), screen.height / CGFloat(wallpaper.height))
+        let size = CGSize(width: CGFloat(wallpaper.width) * scale, height: CGFloat(wallpaper.height) * scale)
+        paper.interpolationQuality = .high
+        paper.draw(wallpaper, in: CGRect(x: screen.midX - size.width / 2, y: screen.midY - size.height / 2,
+                                         width: size.width, height: size.height))
+        guard let wp = paper.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        for y in minY...maxY { for x in minX...maxX {
+            let i = (y * w + x) * 4
+            let lum = (Int(px[i]) + Int(px[i + 1]) + Int(px[i + 2])) / 3
+            guard lum > 22 else { continue }   // bezel, notch, corner shadow
+            px[i] = wp[i]; px[i + 1] = wp[i + 1]; px[i + 2] = wp[i + 2]; px[i + 3] = 255
+        } }
+        guard let out = base.makeImage() else { return nil }
+        return NSImage(cgImage: out, size: NSSize(width: w, height: h))
     }
 
     /// "MacBook Pro", from system_profiler once (the model identifier alone doesn't say Pro or Air).
