@@ -238,6 +238,12 @@ final class PermissionRequestCenter: ObservableObject {
     /// The pick goes to Claude as the hook's output. Claude Code hands it over as a Stop hook
     /// "blocking error", so the text says what it really is.
     func answerNextStep(sessionId: String, requestId: String, label: String, message: String) {
+        // `--demo`: no hook is held; the script takes the pick and drops its box.
+        if DemoMode.isActive {
+            answerableNextStepSessions.remove(sessionId)
+            DemoDriver.shared.answerNextStep(sessionId: sessionId)
+            return
+        }
         guard let held = heldNextSteps[sessionId] else { return }
         // Without a new box the app keeps drawing the answered one, buttons and all (seen
         // 2026-11-11 with a "no" that led to no work), so Claude is asked to close with one.
@@ -331,8 +337,10 @@ final class PermissionRequestCenter: ObservableObject {
 // MARK: - Demo
 
 extension PermissionRequestCenter {
-    /// `--demo`: the demo's Claude question can be answered from the notch, as if its hook were held.
-    func demoSetAnswerable(_ sessionIds: Set<String>) {
+    /// `--demo`: the demo's Claude questions and next-step boxes can be answered from the notch,
+    /// as if their hooks were held (the next-step one as with 실험 기능 on).
+    func demoSetAnswerable(_ sessionIds: Set<String>, nextSteps: Set<String> = []) {
         if answerableQuestionSessions != sessionIds { answerableQuestionSessions = sessionIds }
+        if answerableNextStepSessions != nextSteps { answerableNextStepSessions = nextSteps }
     }
 }

@@ -38,11 +38,18 @@ final class DemoDriver {
     private var task: Task<Void, Never>?
     /// Questions answered from the 질문 드롭다운 this loop.
     private var answered: Set<String> = []
+    /// Next-step boxes answered from the 다음 단계 드롭다운 this loop.
+    private var answeredNextSteps: Set<String> = []
     private init() {}
 
     /// A pick in the 질문 드롭다운 (`PermissionRequestCenter.answerQuestion`) ends the question.
     func answer(sessionId: String) {
         answered.insert(sessionId)
+    }
+
+    /// A button in the 다음 단계 드롭다운 (`PermissionRequestCenter.answerNextStep`) ends the box.
+    func answerNextStep(sessionId: String) {
+        answeredNextSteps.insert(sessionId)
     }
 
     func start() {
@@ -116,6 +123,7 @@ final class DemoDriver {
             let began = Date()
             var completed: Set<String> = []
             answered = []
+            answeredNextSteps = []
             while Date().timeIntervalSince(began) < Self.loopLength, !Task.isCancelled {
                 render(scripts, at: Date().timeIntervalSince(began), loop: loop, began: began, completed: &completed)
                 try? await Task.sleep(for: .milliseconds(250))
@@ -145,6 +153,13 @@ final class DemoDriver {
         let options: [(String, String)]
     }
 
+    private struct NextStep {
+        let recap: String
+        let ask: String
+        /// (button, the message it sends)
+        let actions: [(String, String)]
+    }
+
     private struct Script {
         let name: String
         let agent: Agent
@@ -157,6 +172,10 @@ final class DemoDriver {
         var question: Question? = nil
         /// When the question is up, unless an option is picked in the notch first.
         var asks: ClosedRange<TimeInterval> = 17...25
+        /// The Claude app's next-step box after the turn, answerable from the notch (실험 기능).
+        var nextStep: NextStep? = nil
+        /// When the box is up, unless a button is picked in the notch first.
+        var offers: ClosedRange<TimeInterval> = 30.5...46
         var id: String {
             if case .codex = agent { return "demo-\(name)" }
             return "Claude:/Users/demo/Projects/\(name)"
@@ -220,7 +239,15 @@ final class DemoDriver {
             ]))
 
         switch scene {
-        case .claude: return [orbit, lumen]
+        case .claude:
+            // The desktop session ends on the app's next-step box, picked from the notch.
+            var desktop = orbit
+            desktop.nextStep = NextStep(
+                recap: "Invoice totals now include regional tax. All 48 billing tests pass.",
+                ask: "Open a pull request for the tax change?",
+                actions: [("Open PR", "Open a pull request for the regional tax change"),
+                          ("Not yet", "Leave it on the branch for now")])
+            return [desktop, lumen]
         case .codex: return [atlas, prism]
         case .tools, .airpods, .osd, .lowbattery, .tether: return []
         case .many:
@@ -323,6 +350,13 @@ final class DemoDriver {
                         ]],
                     ])]
                 }
+                if let next = script.nextStep, script.offers.contains(t), !answeredNextSteps.contains(script.id),
+                   let box = ClaudeInputRequest.wrapUp(id: "demo-\(loop)-\(script.name)-next", input: [
+                       "recap": next.recap, "ask": next.ask,
+                       "actions": next.actions.map { ["label": $0.0, "message": $0.1] },
+                   ]) {
+                    state.pendingInputRequests.append(box)
+                }
                 claudeSessions.append(session)
                 claudeStates[session.id] = state
                 if t >= script.end, completed.insert(script.id).inserted {
@@ -379,7 +413,10 @@ final class DemoDriver {
         }
 
         ClaudeCodeManager.shared.demoApply(sessions: claudeSessions, states: claudeStates)
-        PermissionRequestCenter.shared.demoSetAnswerable(Set(claudeStates.filter { !$0.value.pendingInputRequests.isEmpty }.keys))
+        // Questions and next-step boxes alike can be answered in the notch, as with 실험 기능 on.
+        PermissionRequestCenter.shared.demoSetAnswerable(
+            Set(claudeStates.filter { $0.value.pendingInputRequests.contains { !$0.isWrapUp } }.keys),
+            nextSteps: Set(claudeStates.filter { $0.value.pendingInputRequests.contains { $0.isWrapUp } }.keys))
         // A scene without one agent shows no usage card for it either.
         let codexLimits = codexSessions.isEmpty ? CodexRateLimits() : CodexRateLimits(
             primary: CodexRateLimitWindow(usedPercent: 34 + codexProgress * 0.3, windowMinutes: 300,
