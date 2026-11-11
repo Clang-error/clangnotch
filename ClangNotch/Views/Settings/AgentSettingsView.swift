@@ -12,12 +12,12 @@ private let toolbarItemsStart: CGFloat = 96
 private let navControlWidth: CGFloat = 73
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case about, general, notch, features, network, agents
+    case about, general, notch, features, network, agents, experimental
 
     var id: String { rawValue }
 
     /// Sidebar groups, top to bottom; 정보 is the card above them.
-    static let groups: [[SettingsPage]] = [[.general, .notch], [.features, .network], [.agents]]
+    static let groups: [[SettingsPage]] = [[.general, .notch], [.features, .network], [.agents], [.experimental]]
 
     var title: String {
         switch self {
@@ -27,6 +27,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .features: return L("기능", "Features")
         case .network:  return L("네트워크", "Network")
         case .agents:   return L("에이전트", "Agents")
+        case .experimental: return L("실험 기능", "Experimental")
         }
     }
 
@@ -38,6 +39,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .features: return "square.grid.2x2.fill"
         case .network:  return "wifi"
         case .agents:   return "sparkles"
+        case .experimental: return "flask.fill"
         }
     }
 
@@ -49,6 +51,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .features: return .blue
         case .network:  return .teal
         case .agents:   return .orange
+        case .experimental: return .purple
         }
     }
 
@@ -64,6 +67,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
+        case .experimental: return ["실험", "codex", "질문", "답하기", "experimental", "question", "answer"]
         }
     }
 
@@ -214,6 +218,7 @@ public struct AgentSettingsView: View {
         case .features: FeaturesSettingsTab(settings: settings)
         case .network:  NetworkSettingsTab(settings: settings)
         case .agents:   AgentsSettingsTab(settings: settings)
+        case .experimental: ExperimentalSettingsTab(settings: settings)
         }
     }
 }
@@ -1074,16 +1079,32 @@ struct AgentsSettingsTab: View {
             } header: {
                 Text("Codex")
             }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+    }
+}
 
-            // Things that lean on another app's internals and may stop working after its update.
+/// 설정 › 실험 기능: things that lean on another app's internals and may stop working after
+/// that app updates. Each is off until turned on.
+struct ExperimentalSettingsTab: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Form {
             Section {
                 SettingToggle(L("Codex 앱 질문에 노치에서 답하기", "Answer Codex app questions from the notch"),
                               L("Codex 앱이 선택지로 물으면 노치에서 바로 답함 · Codex 앱 내부 연결을 써서 앱이 업데이트되면 안 될 수 있음",
                                 "Answers the Codex app's multiple-choice questions from the notch · uses the app's internal connection, so an app update may break it"),
                               isOn: $settings.experimentalCodexAppAnswers)
-                    .disabled(!codexEnabled.wrappedValue)
+                    .disabled(!(settings.showSourceCodex && settings.enableCodexJSONL))
             } header: {
-                Text(L("실험 기능", "Experimental"))
+                Text("Codex")
+            } footer: {
+                Text(L("다른 앱의 내부 동작에 기대는 기능이라, 그 앱이 업데이트되면 안 될 수 있습니다.",
+                       "These lean on other apps' internals and may stop working when those apps update."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
