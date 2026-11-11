@@ -65,6 +65,7 @@ final class ClaudeFixture {
     let staleLineAfter: TimeInterval = 120
     let turnSafetyTimeout: TimeInterval = 300
     func resetToolIdleTimer() {}
+    func holdsWrapUpForStopHook(_ sessionId: String) -> Bool { false }
     func updateSessionsNeedingPermission() {}
     func captureConversation(from: [String: Any], into: inout ClaudeCodeState) {}
     func scanForSessions() { availableSessions = Array(remoteSessions.values) }
@@ -128,6 +129,12 @@ swift += '''}
                                   "actions": [["label": "받아도 돼", "message": "받아서 조사해"], ["label": "안 받고", "message": "웹으로만"]]]
         w.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
         w.parseMessageForSession(["role":"user", "content":[["type":"tool_result", "tool_use_id":"box"]]], sessionId:"s")
+        precondition(!w.state.isAwaitingInput, "The box waits for the turn's closing message, as in the app")
+        // The turn's closing message: the box shows from here.
+        func close(_ fixture: ClaudeFixture) {
+            fixture.parseMessageForSession(["role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"끝"]]], sessionId:"s")
+        }
+        close(w)
         precondition(w.state.pendingInputRequests.first?.questions.first?.options.map(\.label) == ["받아도 돼", "안 받고"],
                      "A box with a question stays after its tool result, with or without blocked")
         w.parseMessageForSession(["role":"user", "content":"<system-reminder>x</system-reminder>"], sessionId:"s", isMeta: true)
@@ -151,20 +158,33 @@ swift += '''}
         precondition(tasks.state.todos.map(\.content) == ["둘째 작업"], "A deleted task leaves the list")
         let closed = ClaudeFixture()
         closed.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        close(closed)
+        precondition(closed.state.isAwaitingInput)
         closed.dismissInputRequest(id: "box")
         precondition(!closed.state.isAwaitingInput, "The X closes the box")
         closed.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        close(closed)
         precondition(!closed.state.isAwaitingInput, "Reading the closed box's line again doesn't reopen it")
         let newer = ClaudeFixture()
         newer.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        close(newer)
+        precondition(newer.state.isAwaitingInput)
         newer.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"r2", "name":"mcp__ccd_turn__wrap_up", "input": recap]]], sessionId:"s")
         precondition(!newer.state.isAwaitingInput, "A newer box without a question retires the older one")
+        close(newer)
+        precondition(!newer.state.isAwaitingInput, "...and brings no box of its own")
         let queued = ClaudeFixture()
         queued.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        close(queued)
         queued.parseJSONLLineForSession(#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"x","origin":{"kind":"peer"}}}"#, sessionId:"s")
         precondition(queued.state.isAwaitingInput, "A queued message from another session is not the user's answer")
         queued.parseJSONLLineForSession(#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"받아서 조사해","origin":{"kind":"human"}}}"#, sessionId:"s")
         precondition(!queued.state.isAwaitingInput, "A message typed mid-turn answers the box")
+        let early = ClaudeFixture()
+        early.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"box", "name":"mcp__ccd_turn__wrap_up", "input": box]]], sessionId:"s")
+        early.parseJSONLLineForSession(#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"그만","origin":{"kind":"human"}}}"#, sessionId:"s")
+        close(early)
+        precondition(!early.state.isAwaitingInput, "A message typed before the turn ended answers the box it was about to show")
         let c = ClaudeFixture()
         c.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"t", "name":"Bash"]]], sessionId:"s")
         precondition(c.state.isActive && c.state.hasActiveTools)

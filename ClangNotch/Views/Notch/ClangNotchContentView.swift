@@ -1604,8 +1604,11 @@ struct ClangNotchContentView: View {
                     let sessionId = claudeCodeManager.sessionStates.first { $0.value.pendingInputRequests.contains { $0.id == request.id } }?.key
                     NotchSection(title: "NEEDS YOU · Claude", rail: claudeGlowColor, onDismiss: { claudeCodeManager.dismissInputRequest(id: request.id) }) {
                         QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
+                                            // A next-step box the notch can answer: its options are buttons here too.
+                                            onSubmit: request.isWrapUp ? nextStepSubmit(for: request, sessionId: sessionId) : nil,
                                             openTitle: sessionId.map { openTitle(.claude, $0) },
                                             onOpen: sessionId.map { id in { focusSession(.claude, id); notchVM.close() } })
+                            .id(request.id)
                     }
                 }
 
@@ -1734,6 +1737,28 @@ struct ClangNotchContentView: View {
         claudeCodeManager.sessionStates.first { $0.value.pendingInputRequests.contains { $0.id == request.id } }?.key
     }
 
+    /// Set while the session's next-step hook waits on the notch (설정 › 실험 기능), so a
+    /// button in the 다음 단계 드롭다운 answers the box from here.
+    private func nextStepAnswer(for request: ClaudeInputRequest, sessionId: String?) -> ((AgentInputOption) -> Void)? {
+        guard let sessionId, permissionCenter.answerableNextStepSessions.contains(sessionId) else { return nil }
+        let center = permissionCenter
+        return { option in
+            center.answerNextStep(sessionId: sessionId, requestId: request.id,
+                                  label: option.label, message: option.description)
+        }
+    }
+
+    /// The same answer from the NEEDS YOU 카드, whose options come back as `[question: label]`.
+    private func nextStepSubmit(for request: ClaudeInputRequest, sessionId: String?) -> (([String: Any]) -> Void)? {
+        guard let pick = nextStepAnswer(for: request, sessionId: sessionId),
+              let question = request.questions.first else { return nil }
+        return { answers in
+            guard let label = answers[question.question] as? String,
+                  let option = question.options.first(where: { $0.label == label }) else { return }
+            pick(option)
+        }
+    }
+
     private func wrapUpDropdown(_ request: ClaudeInputRequest) -> some View {
         let sessionId = claudeSessionId(asking: request)
         return WrapUpDropdownView(
@@ -1745,7 +1770,8 @@ struct ClangNotchContentView: View {
             dismissOpen: $questionDismissOpen,
             // Collapses only, like the 질문 드롭다운; Answer and the NEEDS YOU 카드 stay.
             onDismiss: { dismissQuestionNotice() },
-            onClear: { clearQuestionNotice() }
+            onClear: { clearQuestionNotice() },
+            onPick: nextStepAnswer(for: request, sessionId: sessionId)
         )
     }
 

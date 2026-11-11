@@ -101,6 +101,10 @@ public final class AppSettings: ObservableObject {
     // internal IPC socket (CodexAppIPC) and the shared daemon's experimental API (CodexDaemonIPC),
     // which an update can change. Off by default. The key keeps its first name.
     @AppStorage("experimentalCodexAppAnswers") public var experimentalCodexAppAnswers: Bool = false
+    // 설정 › 실험 기능 › "Claude 다음 단계에 노치에서 답하기": a Stop hook that stays behind after
+    // the turn and wakes the session with the pick (NextStepHooks). Off by default; the hook is
+    // in ~/.claude/settings.json only while this is on.
+    @AppStorage("experimentalClaudeNextStepAnswers") public var experimentalClaudeNextStepAnswers: Bool = false
     /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.

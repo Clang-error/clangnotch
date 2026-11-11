@@ -67,7 +67,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
-        case .experimental: return ["실험", "codex", "질문", "답하기", "experimental", "question", "answer"]
+        case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "experimental", "question", "answer", "next step"]
         }
     }
 
@@ -1100,6 +1100,19 @@ struct ExperimentalSettingsTab: View {
                     .disabled(!(settings.showSourceCodex && settings.enableCodexJSONL))
             } header: {
                 Text("Codex")
+            }
+
+            Section {
+                SettingToggle(L("Claude 다음 단계에 노치에서 답하기", "Answer Claude next steps from the notch"),
+                              L("Claude 앱이 다음 단계 상자로 물으면 노치에서 버튼을 눌러 답함 · 턴이 끝난 뒤 10분 동안 · Claude Code 훅으로 세션을 깨워 답을 전해서 앱에서 누른 것과 기록이 다름",
+                                "Press the Claude app's next-step buttons from the notch · for 10 minutes after the turn ends · a Claude Code hook wakes the session with the answer, so the record differs from pressing in the app"),
+                              isOn: $settings.experimentalClaudeNextStepAnswers)
+                    .disabled(!(settings.showSourceClaudeCode && settings.enableClaudeCodeJSONL))
+                    .onChange(of: settings.experimentalClaudeNextStepAnswers) { _, _ in
+                        ClaudeCodeManager.shared.syncNextStepHook()
+                    }
+            } header: {
+                Text("Claude Code")
             } footer: {
                 Text(L("다른 앱의 내부 동작에 기대는 기능이라, 그 앱이 업데이트되면 안 될 수 있습니다.",
                        "These lean on other apps' internals and may stop working when those apps update."))

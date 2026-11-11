@@ -200,7 +200,7 @@ struct PermissionDropdownView: View {
 
 /// 다음 단계 드롭다운: the Claude desktop app's next-step box, drawn like the 권한 드롭다운.
 /// Its buttons send a prepared message in the app, so here they only show what each would
-/// say; the way to answer is the app itself.
+/// say and the way to answer is the app itself, unless `onPick` is set.
 struct WrapUpDropdownView: View {
     let request: ClaudeInputRequest
     let projectName: String
@@ -211,6 +211,9 @@ struct WrapUpDropdownView: View {
     @Binding var dismissOpen: Bool
     let onDismiss: () -> Void
     let onClear: () -> Void
+    /// Set while the session's next-step hook waits on the notch (설정 › 실험 기능): the
+    /// buttons can be pressed, and the pick goes to Claude.
+    var onPick: ((AgentInputOption) -> Void)? = nil
 
     var body: some View {
         let question = request.questions.first
@@ -248,19 +251,27 @@ struct WrapUpDropdownView: View {
             .popIn(delay: 0.035)
 
             HStack(spacing: 6) {
-                // The app's buttons, as labels: hovering shows the message each one sends.
+                // The app's buttons: hovering shows the message each one sends. They are
+                // labels until the notch can answer, then buttons in the agent's colour.
                 ForEach(Array((question?.options ?? []).enumerated()), id: \.offset) { _, option in
-                    Text(option.label)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(NotchPalette.ink.opacity(0.7))
-                        .lineLimit(1)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .overlay(Capsule().stroke(NotchPalette.ink.opacity(0.18)))
-                        .help(option.description)
+                    Button { onPick?(option) } label: {
+                        Text(option.label)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(onPick == nil ? NotchPalette.ink.opacity(0.7) : accent)
+                            .lineLimit(1)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(onPick == nil ? .clear : accent.opacity(0.14)))
+                            .overlay(Capsule().stroke(onPick == nil ? NotchPalette.ink.opacity(0.18) : accent.opacity(0.55)))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onPick == nil)
+                    .help(option.description)
                 }
                 Spacer(minLength: 0)
-                DropdownButton(title: openTitle, tint: accent, filled: true, action: onOpen)
+                // Filled as in the 완료 드롭다운, unless the buttons beside it are the ones to press.
+                DropdownButton(title: openTitle, tint: accent, filled: onPick == nil, action: onOpen)
                     .newHighlight(cornerRadius: 12, delay: 0.25)
             }
             .popIn(delay: 0.07)

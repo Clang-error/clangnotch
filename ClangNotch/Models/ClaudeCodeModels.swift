@@ -324,6 +324,17 @@ struct ClaudeCodeState: Equatable {
     var pendingInputRequests: [ClaudeInputRequest] = []
     var isAwaitingInput: Bool { !pendingInputRequests.isEmpty }
 
+    /// The next-step box of a turn that is still being written. Claude makes the box before
+    /// its closing message, but the app draws it once the turn has ended, so it joins
+    /// `pendingInputRequests` only then.
+    var stagedWrapUp: ClaudeInputRequest?
+
+    mutating func showStagedWrapUp() {
+        guard let box = stagedWrapUp else { return }
+        stagedWrapUp = nil
+        if !pendingInputRequests.contains(where: { $0.id == box.id }) { pendingInputRequests.append(box) }
+    }
+
     /// True when Claude is waiting for user permission to execute a tool
     var needsPermission: Bool = false
     /// True when `needsPermission` was set by Claude Code's own Notification hook

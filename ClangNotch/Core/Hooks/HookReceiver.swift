@@ -1,8 +1,8 @@
 import Foundation
 
 /// Listens on 127.0.0.1 (port 4318 unless changed) for what the agents post: Claude Code's
-/// `Notification` and AskUserQuestion hooks, the status line bridge, the permission hook
-/// (held open until the notch answers) and hooks forwarded from SSH hosts.
+/// `Notification` and AskUserQuestion hooks, the status line bridge, the permission and
+/// next-step hooks (held open until the notch answers) and hooks forwarded from SSH hosts.
 @MainActor
 final class HookReceiver {
     static let shared = HookReceiver()
@@ -38,6 +38,10 @@ final class HookReceiver {
         case .permissionHook:
             if let reply = request.reply {
                 PermissionRequestCenter.shared.receive(request.body, reply: reply)
+            }
+        case .nextStepHook:
+            if let reply = request.reply {
+                PermissionRequestCenter.shared.receiveNextStep(request.body, reply: reply)
             }
         case .other:
             break

@@ -491,6 +491,40 @@ final class ClaudeCodeManager: ObservableObject {
         return SessionAppResolver.terminal(pid: pid_t(pid))
     }
 
+    /// With the notch answering next-step boxes (설정 › 실험 기능), a box waits for the
+    /// session's `Stop` hook, which comes a moment after the closing message, so that its
+    /// buttons are lit when it shows. `showStagedWrapUp(for:)` shows it when the hook is in,
+    /// and this timer when none comes (a session from before the hook, a remote one).
+    private func holdsWrapUpForStopHook(_ sessionId: String) -> Bool {
+        guard AppSettings.shared.experimentalClaudeNextStepAnswers else { return false }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            self?.showStagedWrapUp(for: sessionId)
+        }
+        return true
+    }
+
+    func showStagedWrapUp(for sessionId: String) {
+        guard var state = sessionStates[sessionId], state.stagedWrapUp != nil else { return }
+        state.showStagedWrapUp()
+        sessionStates[sessionId] = state
+        syncStateIfSelected(sessionId)
+        objectWillChange.send()
+    }
+
+    /// Puts the next-step `Stop` hook in `~/.claude/settings.json` while its 실험 기능 switch
+    /// is on, and takes it out otherwise.
+    func syncNextStepHook() {
+        guard !DemoMode.isActive, let port = UInt16(exactly: AppSettings.shared.hookPort) else { return }
+        let settings = AppSettings.shared
+        do {
+            try NextStepHooks.sync(in: claudeDir.appendingPathComponent("settings.json"), port: port, maxTime: 600,
+                                   enabled: settings.enableClaudeCodeJSONL && settings.experimentalClaudeNextStepAnswers)
+        } catch {
+            debugLog("[ClaudeCode] Could not update the next-step hook: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Session Scanning
 
     private func startSessionScanning() {
@@ -514,6 +548,7 @@ final class ClaudeCodeManager: ObservableObject {
                 debugLog("[ClaudeCode] Could not wrap the status line: \(error.localizedDescription)")
             }
         }
+        syncNextStepHook()
         scanForSessions()
         startWatchingProjectsDirectory()
         // Folder-watcher catches NEW session files instantly, but appends to a pre-existing
@@ -800,6 +835,7 @@ final class ClaudeCodeManager: ObservableObject {
                 sessionState.activeTools.removeAll()
                 // A next-step box waits for the user however long it takes.
                 sessionState.pendingInputRequests.removeAll { !$0.isWrapUp }
+                sessionState.showStagedWrapUp()
                 sessionState.isThinking = false
                 sessionState.turnStartTime = nil
             } else if sessionState.turnStartTime != nil {
@@ -871,6 +907,7 @@ final class ClaudeCodeManager: ObservableObject {
             }
             sessionState.isThinking = false
             sessionState.turnStartTime = nil
+            sessionState.showStagedWrapUp()
             if isRemote {
                 sessionState.activeTools.removeAll()
                 sessionState.pendingInputRequests.removeAll()
@@ -990,6 +1027,7 @@ final class ClaudeCodeManager: ObservableObject {
                     sessionState.lastStopReason = "interrupted"
                     sessionState.activeTools.removeAll()
                     sessionState.pendingInputRequests.removeAll()
+                    sessionState.stagedWrapUp = nil
                     sessionState.turnStartTime = nil
                     sessionStates[sessionId] = sessionState
                     syncStateIfSelected(sessionId)
@@ -1012,8 +1050,9 @@ final class ClaudeCodeManager: ObservableObject {
            attachment["type"] as? String == "queued_command",
            (attachment["origin"] as? [String: Any])?["kind"] as? String == "human",
            var sessionState = sessionStates[sessionId],
-           sessionState.pendingInputRequests.contains(where: \.isWrapUp) {
+           sessionState.pendingInputRequests.contains(where: \.isWrapUp) || sessionState.stagedWrapUp != nil {
             sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
+            sessionState.stagedWrapUp = nil
             sessionStates[sessionId] = sessionState
             syncStateIfSelected(sessionId)
             objectWillChange.send()
@@ -1139,6 +1178,7 @@ final class ClaudeCodeManager: ObservableObject {
                             sessionState.lastStopReason = "interrupted"
                             sessionState.activeTools.removeAll()
                             sessionState.pendingInputRequests.removeAll()
+                            sessionState.stagedWrapUp = nil
                             sessionState.turnStartTime = nil
                         }
 
@@ -1174,14 +1214,15 @@ final class ClaudeCodeManager: ObservableObject {
                             tool.description = toolDescription
                             tool.change = ToolChange.claude(toolName: toolName, input: item["input"])
 
-                            // Shown until the user's next message, even when loaded from history.
+                            // Shown from the turn's end until the user's next message, even
+                            // when loaded from history.
                             if toolName == wrapUpToolName {
                                 // A newer box, even one with no question, retires the older one.
                                 sessionState.pendingInputRequests.removeAll { $0.isWrapUp && $0.id != toolId }
+                                sessionState.stagedWrapUp = nil
                                 if !dismissedInputRequestIDs.contains(toolId),
-                                   !sessionState.pendingInputRequests.contains(where: { $0.id == toolId }),
-                                   let request = ClaudeInputRequest.wrapUp(id: toolId, input: item["input"]) {
-                                    sessionState.pendingInputRequests.append(request)
+                                   !sessionState.pendingInputRequests.contains(where: { $0.id == toolId }) {
+                                    sessionState.stagedWrapUp = ClaudeInputRequest.wrapUp(id: toolId, input: item["input"])
                                 }
                             }
 
@@ -1220,6 +1261,7 @@ final class ClaudeCodeManager: ObservableObject {
            message["content"] is String
             || (message["content"] as? [[String: Any]])?.contains(where: { $0["type"] as? String == "text" }) == true {
             sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
+            sessionState.stagedWrapUp = nil
         }
 
         if let role = message["role"] as? String, role == "user",
@@ -1270,6 +1312,12 @@ final class ClaudeCodeManager: ObservableObject {
             // each already carrying end_turn, some minutes apart; its text line is the end.
             let content = message["content"] as? [[String: Any]] ?? []
             let hasAnswerText = content.contains { $0["type"] as? String == "text" }
+            // The closing message is out: the app draws the next-step box now, and so does the
+            // notch, unless it waits a moment for the hook that lights the box's buttons.
+            if hasAnswerText, sessionState.stagedWrapUp != nil,
+               isStale || isLoadingHistoryBySession[sessionId] == true || !holdsWrapUpForStopHook(sessionId) {
+                sessionState.showStagedWrapUp()
+            }
             if stopReason == "end_turn", hasAnswerText, !isStale,
                isLoadingHistoryBySession[sessionId] != true,
                let messageId = message["id"] as? String,
@@ -1484,6 +1532,13 @@ final class ClaudeCodeManager: ObservableObject {
                 // open) are real; only an idle state entered after our last activity ends it.
                 guard record.isIdle, let changedAt = record.statusChangedAt,
                       changedAt >= lastActivity.addingTimeInterval(-1) else { continue }
+                // The turn is over, even if its last message had no text to mark the end.
+                if state.stagedWrapUp != nil {
+                    state.showStagedWrapUp()
+                    sessionStates[candidate.id] = state
+                    syncStateIfSelected(candidate.id)
+                    changed = true
+                }
                 // Idle is exactly how a session waits on its next-step box: nothing to clear.
                 if !state.isActive, !state.needsPermission,
                    state.pendingInputRequests.allSatisfy(\.isWrapUp) { continue }
@@ -1503,6 +1558,7 @@ final class ClaudeCodeManager: ObservableObject {
             // A next-step box outlives idle; only an exit drops it.
             let exited = live[candidate.conversationId] == nil
             state.pendingInputRequests.removeAll { exited || !$0.isWrapUp }
+            if exited { state.stagedWrapUp = nil }
             state.isThinking = false
             state.turnStartTime = nil
             state.needsPermission = false
@@ -1524,6 +1580,7 @@ final class ClaudeCodeManager: ObservableObject {
         state.activeTools.removeAll()
         state.subagents.removeAll()
         state.pendingInputRequests.removeAll()
+        state.stagedWrapUp = nil
         state.needsPermission = false
         state.needsPermissionConfirmed = false
         state.pendingPermissionTool = nil

@@ -53,6 +53,16 @@ final class PermissionRequestCenter: ObservableObject {
     }
     private var heldQuestions: [String: HeldQuestion] = [:]
 
+    /// Claude sessions whose next-step box the 다음 단계 드롭다운 can answer right now.
+    @Published private(set) var answerableNextStepSessions: Set<String> = []
+    private struct HeldNextStep {
+        let reply: HookReply
+        let timeout: Task<Void, Never>
+    }
+    private var heldNextSteps: [String: HeldNextStep] = [:]
+    /// Under the next-step hook's 600s curl limit.
+    private static let nextStepWaitLimit: TimeInterval = 590
+
     private init() {}
 
     func receive(_ body: Data, reply: HookReply) {
@@ -176,8 +186,91 @@ final class PermissionRequestCenter: ObservableObject {
         stopWatchingIfIdle()
     }
 
+    // MARK: Next steps
+
+    /// A `Stop` hook that stays behind after the turn (`NextStepHooks`). It is held only
+    /// while the session shows a next-step box with buttons; the answer goes back as the
+    /// hook's output, which wakes the session.
+    func receiveNextStep(_ body: Data, reply: HookReply) {
+        guard AppSettings.shared.experimentalClaudeNextStepAnswers,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let transcript = json["transcript_path"] as? String,
+              let sessionId = ClaudeCodeManager.shared.sessionId(forTranscript: transcript) else {
+            reply.send(nil)
+            return
+        }
+        Task { [weak self] in
+            // The box is written before the turn's last message, but the transcript watcher
+            // can be a beat behind the hook. The box was waiting for this hook to show.
+            for _ in 0..<10 {
+                ClaudeCodeManager.shared.showStagedWrapUp(for: sessionId)
+                if Self.nextStepBox(in: sessionId) != nil {
+                    self?.holdNextStep(sessionId: sessionId, reply: reply)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            reply.send(nil)
+        }
+    }
+
+    private static func nextStepBox(in sessionId: String) -> ClaudeInputRequest? {
+        ClaudeCodeManager.shared.sessionStates[sessionId]?.pendingInputRequests.first {
+            $0.isWrapUp && $0.questions.first?.options.isEmpty == false
+        }
+    }
+
+    private func holdNextStep(sessionId: String, reply: HookReply) {
+        releaseNextStep(sessionId)
+        let timeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.nextStepWaitLimit))
+            guard !Task.isCancelled else { return }
+            self?.releaseNextStep(sessionId)
+        }
+        heldNextSteps[sessionId] = HeldNextStep(reply: reply, timeout: timeout)
+        answerableNextStepSessions.insert(sessionId)
+        reply.setOnClose { [weak self] in
+            Task { @MainActor in self?.dropNextStep(sessionId, ifReply: reply) }
+        }
+        watchTranscripts()
+    }
+
+    /// The pick goes to Claude as the hook's output. Claude Code hands it over as a Stop hook
+    /// "blocking error", so the text says what it really is.
+    func answerNextStep(sessionId: String, requestId: String, label: String, message: String) {
+        guard let held = heldNextSteps[sessionId] else { return }
+        // Without a new box the app keeps drawing the answered one, buttons and all (seen
+        // 2026-11-11 with a "no" that led to no work), so Claude is asked to close with one.
+        let text = "This is not an error. The user answered your next-step question from ClangNotch, "
+            + "the notch app they use to reply without opening this window. "
+            + "They picked \"\(label)\"\(message.isEmpty || message == label ? "." : ": \(message)") "
+            + "The box they answered is still on screen in the app, so close this turn with "
+            + "mcp__ccd_turn__wrap_up as you normally do (the recap alone when nothing is pending) to replace it."
+        held.reply.send(Data(text.utf8))
+        dropNextStep(sessionId, ifReply: held.reply)
+        // The wake-up is not a user message in the transcript, so the box is cleared here.
+        ClaudeCodeManager.shared.dismissInputRequest(id: requestId)
+    }
+
+    /// Lets the hook end without waking the session.
+    private func releaseNextStep(_ sessionId: String) {
+        guard let held = heldNextSteps[sessionId] else { return }
+        held.reply.send(nil)
+        dropNextStep(sessionId, ifReply: held.reply)
+    }
+
+    private func dropNextStep(_ sessionId: String, ifReply reply: HookReply) {
+        guard let held = heldNextSteps[sessionId], held.reply === reply else { return }
+        held.timeout.cancel()
+        heldNextSteps.removeValue(forKey: sessionId)
+        answerableNextStepSessions.remove(sessionId)
+        stopWatchingIfIdle()
+    }
+
     private func stopWatchingIfIdle() {
-        if !queue.contains(where: { $0.agent == .claude }) && heldQuestions.isEmpty { transcriptWatch = nil }
+        if !queue.contains(where: { $0.agent == .claude }) && heldQuestions.isEmpty && heldNextSteps.isEmpty {
+            transcriptWatch = nil
+        }
     }
 
     /// Claude keeps a hook running after its own dialog was answered; the tool's result in
@@ -201,6 +294,10 @@ final class PermissionRequestCenter: ObservableObject {
             } else if !pending, held.seenPending {
                 releaseQuestion(sessionId)
             }
+        }
+        // A box answered in the app, or cleared, is gone from the session.
+        for sessionId in heldNextSteps.keys where Self.nextStepBox(in: sessionId) == nil {
+            releaseNextStep(sessionId)
         }
         for item in queue where item.agent == .claude {
             guard let sessionId = item.sessionId,

@@ -6,13 +6,14 @@ final class HookHTTPServer {
     enum Route {
         case claudeHook
         case permissionHook
+        case nextStepHook
         case other
     }
 
     struct Request {
         let route: Route
         let body: Data
-        /// Set only for `.permissionHook`: the hook's curl waits on it for a decision.
+        /// Set for `.permissionHook` and `.nextStepHook`: the hook's curl waits on it for an answer.
         var reply: HookReply? = nil
     }
 
@@ -124,7 +125,7 @@ private final class HTTPConnectionHandler {
 
         let body = Data(buffer.prefix(contentLength))
         buffer.removeSubrange(0..<contentLength)
-        if route == .permissionHook {
+        if route == .permissionHook || route == .nextStepHook {
             // Held open: the answer comes from the notch, or nothing after its time limit.
             let reply = HookReply { [weak self] body in self?.sendResponseAndFinish(status: 200, body: body) }
             heldReply = reply
@@ -186,11 +187,14 @@ private final class HTTPConnectionHandler {
         if path.hasSuffix("/permission-hook") {
             return .permissionHook
         }
+        if path.hasSuffix("/next-step-hook") {
+            return .nextStepHook
+        }
         return .other
     }
 }
 
-/// One held `/permission-hook` request. Exactly one of `send` (a decision body, or nil for
+/// One held `/permission-hook` or `/next-step-hook` request. Exactly one of `send` (a decision body, or nil for
 /// "no decision") and the connection closing wins; the other becomes a no-op.
 final class HookReply: @unchecked Sendable {
     private let lock = NSLock()
