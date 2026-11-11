@@ -89,6 +89,12 @@ Connect AirPods or a Bluetooth headset and a card drops from the notch with its 
   <img src="assets/demo-airpods.gif" width="60%" alt="AirPods Pro and AirPods Max cards dropping from the notch">
 </p>
 
+When your Mac runs low, the same card drops at 20% and again at 10%, drawn as your Mac's model.
+
+<p align="center">
+  <img src="assets/demo-macbattery.gif" width="60%" alt="A MacBook Pro low battery card dropping from the notch at 20%, then at 10%">
+</p>
+
 **Notch and settings**
 
 - Notch colour: follow the wallpaper, auto, light or dark, a colour taken from a wallpaper photo, or an eyedropper
