@@ -90,6 +90,10 @@ public final class AppSettings: ObservableObject {
     @AppStorage("enableClaudeCodeJSONL") public var enableClaudeCodeJSONL: Bool = true
     @AppStorage("showPermissionIndicator") public var showPermissionIndicator: Bool = true
     @AppStorage("showTodoList") public var showTodoList: Bool = true
+    // "플랜 표시 (사용량 카드)" under Claude Code and under Codex: the plan badge beside each
+    // 사용량 카드's title.
+    @AppStorage("showClaudePlan") public var showClaudePlan: Bool = true
+    @AppStorage("showCodexPlan") public var showCodexPlan: Bool = true
     /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.

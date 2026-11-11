@@ -1047,6 +1047,8 @@ struct AgentsSettingsTab: View {
                               isOn: $settings.enableClaudeUsage)
                 ClaudeUsageSettingsView()
                     .disabled(!settings.enableClaudeUsage)
+                Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showClaudePlan)
+                    .disabled(!claudeEnabled.wrappedValue || !settings.enableClaudeUsage)
                 HStack {
                     TextField(L("원격 SSH 호스트", "Remote SSH hosts"), text: $settings.remoteClaudeHosts, prompt: Text("myserver, other-host"))
                         .onSubmit { remote.apply() }
@@ -1061,6 +1063,8 @@ struct AgentsSettingsTab: View {
 
             Section {
                 Toggle(L("사용", "Enabled"), isOn: codexEnabled)
+                Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
+                    .disabled(!codexEnabled.wrappedValue)
             } header: {
                 Text("Codex")
             }

@@ -1805,6 +1805,7 @@ struct ClangNotchContentView: View {
         let rateLimits: CodexRateLimits
         @ObservedObject private var codexManager = CodexManager.shared
         @AppStorage("usagePaceEnabled") private var paceEnabled = true
+        @AppStorage("showCodexPlan") private var showPlan = true
 
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
@@ -1814,8 +1815,9 @@ struct ClangNotchContentView: View {
                         .tracking(0.8)
                         .foregroundColor(NotchPalette.ink.opacity(0.4))
                     // "plus", "pro"… as Codex reports it with the limits.
-                    if let plan = rateLimits.planType, !plan.isEmpty {
-                        PlanBadge(text: plan.prefix(1).uppercased() + plan.dropFirst())
+                    if showPlan, let plan = rateLimits.planType, !plan.isEmpty {
+                        PlanBadge(text: plan.prefix(1).uppercased() + plan.dropFirst(),
+                                  tint: Color(red: 0.2, green: 0.5, blue: 1.0))
                     }
                     if rateLimits.limitReached {
                         // A window can sit well under 100% while a different one

@@ -226,6 +226,7 @@ struct UsageBarRow: View {
 /// *something*, even before the first successful fetch.
 struct ClaudeUsageNotchSection: View {
     @ObservedObject var usageManager = ClaudeUsageManager.shared
+    @AppStorage("showClaudePlan") private var showPlan = true
 
     private var hasData: Bool {
         usageManager.usageData.fiveHour != nil || usageManager.usageData.sevenDay != nil
@@ -248,7 +249,9 @@ struct ClaudeUsageNotchSection: View {
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(0.8)
                     .foregroundColor(NotchPalette.ink.opacity(0.4))
-                if let plan = usageManager.planLabel { PlanBadge(text: plan) }
+                if showPlan, let plan = usageManager.planLabel {
+                    PlanBadge(text: plan, tint: Color(red: 0.9, green: 0.4, blue: 0.1))
+                }
                 if usageManager.usageData.limitReached {
                     // A window can sit well under 100% while a different one
                     // is what's actually blocking, so say so outright.
@@ -489,13 +492,15 @@ struct ClaudeUsageSettingsView: View {
 /// The plan beside a 사용량 카드's title ("Max 5x", "Plus"…), from the agent's own login.
 struct PlanBadge: View {
     let text: String
+    /// The agent's colour: Claude orange, Codex blue, as on the wings and session rows.
+    let tint: Color
 
     var body: some View {
         Text(text)
             .font(.system(size: 9, weight: .semibold))
-            .foregroundColor(NotchPalette.ink.opacity(0.65))
+            .foregroundColor(tint)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
-            .background(Capsule().fill(NotchPalette.ink.opacity(0.09)))
+            .background(Capsule().fill(tint.opacity(0.18)))
     }
 }
