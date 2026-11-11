@@ -1331,6 +1331,33 @@ final class ClaudeCodeManager: ObservableObject {
             if let subject = input["subject"] as? String {
                 sessionState.todos[index].content = subject
             }
+        case "mcp__ccd_turn__update_plan":
+            // The Claude app's plan (its sessions use neither of the above, 2026-11-11): "items"
+            // rewrites it like TodoWrite; "done" and "start" are step numbers from 1; "advance"
+            // finishes the step under way and starts the next.
+            if let items = input["items"] as? [[String: Any]] {
+                sessionState.todos = items.compactMap { item in
+                    guard let content = item["content"] as? String else { return nil }
+                    return ClaudeTodoItem(content: content,
+                                          status: ClaudeTodoItem.TodoStatus(rawValue: item["status"] as? String ?? "") ?? .pending)
+                }
+                return
+            }
+            if input["advance"] as? Bool == true {
+                if let current = sessionState.todos.firstIndex(where: { $0.status == .inProgress }) {
+                    sessionState.todos[current].status = .completed
+                }
+                if let next = sessionState.todos.firstIndex(where: { $0.status == .pending }) {
+                    sessionState.todos[next].status = .inProgress
+                }
+                return
+            }
+            for step in input["done"] as? [Int] ?? [] where sessionState.todos.indices.contains(step - 1) {
+                sessionState.todos[step - 1].status = .completed
+            }
+            if let step = input["start"] as? Int, sessionState.todos.indices.contains(step - 1) {
+                sessionState.todos[step - 1].status = .inProgress
+            }
         default:
             break
         }
