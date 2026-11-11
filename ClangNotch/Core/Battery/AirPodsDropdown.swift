@@ -244,6 +244,15 @@ final class AirPodsDropdown: ObservableObject {
         show(card)
     }
 
+    /// `--demo --demo-scene airpodslow`: made-up low battery cards, as `lowBattery` builds them.
+    func demoShowLow(max: Bool) {
+        var card = Card(address: "demo-low", productID: max ? 0x202D : 0x2024, name: max ? "AirPods Max" : "AirPods Pro",
+                        level: max ? 18 : 15, caseLevel: max ? nil : 62, color: max ? 0x12 : nil)
+        if !max { card.leftLevel = 15; card.rightLevel = 71 }
+        card.splitsOnLevels = true
+        show(card)
+    }
+
     /// `--demo --demo-scene airpods`: a made-up card, no real device behind it.
     func demoShow(max: Bool) {
         var card = Card(address: "demo", productID: max ? 0x202D : 0x2024, name: max ? "AirPods Max" : "AirPods Pro",

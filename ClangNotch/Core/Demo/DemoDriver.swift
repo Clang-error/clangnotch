@@ -1,13 +1,13 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods|osd|lowbattery|tether|macbattery]`:
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods|airpodslow|osd|lowbattery|tether|macbattery]`:
 /// the notch runs on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard,
 /// volume, battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device, copied text or account balance from this Mac can end up in a video.
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, tools, many, airpods, osd, lowbattery, tether, macbattery }
+    enum Scene: String { case claude, codex, both, tools, many, airpods, airpodslow, osd, lowbattery, tether, macbattery }
 
     /// Every scene's clock starts this long after launch, once the startup glow (3 s and a 0.3 s
     /// fade) is gone: started at launch, the first dropdown came down inside the glow and the two
@@ -91,6 +91,18 @@ final class DemoDriver {
                 try? await Task.sleep(for: .seconds(2))
                 AirPodsDropdown.shared.demoShowMacLow(level: level)
                 level = level == 20 ? 10 : 20
+                try? await Task.sleep(for: .seconds(10))
+            }
+            return
+        }
+        // airpodslow: an idle notch; low battery cards every 12 s, AirPods Pro with the left bud
+        // low (split) then AirPods Max at 18%.
+        if DemoMode.scene == .airpodslow {
+            var max = false
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                AirPodsDropdown.shared.demoShowLow(max: max)
+                max.toggle()
                 try? await Task.sleep(for: .seconds(10))
             }
             return
@@ -260,7 +272,7 @@ final class DemoDriver {
                           ("Not yet", "Leave it on the branch for now")])
             return [desktop, lumen]
         case .codex: return [atlas, prism]
-        case .tools, .airpods, .osd, .lowbattery, .tether, .macbattery: return []
+        case .tools, .airpods, .airpodslow, .osd, .lowbattery, .tether, .macbattery: return []
         case .many:
             let claudeNames = ["orbit-api", "lumen-web", "nova-docs", "pulse-ios", "relay-bot"]
             let codexNames = ["atlas-cli", "prism-app", "quill-sdk"]
