@@ -242,12 +242,18 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // A bud back in the case, or the last one out of an ear: the card that's up follows,
         // and nothing drops for it.
         let fewer = !silent && inEarCount < wasInEar
-        guard opening || fewer else { return }
+        // A bud leaving or going back into the case changes what's charging: the card follows.
+        guard opening || fewer || moved else { return }
         // One bud in shows that bud; both, or neither, the pair.
         let side = inEarCount == 1 ? (leftOut ? "L" : "R") : nil
         let level = side == nil ? min(left, right) : side == "L" ? leftTenths : rightTenths
+        // A bud in the case is charging (its flag above). The case's own charging is flag 0x4:
+        // B7 off the charger, F7 on it (2026-11-11).
+        let caseCharging = flags & 0x4 != 0
         AirPodsDropdown.shared.caseOpened(address: address, productID: model, level: tenths(level),
-                                          caseLevel: tenths(caseTenths), side: side, drops: opening)
+                                          caseLevel: tenths(caseTenths), side: side,
+                                          sides: (tenths(leftTenths), tenths(rightTenths)),
+                                          charging: (!leftOut, !rightOut, caseCharging), drops: opening)
     }
 
     // MARK: - Whose frames
@@ -359,11 +365,20 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // Taken off. Out of the Smart Case a Max stays awake and connected, so no disconnection
         // comes to fold the card.
         if was == true, !worn { AirPodsDropdown.shared.caseClosed(address: address) }
-        guard putOn else { return }
+        // On the cable the case byte's high nibble drops its 0x8 (8F → 0F, back to 8F unplugged;
+        // 2026-11-11). A card that's up follows the cable; plugging in drops nothing by itself.
+        let charging = (b[9] >> 4) & 0x8 == 0
+        let chargingChanged = maxCharging[address].map { $0 != charging } ?? false
+        maxCharging[address] = charging
+        guard putOn || chargingChanged else { return }
         let nibbles = [Int(b[8] >> 4), Int(b[8] & 0x0F)].filter { $0 != 0xF }
-        AirPodsDropdown.shared.caseOpened(address: address, productID: model,
-                                          level: nibbles.max().flatMap(tenths), caseLevel: nil)
+        let level = nibbles.max().flatMap(tenths)
+        AirPodsDropdown.shared.caseOpened(address: address, productID: model, level: level, caseLevel: nil,
+                                          sides: (level, level), charging: (charging, charging, false),
+                                          drops: putOn)
     }
+
+    private var maxCharging: [String: Bool] = [:]
 
     /// Plain tenths against BatteryManager's last levels, a tenth either way. 0xF means unknown.
     private func matches(_ address: String, _ left: Int, _ right: Int, _ caseTenths: Int) -> Bool {

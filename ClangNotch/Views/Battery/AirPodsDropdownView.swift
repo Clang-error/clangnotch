@@ -218,18 +218,34 @@ struct AirPodsDropdownContent: View {
 
                     Spacer(minLength: 0)
 
-                    HStack(alignment: .bottom, spacing: 40) {
-                        let kind = AirPodsArt.kind(for: card.productID)
-                        let art = card.side.map { AirPodsArt.singleBud(for: card.productID, left: $0 == "L") }
-                            ?? AirPodsArt.frontPair(for: card.productID)
-                            ?? AirPodsArt.device(for: card.productID, color: card.color)
-                        item(art, symbol: card.symbol ?? AirPodsArt.deviceSymbol(for: card.productID),
-                             height: kind == .headphones || card.symbol != nil ? 92 : 58, level: card.level,
-                             visible: visible, delay: 0,
-                             bounceKey: card.side ?? "both")
+                    let kind = AirPodsArt.kind(for: card.productID)
+                    let split = kind == .buds && card.symbol == nil && card.splitsBuds
+                    HStack(alignment: .bottom, spacing: split ? 26 : 40) {
+                        if split {
+                            // One bud charging in the case, the other out: each with its own battery.
+                            ForEach(["L", "R"], id: \.self) { side in
+                                let left = side == "L"
+                                item(AirPodsArt.singleBud(for: card.productID, left: left),
+                                     symbol: AirPodsArt.deviceSymbol(for: card.productID), height: 58,
+                                     level: left ? card.leftLevel : card.rightLevel,
+                                     charging: left ? card.leftCharging : card.rightCharging,
+                                     visible: visible, delay: left ? 0 : 0.05, bounceKey: "split")
+                            }
+                        } else {
+                            let art = card.side.map { AirPodsArt.singleBud(for: card.productID, left: $0 == "L") }
+                                ?? AirPodsArt.frontPair(for: card.productID)
+                                ?? AirPodsArt.device(for: card.productID, color: card.color)
+                            let charging = card.side.map { $0 == "L" ? card.leftCharging : card.rightCharging }
+                                ?? (card.leftCharging && card.rightCharging)
+                            item(art, symbol: card.symbol ?? AirPodsArt.deviceSymbol(for: card.productID),
+                                 height: kind == .headphones || card.symbol != nil ? 92 : 58, level: card.level,
+                                 charging: charging, visible: visible, delay: 0,
+                                 bounceKey: card.side ?? "both")
+                        }
                         if kind == .buds, let caseLevel = card.caseLevel {
                             item(AirPodsArt.chargingCase, symbol: "airpods.chargingcase",
-                                 height: 62, level: caseLevel, visible: visible, delay: 0.1)
+                                 height: 62, level: caseLevel, charging: card.caseCharging,
+                                 visible: visible, delay: 0.1)
                         }
                     }
                     .padding(.bottom, 16)
@@ -250,7 +266,7 @@ struct AirPodsDropdownContent: View {
         .environment(\.colorScheme, appearance.theme(settings).scheme)
     }
 
-    private func item(_ image: NSImage?, symbol: String, height: CGFloat, level: Int?,
+    private func item(_ image: NSImage?, symbol: String, height: CGFloat, level: Int?, charging: Bool = false,
                       visible: Bool, delay: Double, bounceKey: String = "") -> some View {
         VStack(spacing: 6) {
             Group {
@@ -277,7 +293,7 @@ struct AirPodsDropdownContent: View {
             }
 
             if let level {
-                AirPodsBatteryGlyph(level: level)
+                AirPodsBatteryGlyph(level: level, charging: charging)
                 Text("\(level)%")
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -289,6 +305,8 @@ struct AirPodsDropdownContent: View {
 /// iOS's little battery: outline, fill to the level, nub. Same colours as the 기기 줄.
 private struct AirPodsBatteryGlyph: View {
     let level: Int
+    /// iOS's bolt over the fill while charging.
+    var charging = false
 
     var body: some View {
         HStack(spacing: 1) {
@@ -300,6 +318,16 @@ private struct AirPodsBatteryGlyph: View {
                     .padding(2)
             }
             .frame(width: 24, height: 11)
+            .overlay {
+                if charging {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(.primary)
+                        .shadow(color: .black.opacity(0.35), radius: 0.5)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: charging)
             RoundedRectangle(cornerRadius: 1).fill(.secondary).frame(width: 1.5, height: 4)
         }
     }

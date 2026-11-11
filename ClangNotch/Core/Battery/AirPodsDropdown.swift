@@ -27,6 +27,17 @@ final class AirPodsDropdown: ObservableObject {
         var side: String? = nil
         /// A headset that isn't AirPods: drawn with this SF Symbol, since there's no render of it.
         var symbol: String? = nil
+        /// Each bud's own level, and which of the buds and the case are charging. Known only from
+        /// the case's advertisement; a card from the connection alone shows no charging.
+        var leftLevel: Int? = nil
+        var rightLevel: Int? = nil
+        var leftCharging = false
+        var rightCharging = false
+        var caseCharging = false
+
+        /// One bud charging in the case and the other out: the card shows each bud with its own
+        /// battery instead of the pair.
+        var splitsBuds: Bool { leftCharging != rightCharging && leftLevel != nil && rightLevel != nil }
     }
 
     enum Phase: Equatable { case hidden, dropping(Date), settled, rising }
@@ -159,23 +170,37 @@ final class AirPodsDropdown: ObservableObject {
     /// else from the advertisement's tenths. `drops` false is a bud leaving an ear: only a card
     /// that is up changes, to show who is still in.
     func caseOpened(address: String, productID: UInt16, level: Int?, caseLevel: Int?, side: String? = nil,
-                    drops: Bool = true) {
+                    sides: (left: Int?, right: Int?)? = nil,
+                    charging: (left: Bool, right: Bool, case: Bool)? = nil, drops: Bool = true) {
         if drops { openedByCase[address] = Date() }
         _ = AirPodsArt.device(for: productID, color: knownColors[address])
         _ = AirPodsArt.chargingCase
         let device = BatteryManager.shared.devices.first { $0.id == address }
         let known = Self.card(address: address, productID: productID, device: device)
         let sideLevel = side.flatMap { s in device?.parts.first { $0.label == s }?.percent }
-        let new = Card(address: address, productID: productID, name: known.name,
+        var new = Card(address: address, productID: productID, name: known.name,
                        level: side != nil ? (sideLevel ?? level) : (device == nil ? level : known.level),
                        caseLevel: device == nil ? caseLevel : known.caseLevel ?? caseLevel, side: side)
+        // BatteryManager's levels are finer than the advertisement's tenths where it has them.
+        new.leftLevel = device?.parts.first { $0.label == "L" }?.percent ?? sides?.left
+        new.rightLevel = device?.parts.first { $0.label == "R" }?.percent ?? sides?.right
+        if let charging {
+            new.leftCharging = charging.left
+            new.rightCharging = charging.right
+            new.caseCharging = charging.case
+        }
         if drops { show(new) } else { refresh(new) }
     }
 
     /// `--demo --demo-scene airpods`: a made-up card, no real device behind it.
     func demoShow(max: Bool) {
-        show(Card(address: "demo", productID: max ? 0x202D : 0x2024, name: max ? "AirPods Max" : "AirPods Pro",
-                  level: max ? 80 : 100, caseLevel: max ? nil : 40, color: max ? 0x12 : nil))
+        var card = Card(address: "demo", productID: max ? 0x202D : 0x2024, name: max ? "AirPods Max" : "AirPods Pro",
+                        level: max ? 80 : 100, caseLevel: max ? nil : 40, color: max ? 0x12 : nil)
+        if !max {   // just opened: both buds charging in the case
+            card.leftLevel = 100; card.rightLevel = 100
+            card.leftCharging = true; card.rightCharging = true
+        }
+        show(card)
     }
 
     /// Something is happening with the AirPods on the card (a bud leaving the case): start its
