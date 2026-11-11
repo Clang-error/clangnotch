@@ -341,6 +341,11 @@ swift += '''}
         precondition(xs.pendingInputRequest != nil, "Keep waiting for unanswered questions")
         x.parseResponseItem(try reply("async-q", indices: [1]), sessionState:&xs, sessionId:"s", eventTimestamp:Date())
         precondition(xs.pendingInputRequest == nil, "The matching answers must dismiss the dropdown")
+        x.parseResponseItem(["type":"function_call", "call_id":"notch-q", "name":"request_user_input_async", "arguments":asyncInput], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
+        let notchReply = CodexAppIPC.questionReply(callId: "notch-q", answers: [(index: 0, question: "색상과 폭은 어떤가요?", answer: "정상"), (index: 1, question: "추가 의견", answer: "a/b")])!
+        precondition(notchReply.contains(#""questionItemId":"[\\"request_user_input_async\\",\\"notch-q\\",0]""#) && notchReply.contains("a/b"), "The id is the app's JSON.stringify form, and slashes stay as typed")
+        x.parseResponseItem(["type":"message", "role":"user", "content":[["type":"input_text", "text":notchReply]]], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
+        precondition(xs.pendingInputRequest == nil, "The answer the notch sends through the Codex app must dismiss the dropdown")
         for prompt in ["켜놨어", "그냥 냅둬라 언제오는지만"] {
             x.parseResponseItem(["type":"function_call", "call_id":"text-reply-q", "name":"request_user_input_async", "arguments":asyncInput], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
             x.parseResponseItem(["type":"function_call_output", "call_id":"text-reply-q", "output":#"{"accepted":true}"#], sessionState:&xs, sessionId:"s", eventTimestamp:Date())
@@ -534,5 +539,6 @@ with tempfile.TemporaryDirectory(prefix='clangnotch-activity-checks-') as folder
                     str(root/'ClangNotch/Models/ClaudeCodeModels.swift'),
                     str(root/'ClangNotch/Models/CodexModels.swift'),
                     str(root/'ClangNotch/Models/JSONLLineBuffer.swift'),
+                    str(root/'ClangNotch/Core/Codex/CodexAppIPC.swift'),
                     str(temp/'Checks.swift'), '-o', str(temp/'checks')], check=True)
     subprocess.run([str(temp/'checks'), *sys.argv[1:]], check=True)

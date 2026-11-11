@@ -62,6 +62,33 @@ final class CodexManager: ObservableObject {
         objectWillChange.send()
     }
 
+    /// Questions whose answer is on its way to the Codex app, so a second tap can't send a second message.
+    private var answeringInputRequestIDs: Set<String> = []
+
+    /// The 질문 드롭다운's answer to a Codex app question that outlives its turn
+    /// (`request_user_input_async`): the app takes it as the user's next message. `answers`
+    /// maps each question's text to the picked label. If the app can't take it, go there instead.
+    func answerInputRequest(_ request: CodexInputRequest, sessionId: String, answers: [String: Any]) {
+        let picked = request.questions.enumerated().compactMap { index, question in
+            (answers[question.question] as? String).map { (index: index, question: question.question, answer: $0) }
+        }
+        guard request.isAsync, !answeringInputRequestIDs.contains(request.id),
+              let text = CodexAppIPC.questionReply(callId: request.id, answers: picked) else { return }
+        answeringInputRequestIDs.insert(request.id)
+        Task.detached(priority: .userInitiated) {
+            let outcome = CodexAppIPC.startTurn(threadId: sessionId, text: text)
+            debugLog("[Codex] Question \(request.id.prefix(13)) answered from the notch: \(outcome)")
+            guard case .refused = outcome else { return }
+            await MainActor.run {
+                let manager = CodexManager.shared
+                manager.answeringInputRequestIDs.remove(request.id)
+                if let session = manager.availableSessions.first(where: { $0.id == sessionId }) {
+                    manager.focusApp(for: session)
+                }
+            }
+        }
+    }
+
     /// Track when we last had activity (for grace period)
     private var lastActivityTime: Date = Date.distantPast
     private let activityGracePeriod: TimeInterval = 1.0

@@ -34,6 +34,7 @@ struct DismissPill: View {
     var questionScale: CGFloat { questionExpanded ? 1.4 : 1 }
     var showPermissionNotice = false
     var claudeQuestionAnswer: (([String: Any]) -> Void)? = nil
+    var codexQuestionAnswer: (([String: Any]) -> Void)? = nil
     var askingSessionOpenTitle = "Go"
     let codexGlowColor = Color.blue
     init(notchVM: NotchViewModel) { self.notchVM = notchVM }

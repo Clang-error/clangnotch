@@ -1683,6 +1683,19 @@ struct ClangNotchContentView: View {
         return { answers in center.answerQuestion(sessionId: sessionId, answers: answers) }
     }
 
+    /// A Codex app question that outlives its turn takes its answer as a message, which the
+    /// notch can send through the app. Other Codex questions, and ones without options to
+    /// pick from, are answered where they were asked.
+    private var codexQuestionAnswer: (([String: Any]) -> Void)? {
+        guard let request = codexInputRequest, request.isAsync,
+              request.questions.allSatisfy({ !$0.options.isEmpty }),
+              let sessionId = codexManager.sessionStates.first(where: {
+                  $0.value.pendingInputRequest?.id == request.id
+              })?.key else { return nil }
+        let manager = codexManager
+        return { answers in manager.answerInputRequest(request, sessionId: sessionId, answers: answers) }
+    }
+
     private var questionNoticeColor: Color {
         codexInputRequest == nil ? .orange : codexGlowColor
     }
@@ -1752,7 +1765,9 @@ struct ClangNotchContentView: View {
             if let request = codexInputRequest {
                 ScrollView(.vertical) {
                     QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue,
-                                        goTitle: askingSessionOpenTitle, onGo: { goToAskingSession() })
+                                        onSubmit: codexQuestionAnswer, goTitle: askingSessionOpenTitle,
+                                        onGo: { goToAskingSession() }, scale: questionScale)
+                        .id(request.id)
                         .background(ThinScrollers())
                 }
             } else if let request = claudeInputRequest {
@@ -1768,11 +1783,11 @@ struct ClangNotchContentView: View {
         .padding(.top, 10)
     }
 
-    /// The 질문 드롭다운's 크기 손잡이: only Claude questions can be answered here, so only
-    /// they get the room for it.
+    /// The 질문 드롭다운's 크기 손잡이, for Claude and Codex questions alike. The 다음 단계
+    /// 드롭다운 has none.
     private var showsQuestionResizeHandle: Bool {
         notchVM.notchState == .peeking && showQuestionNotice && !showPermissionNotice
-            && claudeInputRequest.map { !$0.isWrapUp } == true
+            && (codexInputRequest != nil || claudeInputRequest.map { !$0.isWrapUp } == true)
     }
 
     private func toggleQuestionExpanded() {
@@ -1781,6 +1796,8 @@ struct ClangNotchContentView: View {
             notchVM.resizePeek(to: expandedQuestionSize())
         } else if let request = claudeInputRequest {
             triggerClaudeInputNotice(request)
+        } else if let request = codexInputRequest {
+            triggerCodexInputNotice(request)
         }
     }
 
@@ -2018,7 +2035,7 @@ struct ClangNotchContentView: View {
                                        scale: scale, action: onGo)
                             .newHighlight(cornerRadius: 12 * scale, delay: 0.25)
                             .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
-                            // Clear of the 크기 손잡이 in the corner; only Claude questions have it.
+                            // Clear of the 크기 손잡이 in the corner.
                             .padding(.trailing, onSubmit != nil ? 18 : 0)
                     }
                 }
@@ -2340,6 +2357,8 @@ struct ClangNotchContentView: View {
     }
 
     private func triggerCodexInputNotice(_ request: CodexInputRequest) {
+        // A new question starts at the usual size.
+        if request.id != codexInputRequest?.id { questionExpanded = false }
         // A dropdown that comes in, new or shown again, starts with the 닫기 알약 as a plain X.
         if request.id != codexInputRequest?.id || !showQuestionNotice { questionDismissOpen = false }
         codexInputRequest = request
@@ -2372,7 +2391,7 @@ struct ClangNotchContentView: View {
         let content = VStack(spacing: 8) {
             questionHeader
             QuestionOptionsView(questions: questions, sourceName: sourceName, accentColor: accentColor,
-                                onSubmit: sourceName == "Claude" ? claudeQuestionAnswer : nil,
+                                onSubmit: sourceName == "Claude" ? claudeQuestionAnswer : codexQuestionAnswer,
                                 goTitle: askingSessionOpenTitle, onGo: {})
         }
         .padding(.top, 10)
@@ -2384,7 +2403,7 @@ struct ClangNotchContentView: View {
         guard !showPermissionNotice else { return }
         resetClosedJellyReveal()
         // A re-fit (answer buttons arriving) keeps a dropdown the user made bigger.
-        if questionExpanded, sourceName == "Claude", notchVM.notchState == .peeking {
+        if questionExpanded, notchVM.notchState == .peeking {
             notchVM.resizePeek(to: expandedQuestionSize())
             return
         }
