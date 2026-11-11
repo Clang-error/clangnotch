@@ -198,7 +198,10 @@ public struct AgentSettingsView: View {
             }
             .opacity(0)
         }
-        .frame(width: 780, height: 600)
+        // The window's height (600, set where it is made), not a fixed one: a fixed 600 asked for
+        // 600 below the toolbar, so the window grew 52pt and that strip stayed empty (2026-11-11).
+        .frame(width: 780)
+        .frame(maxHeight: .infinity)
         .ignoresSafeArea(.container, edges: .top)
     }
 

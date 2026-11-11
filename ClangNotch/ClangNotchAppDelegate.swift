@@ -90,10 +90,10 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         window.title = L("ClangNotch 설정", "ClangNotch Settings")
         // New key: the old one restores the tab-style window's 600×560 frame.
         window.setFrameAutosaveName("SettingsWindowSidebar")
-        // The saved frame can be from a build that sized the window wrong; the view is fixed.
-        // It runs under the toolbar (full-size content), so the window frame is the view's
-        // size: setContentSize put the toolbar's 52pt on top and left that strip empty at the
-        // bottom (measured 780×652, 2026-11-11).
+        // The saved frame can be from a build that sized the window wrong, so the size is set
+        // here. The view runs under the toolbar (full-size content) and fills the frame:
+        // setContentSize put the toolbar's 52pt on top and left that strip empty at the bottom
+        // (measured 780×652, 2026-11-11).
         window.setFrame(NSRect(x: 0, y: 0, width: 780, height: 600), display: false)
         window.center()
         window.isReleasedWhenClosed = false
