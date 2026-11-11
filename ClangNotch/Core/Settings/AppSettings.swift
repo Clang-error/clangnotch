@@ -31,6 +31,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("passBrightnessKeys") public var passBrightnessKeys: Bool = false
     // "밝기 조절창 보이기": while those keys are passed on, our 조절창 still comes up with the result.
     @AppStorage("showPassedBrightnessHUD") public var showPassedBrightnessHUD: Bool = true
+    // "조절창 위치": "left", "center" or "right" under the menu bar (SystemControlOSD).
+    @AppStorage("osdPosition") public var osdPosition: String = "center"
     // SoftwareVolume's audio tap for outputs macOS can't turn down (HDMI/DisplayPort speakers).
     // Off by default: it intercepts every app's sound. Its own switch; the key tap needs Accessibility.
     @AppStorage("enableSoftwareVolume") public var enableSoftwareVolume: Bool = false

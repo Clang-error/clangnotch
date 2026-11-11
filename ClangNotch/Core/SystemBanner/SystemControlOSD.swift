@@ -40,6 +40,8 @@ final class SystemControlOSD: ObservableObject {
     static let pillSize = CGSize(width: 292, height: 64)
     static let shadowPadding: CGFloat = 40
     private static let gapBelowMenuBar: CGFloat = 10
+    /// From the screen's side to the pill at 조절창 위치 왼쪽/오른쪽, the same as under the menu bar.
+    private static let gapFromScreenEdge: CGFloat = 10
     private static let visibleDuration: TimeInterval = 1.5
 
     private var panel: ActiveLookingPanel?
@@ -292,13 +294,22 @@ final class SystemControlOSD: ObservableObject {
         panel.setFrameOrigin(origin(for: panel, on: screen))
     }
 
-    /// Under the menu bar, or under the open notch while it is open on this screen.
+    /// Under the menu bar at 조절창 위치 (left, centre or right). Centred, it goes under the open
+    /// notch while that is open on this screen; at the sides the open notch never reaches it.
     private func origin(for panel: NSPanel, on screen: NSScreen) -> NSPoint {
         var top = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
-        if screen == NotchDetector.notchScreen { top = max(top, openNotchDepth) }
+        let x: CGFloat
+        switch AppSettings.shared.osdPosition {
+        case "left":
+            x = screen.frame.minX + Self.gapFromScreenEdge - Self.shadowPadding
+        case "right":
+            x = screen.frame.maxX - Self.gapFromScreenEdge + Self.shadowPadding - panel.frame.width
+        default:
+            x = screen.frame.midX - panel.frame.width / 2
+            if screen == NotchDetector.notchScreen { top = max(top, openNotchDepth) }
+        }
         let pillTop = screen.frame.maxY - top - Self.gapBelowMenuBar
-        return NSPoint(x: screen.frame.midX - panel.frame.width / 2,
-                       y: pillTop + Self.shadowPadding - panel.frame.height)
+        return NSPoint(x: x, y: pillTop + Self.shadowPadding - panel.frame.height)
     }
 
     // MARK: - Readings

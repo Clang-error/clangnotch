@@ -806,8 +806,8 @@ struct FeaturesSettingsTab: View {
                               isOn: $settings.enableKeyboardLock)
                     .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
                 SettingToggle(L("볼륨·밝기 표시 바꾸기", "Replace volume and brightness HUD"),
-                              L("macOS 볼륨·밝기 표시 대신 노치 중앙에 배치한 조절창 사용 · 손쉬운 사용 권한 필요",
-                                "A HUD centered at the notch instead of macOS's volume and brightness display · needs Accessibility"),
+                              L("macOS 볼륨·밝기 표시 대신 메뉴 막대 아래 조절창 사용 · 손쉬운 사용 권한 필요",
+                                "A HUD under the menu bar instead of macOS's volume and brightness display · needs Accessibility"),
                               isOn: $settings.centerSystemBanners)
                     .onChange(of: settings.centerSystemBanners) { _, on in
                         SystemBannerCenterer.shared.syncWithSettings()
@@ -815,6 +815,13 @@ struct FeaturesSettingsTab: View {
                     }
                 // Only means something while the HUD switch takes the keys: shown under it, indented.
                 if settings.centerSystemBanners {
+                    Picker(L("조절창 위치", "HUD position"), selection: $settings.osdPosition) {
+                        Text(L("왼쪽", "Left")).tag("left")
+                        Text(L("가운데", "Center")).tag("center")
+                        Text(L("오른쪽", "Right")).tag("right")
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.leading, 20)
                     SettingToggle(L("밝기 키는 다른 앱에 넘기기", "Leave brightness keys to other apps"),
                                   L("MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기",
                                     "On when MonitorControl, Lunar or BetterDisplay sets external displays too"),
