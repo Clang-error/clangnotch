@@ -89,10 +89,6 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchModeOrder") public var notchModeOrder: String =
         "ai,volume,sidecar,clipboard,speed,battery,keyboardLock"
 
-    // Tab chips hidden from the expanded notch, as comma-joined NotchMode rawValues.
-    // Purely about the chip row — the feature's own enable* setting still decides
-    // whether the subsystem runs at all.
-    @AppStorage("hiddenNotchModes") public var hiddenNotchModes: String = ""
 
     // Battery saver: 15 FPS on battery, 25 FPS when charging
     @AppStorage("batterySaverEnabled") public var batterySaverEnabled: Bool = true

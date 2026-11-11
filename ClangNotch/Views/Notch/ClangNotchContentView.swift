@@ -28,10 +28,6 @@ enum NotchMode: String, CaseIterable, Identifiable {
         return saved + allCases.filter { !saved.contains($0) }
     }
 
-    /// 설정에서 칩 줄에 안 띄우기로 한 탭들. 저장 형식은 order와 같다.
-    static func hidden(from stored: String) -> Set<NotchMode> {
-        Set(stored.split(separator: ",").compactMap { NotchMode(rawValue: String($0)) })
-    }
 }
 
 struct ClangNotchContentView: View {
@@ -208,11 +204,10 @@ struct ClangNotchContentView: View {
         notchVM.notchState == .open ? notchVM.closedNotchSize.height + openHeaderHeight : notchVM.closedNotchSize.height
     }
 
-    /// 설정에서 지정한 순서대로, 지금 쓸 수 있고 숨기지 않은 탭만.
+    /// 설정에서 지정한 순서대로, 지금 쓸 수 있는 탭만. 탭이 보이는지는 설정 › 기능의 스위치
+    /// 하나로만 정한다(2026-11-12: 노치 › 탭의 체크박스와 둘이서 엇갈려 없앰).
     private var visibleModes: [NotchMode] {
-        let hidden = NotchMode.hidden(from: settings.hiddenNotchModes)
-        return NotchMode.order(from: settings.notchModeOrder)
-            .filter { isAvailable($0) && (!hidden.contains($0) || ($0 == .keyboardLock && keyboardLockManager.isLocked)) }
+        NotchMode.order(from: settings.notchModeOrder).filter(isAvailable)
     }
 
     /// 고른 탭이 숨겨지거나 사라졌으면 남은 첫 탭으로 넘어간다.

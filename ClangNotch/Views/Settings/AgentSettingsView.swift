@@ -63,7 +63,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .notch:    return ["노치 색", "라이트", "다크", "배경", "탭", "순서", "열기", "햅틱", "전체 화면", "표시",
                                 "notch color", "light", "dark", "wallpaper", "tabs", "order", "opening", "haptic", "full screen", "visibility"]
         case .features: return ["클립보드", "볼륨", "믹서", "sidecar", "배터리", "속도", "키보드", "밝기",
-                                "clipboard", "volume", "mixer", "battery", "speed", "keyboard", "brightness"]
+                                "노치 탭", "조절창", "에어팟", "드롭다운", "헤드셋", "맥 배터리",
+                                "clipboard", "volume", "mixer", "battery", "speed", "keyboard", "brightness",
+                                "notch tabs", "hud", "airpods", "headset"]
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
@@ -791,6 +793,17 @@ struct FeaturesSettingsTab: View {
                               L("키보드 입력 잠금 · 손쉬운 사용 권한 필요", "Locks keyboard input · needs Accessibility"),
                               isOn: $settings.enableKeyboardLock)
                     .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
+            } header: {
+                Text(L("노치 탭", "Notch tabs"))
+            } footer: {
+                Text(L("켜면 펼친 노치에 그 탭이 생김 · 탭 순서는 설정 › 노치 › 탭",
+                       "Each switch adds its tab to the open notch · tab order in Settings › Notch › Tabs"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            // 조절창: the volume and brightness HUD and what goes with it.
+            Section {
                 SettingToggle(L("볼륨·밝기 표시 바꾸기", "Replace volume and brightness HUD"),
                               L("macOS 볼륨·밝기 표시 대신 메뉴 막대 아래 조절창 사용 · 손쉬운 사용 권한 필요",
                                 "A HUD under the menu bar instead of macOS's volume and brightness display · needs Accessibility"),
@@ -833,7 +846,7 @@ struct FeaturesSettingsTab: View {
                     SoftwareVolumeExcludedApps(settings: settings)
                 }
             } header: {
-                Text(L("기능", "Features"))
+                Text(L("조절창", "HUD"))
             }
             // 에어팟 드롭다운: every switch for the card that drops under the notch, apart from the
             // features above now that there are several of them (2026-11-12).
