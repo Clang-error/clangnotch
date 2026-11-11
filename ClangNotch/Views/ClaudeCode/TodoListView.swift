@@ -5,15 +5,25 @@ import SwiftUI
 struct TodoListView: View {
     let todos: [ClaudeTodoItem]
     var maxItems = 5
+    /// "+N개 더" opens the rest of the list and "접기" folds it back (it did nothing before).
+    @State private var expanded = false
+    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(todos.prefix(maxItems)) { TodoRow(todo: $0) }
+            ForEach(todos.prefix(expanded ? todos.count : maxItems)) { TodoRow(todo: $0) }
             if todos.count > maxItems {
-                Text(L("+\(todos.count - maxItems)개 더", "+\(todos.count - maxItems) more"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(NotchPalette.ink.opacity(0.5))
-                    .padding(.leading, 18)
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
+                } label: {
+                    Text(expanded ? L("접기", "Show less") : L("+\(todos.count - maxItems)개 더", "+\(todos.count - maxItems) more"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(NotchPalette.ink.opacity(hovering ? 0.8 : 0.5))
+                        .padding(.leading, 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering = $0 }
             }
         }
     }

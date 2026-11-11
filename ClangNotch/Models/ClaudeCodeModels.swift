@@ -89,6 +89,15 @@ struct ClaudeToolExecution: Identifiable, Equatable {
     /// Edit/Write's removed and added lines, for the 세션 화면.
     var change: ToolChange?
 
+    /// The name the wings and lists show: an MCP tool without its "mcp__<server>__" prefix.
+    /// The Claude app's own tools came through whole (mcp__ccd_turn__update_plan) and
+    /// stretched the wings into a bar (2026-11-11). `toolName` stays whole for the logic.
+    var displayName: String {
+        guard toolName.hasPrefix("mcp__"), let cut = toolName.range(of: "__", options: .backwards),
+              cut.lowerBound > toolName.index(toolName.startIndex, offsetBy: 3) else { return toolName }
+        return String(toolName[cut.upperBound...])
+    }
+
     var durationMs: Int? {
         guard let end = endTime else { return nil }
         return Int(end.timeIntervalSince(startTime) * 1000)

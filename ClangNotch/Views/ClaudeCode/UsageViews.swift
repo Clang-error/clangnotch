@@ -248,6 +248,7 @@ struct ClaudeUsageNotchSection: View {
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(0.8)
                     .foregroundColor(NotchPalette.ink.opacity(0.4))
+                if let plan = usageManager.planLabel { PlanBadge(text: plan) }
                 if usageManager.usageData.limitReached {
                     // A window can sit well under 100% while a different one
                     // is what's actually blocking, so say so outright.
@@ -482,5 +483,19 @@ struct ClaudeUsageSettingsView: View {
         return usageManager.currentMonitoringMode == .active
             ? L("활성 · \(minutes)분마다", "Active · every \(minutes) min")
             : L("대기 · \(minutes)분마다", "Idle · every \(minutes) min")
+    }
+}
+
+/// The plan beside a 사용량 카드's title ("Max 5x", "Plus"…), from the agent's own login.
+struct PlanBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(NotchPalette.ink.opacity(0.65))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(NotchPalette.ink.opacity(0.09)))
     }
 }

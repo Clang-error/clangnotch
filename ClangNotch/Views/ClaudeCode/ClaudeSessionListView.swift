@@ -474,7 +474,7 @@ private struct SubagentRows: View {
     /// The tool the subagent is running and what on, or that it is thinking.
     private func activity(of subagent: ClaudeSubagent) -> String {
         guard let tool = subagent.tool else { return L("생각 중", "Thinking") }
-        return [tool.toolName, tool.description ?? tool.argument].compactMap { $0 }.joined(separator: " · ")
+        return [tool.displayName, tool.description ?? tool.argument].compactMap { $0 }.joined(separator: " · ")
     }
 }
 

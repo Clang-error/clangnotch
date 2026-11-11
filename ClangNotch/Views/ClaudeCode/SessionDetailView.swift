@@ -51,7 +51,7 @@ struct SessionDetailView: View {
         case .claude:
             guard let state = manager.sessionStates[target.sessionId] else { return [] }
             return (state.recentTools.reversed() + state.activeTools).map {
-                SessionStep(id: $0.id, name: $0.toolName, argument: $0.argument,
+                SessionStep(id: $0.id, name: $0.displayName, argument: $0.argument,
                             isRunning: $0.isRunning, failed: false, change: $0.change)
             }
         case .codex:

@@ -847,7 +847,7 @@ struct ClangNotchContentView: View {
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
                 return codexTool.toolName
             }
-            return currentClaudeTool?.toolName
+            return currentClaudeTool?.displayName
         }()
         let hasCurrentTool = currentToolName != nil
 
@@ -911,7 +911,7 @@ struct ClangNotchContentView: View {
             : showsCodexQuestionOnLeft ? 58
             : showsQuestionWaitOnLeft ? 12 + 6 + labelCapsuleWidth
             : (showLeftWing ? leftIconWidth + 6 + labelCapsuleWidth : 0)
-        let simultaneousClaudeLabel = currentClaudeTool?.toolName ?? "Thinking"
+        let simultaneousClaudeLabel = currentClaudeTool?.displayName ?? "Thinking"
         let showsSimultaneousClaudeWing = isSimultaneousClaudeCodex && !isClaudeQuestionWait
             && (isCodexQuestionWait || !hasPermissionNeeded) && !showsDone
 
@@ -1813,6 +1813,10 @@ struct ClangNotchContentView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
                         .foregroundColor(NotchPalette.ink.opacity(0.4))
+                    // "plus", "pro"… as Codex reports it with the limits.
+                    if let plan = rateLimits.planType, !plan.isEmpty {
+                        PlanBadge(text: plan.prefix(1).uppercased() + plan.dropFirst())
+                    }
                     if rateLimits.limitReached {
                         // A window can sit well under 100% while a different one
                         // is what's actually blocking, so say so outright.

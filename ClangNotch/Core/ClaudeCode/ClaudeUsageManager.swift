@@ -37,6 +37,22 @@ final class ClaudeUsageManager: ObservableObject {
     /// (measured 2026-09-22), so the blob's plan field is the only signal.
     var isMaxPlan: Bool { subscriptionPlan?.lowercased().hasPrefix("max") ?? false }
 
+    /// The blob's rate-limit tier ("default_claude_max_5x"…): the only place Max 5x and 20x
+    /// differ. Persisted with the plan.
+    @Published private(set) var rateLimitTier: String?
+
+    /// The plan badge beside the 사용량 카드's title: "Max 5x", "Max 20x", "Pro"…
+    var planLabel: String? {
+        guard let plan = subscriptionPlan?.lowercased(), !plan.isEmpty else { return nil }
+        let tier = rateLimitTier?.lowercased() ?? ""
+        if plan.hasPrefix("max") {
+            if plan.contains("20x") || tier.contains("20x") { return "Max 20x" }
+            if plan.contains("5x") || tier.contains("5x") { return "Max 5x" }
+            return "Max"
+        }
+        return plan.prefix(1).uppercased() + plan.dropFirst()
+    }
+
     /// Current monitoring mode (for smart refresh)
     @Published private(set) var currentMonitoringMode: UsageMonitoringMode = .active
 
@@ -90,6 +106,7 @@ final class ClaudeUsageManager: ObservableObject {
     private let mirroredTokenKey = "claudeUsageAccessTokenMirror"
     /// UserDefaults key backing `subscriptionPlan`.
     private let subscriptionPlanKey = "claudeUsageSubscriptionPlan"
+    private let rateLimitTierKey = "claudeUsageRateLimitTier"
 
     private lazy var urlSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -102,6 +119,7 @@ final class ClaudeUsageManager: ObservableObject {
     // MARK: - Initialization
     private init() {
         subscriptionPlan = UserDefaults.standard.string(forKey: subscriptionPlanKey)
+        rateLimitTier = UserDefaults.standard.string(forKey: rateLimitTierKey)
         rateLimitStreak = UserDefaults.standard.integer(forKey: rateLimitStreakKey)
         let until = UserDefaults.standard.double(forKey: rateLimitedUntilKey)
         if until > Date().timeIntervalSince1970 { rateLimitedUntil = Date(timeIntervalSince1970: until) }
@@ -114,6 +132,9 @@ final class ClaudeUsageManager: ObservableObject {
         guard !DemoMode.isActive else { return }
         stopRefreshing()
         Task { await fetchUsage(interactive: false) }
+        // The plan badge's 5x / 20x lives only in the blob, which polls on the cached token
+        // never read: read it once when no tier has been seen yet.
+        if rateLimitTier == nil { Task { await refreshSubscriptionPlan() } }
         scheduleNextRefresh()
     }
 
@@ -326,7 +347,7 @@ final class ClaudeUsageManager: ObservableObject {
             creds = stored
         }
 
-        updateSubscriptionPlan(creds.subscriptionType)
+        updateSubscriptionPlan(creds.subscriptionType, tier: creds.rateLimitTier)
 
         let validUntil: Date = creds.expiresAt > 0
             ? Date(timeIntervalSince1970: creds.expiresAt / 1000).addingTimeInterval(-tokenExpirySafetyMargin)
@@ -339,10 +360,14 @@ final class ClaudeUsageManager: ObservableObject {
 
     private func refreshSubscriptionPlan() async {
         let creds = await Task.detached(priority: .utility, operation: { ClaudeOAuthToken.read() }).value
-        updateSubscriptionPlan(creds?.subscriptionType)
+        updateSubscriptionPlan(creds?.subscriptionType, tier: creds?.rateLimitTier)
     }
 
-    private func updateSubscriptionPlan(_ plan: String?) {
+    private func updateSubscriptionPlan(_ plan: String?, tier: String?) {
+        if let tier, !tier.isEmpty, tier != rateLimitTier {
+            rateLimitTier = tier
+            UserDefaults.standard.set(tier, forKey: rateLimitTierKey)
+        }
         guard let plan, !plan.isEmpty, plan != subscriptionPlan else { return }
         subscriptionPlan = plan
         UserDefaults.standard.set(plan, forKey: subscriptionPlanKey)
@@ -487,6 +512,8 @@ enum ClaudeOAuthToken {
         let refreshToken: String
         /// Plan the CLI logged in with ("pro", "max", "max_5x"…); nil on older blobs.
         let subscriptionType: String?
+        /// "default_claude_max_5x" and the like; nil on older blobs.
+        let rateLimitTier: String?
         /// The whole stored blob, so a refresh can rewrite it without dropping fields we
         /// don't model (subscriptionType, rateLimitTier, scopes…).
         let rawJSON: String
@@ -505,6 +532,7 @@ enum ClaudeOAuthToken {
             expiresAt: exp,
             refreshToken: (oauth["refreshToken"] as? String) ?? "",
             subscriptionType: oauth["subscriptionType"] as? String,
+            rateLimitTier: oauth["rateLimitTier"] as? String,
             rawJSON: String(data: data, encoding: .utf8) ?? ""
         )
     }
@@ -620,6 +648,7 @@ enum ClaudeOAuthToken {
             expiresAt: expiresAt,
             refreshToken: refreshToken,
             subscriptionType: creds.subscriptionType,
+            rateLimitTier: creds.rateLimitTier,
             rawJSON: updated
         )
     }
