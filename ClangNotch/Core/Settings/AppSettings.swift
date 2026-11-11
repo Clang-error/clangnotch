@@ -60,6 +60,11 @@ public final class AppSettings: ObservableObject {
 
     // 에어팟 드롭다운: name and levels under the notch when AirPods connect. Needs enableBattery.
     @AppStorage("enableAirPodsDropdown") public var enableAirPodsDropdown: Bool = true
+    // Under it: drop the same card when AirPods, a Max or a headset falls to 20% and again at
+    // 10%, not again until charged past 20%. And under that: keep macOS's own low-battery
+    // notification for those devices as well (off: the card alone).
+    @AppStorage("airPodsLowBatteryDropdown") public var airPodsLowBatteryDropdown: Bool = true
+    @AppStorage("airPodsLowBatteryNotification") public var airPodsLowBatteryNotification: Bool = true
 
     // Off: the 에어팟 드롭다운 stays until its X is pressed or it is pushed up into the notch;
     // a Max or another headset still folds after 10 s.

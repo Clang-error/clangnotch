@@ -408,13 +408,40 @@ final class BatteryManager: ObservableObject {
                 armed[device.id] = true
                 continue
             }
+            dropLowBatteryCard(device)
             guard device.displayLevel <= alertThreshold, !device.charging,
                   armed[device.id] ?? true else { continue }
 
             armed[device.id] = false
+            // 에어팟·헤드셋은 설정에 따라 드롭다운만 띄우고 시스템 알림은 건너뛴다.
+            let settings = AppSettings.shared
+            if device.isHeadphones, settings.enableAirPodsDropdown, settings.airPodsLowBatteryDropdown,
+               !settings.airPodsLowBatteryNotification { continue }
             notify(device)
         }
     }
+
+    /// 에어팟·맥스·헤드셋의 배터리 부족 드롭다운: 20% 이하에서 한 번, 10% 이하에서 한 번.
+    /// 20%를 넘게 충전되면 다시 장전한다. 충전 중엔 띄우지 않는다.
+    private func dropLowBatteryCard(_ device: BatteryDevice) {
+        guard device.isHeadphones else { return }
+        let level = device.displayLevel
+        if level > alertThreshold {
+            lowCardStage[device.id] = 0
+            return
+        }
+        guard !device.charging else { return }
+        let stage = lowCardStage[device.id] ?? 0
+        let next = level <= 10 ? 2 : 1
+        guard next > stage else { return }
+        lowCardStage[device.id] = next
+        let settings = AppSettings.shared
+        guard settings.enableAirPodsDropdown, settings.airPodsLowBatteryDropdown else { return }
+        AirPodsDropdown.shared.lowBattery(device)
+    }
+
+    /// 기기별로 이미 띄운 단계: 1 = 20%, 2 = 10%.
+    private var lowCardStage: [String: Int] = [:]
 
     private func notify(_ device: BatteryDevice) {
         let content = UNMutableNotificationContent()
@@ -472,6 +499,9 @@ extension BatteryDevice {
         default:             return symbol
         }
     }
+
+    /// 에어팟·에어팟 맥스·블루투스 헤드셋. 배터리 부족 드롭다운의 대상.
+    var isHeadphones: Bool { symbol.hasPrefix("airpod") || symbol == "headphones" }
 
     /// 지금 연결돼 있다고 볼 수 있는지. 블루투스는 끊기면 곧장 live가 꺼지지만,
     /// 무선 아이폰은 절전 중 응답을 자주 거르므로 최근에 잡혔으면 연결로 친다.

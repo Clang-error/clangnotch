@@ -166,6 +166,23 @@ final class AirPodsDropdown: ObservableObject {
         }
     }
 
+    /// Running low (`BatteryManager`): the same card, for AirPods, a Max or another headset.
+    func lowBattery(_ device: BatteryDevice) {
+        guard AppSettings.shared.enableBattery, !DemoMode.isActive else { return }
+        let productID = IOBluetoothDevice(addressString: device.id)
+            .map { unsafeBitCast($0, to: BTBatteryDevice.self).productID } ?? 0
+        guard AirPodsArt.kind(for: productID) != nil else {
+            show(Card(address: device.id, productID: 0, name: device.name, level: device.displayLevel,
+                      caseLevel: nil, symbol: "headphones"))
+            return
+        }
+        _ = AirPodsArt.device(for: productID, color: knownColors[device.id])
+        var card = Self.card(address: device.id, productID: productID, device: device)
+        card.leftLevel = device.parts.first { $0.label == "L" }?.percent
+        card.rightLevel = device.parts.first { $0.label == "R" }?.percent
+        show(card)
+    }
+
     /// `AirPodsLidWatcher` saw our case open. Levels come from BatteryManager when it has them,
     /// else from the advertisement's tenths. `drops` false is a bud leaving an ear: only a card
     /// that is up changes, to show who is still in.

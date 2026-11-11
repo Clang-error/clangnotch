@@ -793,6 +793,19 @@ struct FeaturesSettingsTab: View {
                                   isOn: $settings.airPodsDropdownAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
+                    SettingToggle(L("배터리 부족 시 드롭다운 표시", "Card when the battery runs low"),
+                                  L("에어팟·에어팟 맥스·헤드셋이 20%, 10%가 되면 한 번씩 · 20% 넘게 충전될 때까지 다시 안 뜸",
+                                    "Once at 20% and once at 10% for AirPods, AirPods Max and headsets · not again until charged past 20%"),
+                                  isOn: $settings.airPodsLowBatteryDropdown)
+                        .padding(.leading, 20)
+                        .disabled(!settings.enableBattery)
+                    if settings.airPodsLowBatteryDropdown {
+                        SettingToggle(L("macOS 알림도 보내기", "Also send the macOS notification"),
+                                      L("끄면 이 기기들은 시스템 배터리 부족 알림 없이 드롭다운만", "Off, these devices get only the card, no system low-battery notification"),
+                                      isOn: $settings.airPodsLowBatteryNotification)
+                            .padding(.leading, 40)
+                            .disabled(!settings.enableBattery)
+                    }
                 }
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
                               L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
