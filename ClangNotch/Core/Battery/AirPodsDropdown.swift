@@ -37,9 +37,15 @@ final class AirPodsDropdown: ObservableObject {
         /// This Mac (`AirPodsArt.thisMac`) instead of a headset.
         var isThisMac = false
 
+        /// A low battery card: buds 10 points or more apart split too, so it shows which one is low.
+        var splitsOnLevels = false
+
         /// One bud charging in the case and the other out: the card shows each bud with its own
         /// battery instead of the pair.
-        var splitsBuds: Bool { leftCharging != rightCharging && leftLevel != nil && rightLevel != nil }
+        var splitsBuds: Bool {
+            guard let left = leftLevel, let right = rightLevel else { return false }
+            return leftCharging != rightCharging || (splitsOnLevels && abs(left - right) >= 10)
+        }
     }
 
     enum Phase: Equatable { case hidden, dropping(Date), settled, rising }
@@ -187,6 +193,7 @@ final class AirPodsDropdown: ObservableObject {
         var card = Self.card(address: device.id, productID: productID, device: device)
         card.leftLevel = device.parts.first { $0.label == "L" }?.percent
         card.rightLevel = device.parts.first { $0.label == "R" }?.percent
+        card.splitsOnLevels = true
         show(card)
     }
 
