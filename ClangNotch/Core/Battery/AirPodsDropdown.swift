@@ -111,8 +111,17 @@ final class AirPodsDropdown: ObservableObject {
     private var generation = 0
     /// When a case opening last dropped a card, by address.
     private var openedByCase: [String: Date] = [:]
-    /// AirPods Max colour codes seen in advertisements, by address.
-    var knownColors: [String: UInt8] = [:]
+    /// AirPods Max colour codes seen in advertisements, by address. Kept across launches: a worn
+    /// Max stops the scan, so after a relaunch its low battery card came in the default
+    /// Starlight until it was taken off and put on again (2026-11-12).
+    var knownColors: [String: UInt8] = (UserDefaults.standard.dictionary(forKey: AirPodsDropdown.colorsKey)
+        as? [String: Int] ?? [:]).mapValues { UInt8(truncatingIfNeeded: $0) } {
+        didSet {
+            guard knownColors != oldValue else { return }
+            UserDefaults.standard.set(knownColors.mapValues { Int($0) }, forKey: Self.colorsKey)
+        }
+    }
+    private static let colorsKey = "airPodsKnownColors"
 
     private init() {}
 

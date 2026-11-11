@@ -422,13 +422,13 @@ final class BatteryManager: ObservableObject {
     }
 
     /// 에어팟·맥스·헤드셋·이 맥의 배터리 부족 드롭다운: 20% 이하에서 한 번, 10% 이하에서 한 번.
-    /// 20%를 넘게 충전되면 다시 장전한다. 충전 중엔 띄우지 않는다.
+    /// 30% 이상 충전되면 다시 장전한다(알림과 같은 기준; 20·21%를 오가면 또 떴다). 충전 중엔 띄우지 않는다.
     private func dropLowBatteryCard(_ device: BatteryDevice) {
         let isMac = device.id == "mac"
         guard device.isHeadphones || isMac else { return }
         let level = device.displayLevel
         if level > alertThreshold {
-            lowCardStage[device.id] = 0
+            if level >= rearmThreshold { lowCardStage[device.id] = nil }
             return
         }
         guard !device.charging else { return }
@@ -446,8 +446,16 @@ final class BatteryManager: ObservableObject {
         }
     }
 
-    /// 기기별로 이미 띄운 단계: 1 = 20%, 2 = 10%.
-    private var lowCardStage: [String: Int] = [:]
+    /// 기기별로 이미 띄운 단계: 1 = 20%, 2 = 10%. 재시작해도 남긴다: 앱이 다시 켜질 때마다
+    /// 이미 띄운 20% 카드를 또 띄웠다(2026-11-12).
+    private var lowCardStage: [String: Int] = UserDefaults.standard.dictionary(forKey: BatteryManager.lowCardStageKey)
+        as? [String: Int] ?? [:] {
+        didSet {
+            guard lowCardStage != oldValue else { return }
+            UserDefaults.standard.set(lowCardStage, forKey: Self.lowCardStageKey)
+        }
+    }
+    private static let lowCardStageKey = "lowBatteryCardStage"
 
     private func notify(_ device: BatteryDevice) {
         let content = UNMutableNotificationContent()
