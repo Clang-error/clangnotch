@@ -436,26 +436,46 @@ private struct SubagentRows: View {
         if !subagents.isEmpty {
             VStack(spacing: 3) {
                 ForEach(subagents.prefix(limit)) { subagent in
+                    // A working 세션 줄 in small: the lit Claude icon, the name over what it is
+                    // doing, and the tracing outline (a row only shows while its subagent works).
                     HStack(spacing: 6) {
                         FolderElbow()
                             .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
                             .frame(width: 7, height: 6)
                             .offset(y: -2.5)
-                        Text(subagent.description.isEmpty ? subagent.agentType : subagent.description)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-                        Spacer(minLength: 6)
-                        Text(activity(of: subagent))
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
+                        Image("ClaudeIcon")
+                            .resizable()
+                            .foregroundColor(NotchPalette.ink)
+                            .frame(width: 10, height: 10)
+                            .shadow(color: Color.orange.opacity(0.8), radius: 3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 5) {
+                                Text(subagent.description.isEmpty ? subagent.agentType : subagent.description)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                if !subagent.description.isEmpty, !subagent.agentType.isEmpty {
+                                    Text(subagent.agentType)
+                                        .font(.system(size: 9.5, weight: .medium))
+                                        .foregroundColor(.orange)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1.5)
+                                        .background(Color.orange.opacity(0.18), in: Capsule())
+                                        .fixedSize()
+                                }
+                            }
+                            Text(activity(of: subagent))
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
                     }
                     .padding(.leading, 10)
                     .padding(.trailing, 8)
-                    .padding(.vertical, 5)
+                    .padding(.vertical, 6)
                     .background(NotchPalette.ink.opacity(0.035), in: RoundedRectangle(cornerRadius: 7))
+                    .overlay { TracingGlowOutline(cornerRadius: 7, color: Color(red: 0.9, green: 0.4, blue: 0.1)) }
                     .help(subagent.agentType)
                 }
                 if subagents.count > limit {
@@ -463,7 +483,8 @@ private struct SubagentRows: View {
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, 23)
+                        // Under the names: row padding, elbow, icon and their spacing.
+                        .padding(.leading, 39)
                 }
             }
             // Indented under the session's own text.
