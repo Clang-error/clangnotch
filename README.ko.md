@@ -67,6 +67,11 @@ macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위�
 - 속도 측정(Cloudflare 서버)과 네트워크 정보 및 SKT(한국) 통신사 한정 테더링 사용량 조회 기능
 - 키보드 잠금과 키 입력 테스트
 
+<p align="center">
+  <img src="assets/demo-lowbattery.gif" width="49%" alt="닫힌 노치 날개에 뜬 아이폰 12%, 이어서 배터리 탭">
+  <img src="assets/demo-tether.gif" width="49%" alt="집에서 테더링하면 노치가 알리고, 속도 탭에 SKT 데이터 잔량">
+</p>
+
 펼친 노치에서는 ⌘1~⌘7로 탭을 옮깁니다.
 
 볼륨·밝기 키를 활성화하면 시스템 표시 대신 ClangNotch 조절창이 표시됩니다.

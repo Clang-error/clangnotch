@@ -67,6 +67,11 @@ Each one is a tab in the open notch, and each can be turned off in Settings.
 - Speed test (Cloudflare's servers), network info, and tethering data usage for SKT (Korea) subscribers only
 - Keyboard lock and key test
 
+<p align="center">
+  <img src="assets/demo-lowbattery.gif" width="49%" alt="An iPhone at 12% in the closed notch's wing, then the Battery tab">
+  <img src="assets/demo-tether.gif" width="49%" alt="Tethering at home: the notch says so, then SKT shared data in the Speed tab">
+</p>
+
 In the open notch, ⌘1–⌘7 switch tabs.
 
 Once enabled, the volume and brightness keys show ClangNotch's own slider instead of the system one.
