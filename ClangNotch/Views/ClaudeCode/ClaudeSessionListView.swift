@@ -409,7 +409,7 @@ private struct UnifiedWorkspaceSessionRow: View {
     }
 
     private var destinationLabel: String {
-        if let host = group.claude.first?.remoteHost { return "SSH · \(host)" }
+        if let host = group.claude.first?.remoteHost ?? group.codex.first?.remoteHost { return "SSH · \(host)" }
         return destination?.label ?? group.claude.first?.ideName ?? "app"
     }
 

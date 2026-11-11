@@ -106,6 +106,7 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     func markUsageLimitExceeded(at: Date) {}
     func parseRateLimits(_ raw: [String: Any]) -> CodexRateLimits { CodexRateLimits() }
     func mergeRateLimits(_ limits: CodexRateLimits, at: Date) {}
+    func isRemote(_ sessionId: String) -> Bool { false }
 '''
 swift += formatter(codex, 'iso8601Formatter') + '\n'
 for name in ['scanForSessions','parseSessionFromFile','readFirstJSONLRecord','parseResponseItem','parseInputRequest','parseEventMsg','parseJSONLLine','loadRecentHistoryForSession','readNewSessionData','markAllSessionsIdle']:

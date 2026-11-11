@@ -31,6 +31,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor in
             RemoteClaudeManager.shared.apply()
+            RemoteCodexManager.shared.apply()
         }
 
         Task { @MainActor in
@@ -46,6 +47,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated {
             RemoteClaudeManager.shared.stopAll()
+            RemoteCodexManager.shared.stopAll()
             HookReceiver.shared.stop()
         }
     }

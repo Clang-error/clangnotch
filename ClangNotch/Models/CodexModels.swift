@@ -23,6 +23,22 @@ struct CodexSession: Identifiable, Equatable {
     var displayName: String {
         URL(fileURLWithPath: cwd).lastPathComponent
     }
+
+    /// Where `RemoteCodexManager` keeps the session files it mirrors from SSH hosts: one folder
+    /// per host, emptied when the host's connection ends and at launch.
+    static let remoteMirrorRoot: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("com.clangerror.ClangNotch", isDirectory: true)
+        .appendingPathComponent("RemoteCodex", isDirectory: true)
+
+    /// The SSH host a mirrored session file came from; nil for one of this Mac's own.
+    static func remoteHost(of file: URL) -> String? {
+        let root = remoteMirrorRoot.path + "/"
+        guard file.path.hasPrefix(root) else { return nil }
+        return file.path.dropFirst(root.count).split(separator: "/").first.map(String.init)
+    }
+
+    /// The SSH host this session runs on, when its file is a mirror.
+    var remoteHost: String? { Self.remoteHost(of: jsonlFile) }
 }
 
 // MARK: - Token Usage

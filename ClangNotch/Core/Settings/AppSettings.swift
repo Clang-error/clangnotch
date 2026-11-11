@@ -143,6 +143,9 @@ public final class AppSettings: ObservableObject {
     /// Comma-separated `~/.ssh/config` host aliases whose Claude Code sessions are mirrored
     /// into the notch over an app-owned SSH reverse tunnel (see RemoteClaudeManager).
     @AppStorage("remoteClaudeHosts") public var remoteClaudeHosts: String = ""
+    /// Comma-separated `~/.ssh/config` host aliases whose Codex sessions are mirrored into the
+    /// notch by reading their session files over SSH (see RemoteCodexManager).
+    @AppStorage("remoteCodexHosts") public var remoteCodexHosts: String = ""
 
     // Codex JSONL Session Tracking
     @AppStorage("enableCodexJSONL") public var enableCodexJSONL: Bool = true

@@ -72,6 +72,8 @@ final class CodexManager: ObservableObject {
     /// Plan mode questions have neither.
     func canAnswerFromNotch(_ request: CodexInputRequest, sessionId: String) -> Bool {
         guard request.questions.allSatisfy({ !$0.options.isEmpty }) else { return false }
+        // A session on an SSH host: Codex's sockets there are out of reach.
+        guard !isRemote(sessionId) else { return false }
         // The TUI leaves this file for each of its threads; app and phone threads have none.
         return request.isAsync || FileManager.default.fileExists(
             atPath: NSHomeDirectory() + "/.codex/tui-thread-reference-capabilities/" + sessionId)
@@ -273,7 +275,6 @@ final class CodexManager: ObservableObject {
     func scanForSessions() {
         let fm = FileManager.default
         var sessions: [CodexSession] = []
-        var latestSessionFile: (url: URL, modifiedAt: Date)?
         var allSessionFiles: [(url: URL, modifiedAt: Date)] = []
 
         debugLog("[Codex] Scanning for sessions...")
@@ -295,9 +296,10 @@ final class CodexManager: ObservableObject {
             return session.jsonlFile
         })
 
-        do {
+        // This Mac's own sessions, then the ones mirrored from SSH hosts (`RemoteCodexManager`).
+        for (root, isRemote) in [(sessionsDir, false), (CodexSession.remoteMirrorRoot, true)] {
             let enumerator = fm.enumerator(
-                at: sessionsDir,
+                at: root,
                 includingPropertiesForKeys: [.contentModificationDateKey],
                 options: [.skipsHiddenFiles]
             )
@@ -310,23 +312,20 @@ final class CodexManager: ObservableObject {
 
                 let attrs = try? fm.attributesOfItem(atPath: fileURL.path)
                 let modDate = attrs?[.modificationDate] as? Date ?? .distantPast
-                allSessionFiles.append((fileURL, modDate))
-                if latestSessionFile == nil || modDate > latestSessionFile!.modifiedAt {
-                    latestSessionFile = (fileURL, modDate)
-                }
+                // A host's sessions may run under another account: its limits aren't this Mac's.
+                if !isRemote { allSessionFiles.append((fileURL, modDate)) }
 
                 // A quiet working session or unanswered question must not expire.
                 if retainedFiles.contains(fileURL)
                     || (modDate > recentThreshold
                         && (latestCodexActivityDate(in: fileURL, modifiedAt: modDate) ?? .distantPast) > recentThreshold) {
-                    if let session = parseSessionFromFile(fileURL) {
+                    // The same thread here and on a host (a synced home folder): this Mac's wins.
+                    if let session = parseSessionFromFile(fileURL), !sessions.contains(where: { $0.id == session.id }) {
                         debugLog("[Codex] Found session: \(session.displayName) (id: \(session.id.prefix(8))...)")
                         sessions.append(session)
                     }
                 }
             }
-        } catch {
-            debugLog("[Codex] Error scanning sessions: \(error)")
         }
         sessionActivityCache = sessionActivityCache.filter { $0.value.modifiedAt > recentThreshold }
 
@@ -392,10 +391,15 @@ final class CodexManager: ObservableObject {
         }
         guard !quiet.isEmpty else { return }
         for session in quiet { endedCheckTimes[session.id] = now }
+        // A mirrored file has no writer on this Mac: its host says whether Codex still runs there.
+        let hostsWithCodex = Set(quiet.compactMap(\.remoteHost).filter(RemoteCodexManager.shared.codexRunning(on:)))
 
         Task {
             let ended = await Task.detached(priority: .utility) {
-                quiet.filter { !SessionAppResolver.isOpenByCodex($0.jsonlFile) }
+                quiet.filter { session in
+                    if let host = session.remoteHost { return !hostsWithCodex.contains(host) }
+                    return !SessionAppResolver.isOpenByCodex(session.jsonlFile)
+                }
             }.value
             for session in ended {
                 // Skip a session that wrote again while lsof ran.
@@ -412,6 +416,24 @@ final class CodexManager: ObservableObject {
                 sessionStates[session.id] = sessionState
                 if selectedSession?.id == session.id { state = sessionState }
             }
+        }
+    }
+
+    /// A session mirrored from an SSH host (`RemoteCodexManager`).
+    private func isRemote(_ sessionId: String) -> Bool {
+        availableSessions.first { $0.id == sessionId }?.remoteHost != nil
+    }
+
+    /// The host's connection ended: its sessions go at once, before their files are deleted.
+    /// Left to the next scan, a watcher would hold a deleted file and the row would stay as it was.
+    func removeRemoteSessions(host: String) {
+        let dropped = availableSessions.filter { $0.remoteHost == host }
+        guard !dropped.isEmpty else { return }
+        for session in dropped { stopWatchingSession(id: session.id) }
+        availableSessions.removeAll { $0.remoteHost == host }
+        if let selected = selectedSession, dropped.contains(selected) {
+            selectedSession = nil
+            state = CodexState()
         }
     }
 
@@ -437,7 +459,8 @@ final class CodexManager: ObservableObject {
     private(set) var sessionTerminals: [String: TerminalLocation] = [:]
 
     func appDestination(for session: CodexSession) -> SessionAppDestination {
-        sessionAppDestinations[session.id] ?? .codex(originator: session.originator, source: session.source)
+        if session.remoteHost != nil { return .ssh }
+        return sessionAppDestinations[session.id] ?? .codex(originator: session.originator, source: session.source)
     }
 
     func focusApp(for session: CodexSession) {
@@ -445,6 +468,12 @@ final class CodexManager: ObservableObject {
     }
 
     private func resolveApp(for session: CodexSession, open: Bool = false) {
+        // Runs on an SSH host: which terminal holds that connection isn't known, so a terminal
+        // that is open comes forward.
+        if session.remoteHost != nil {
+            if open { SessionAppLauncher.open(.ssh) }
+            return
+        }
         Task {
             let (destination, terminal) = await Task.detached(priority: .userInitiated) { () -> (SessionAppDestination, TerminalLocation?) in
                 if let terminal = SessionAppResolver.codexTerminal(file: session.jsonlFile, sessionId: session.id, cwd: session.cwd) {
@@ -749,7 +778,8 @@ final class CodexManager: ObservableObject {
 
         return CodexSession(
             id: sessionId,
-            cwd: cwd,
+            // A Windows host's folder (C:\Users\…): slashes, so its last part reads as the name.
+            cwd: CodexSession.remoteHost(of: file) == nil ? cwd : cwd.replacingOccurrences(of: "\\", with: "/"),
             gitBranch: gitBranch,
             timestamp: timestamp,
             jsonlFile: file,
@@ -963,7 +993,7 @@ final class CodexManager: ObservableObject {
                     sessionState.model = model
                 }
                 if let cwd = payload["cwd"] as? String {
-                    sessionState.cwd = cwd
+                    sessionState.cwd = cwd.contains("\\") && isRemote(sessionId) ? cwd.replacingOccurrences(of: "\\", with: "/") : cwd
                 }
             }
 
@@ -1051,7 +1081,7 @@ final class CodexManager: ObservableObject {
             // A rejected turn reports usage_limit_exceeded here instead of
             // emitting a 100% token_count rate-limit snapshot.
             if let error = payload["error"] as? [String: Any],
-               error["codex_error_info"] as? String == "usage_limit_exceeded" {
+               error["codex_error_info"] as? String == "usage_limit_exceeded", !isRemote(sessionId) {
                 markUsageLimitExceeded(at: rateLimitTimestamp)
             }
             // Aborted or rejected turns aren't done; replayed history isn't news.
@@ -1080,7 +1110,7 @@ final class CodexManager: ObservableObject {
             }
 
             if let rawRateLimits = payload["rate_limits"] as? [String: Any],
-               rawRateLimits["limit_id"] as? String == "codex" {
+               rawRateLimits["limit_id"] as? String == "codex", !isRemote(sessionId) {
                 let parsed = parseRateLimits(rawRateLimits)
                 if parsed.hasData {
                     mergeRateLimits(parsed, at: rateLimitTimestamp)

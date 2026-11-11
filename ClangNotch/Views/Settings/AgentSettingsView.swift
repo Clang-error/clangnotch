@@ -1038,6 +1038,7 @@ struct NetworkSettingsTab: View {
 struct AgentsSettingsTab: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject private var remote = RemoteClaudeManager.shared
+    @ObservedObject private var remoteCodex = RemoteCodexManager.shared
 
     /// One switch per agent: showing it in the notch and reading its session logs go together.
     private var claudeEnabled: Binding<Bool> {
@@ -1122,6 +1123,22 @@ struct AgentsSettingsTab: View {
                 CodexAccountStatus()
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
                     .disabled(!codexEnabled.wrappedValue || !settings.showCodexUsage)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        TextField(L("원격 SSH 호스트", "Remote SSH hosts"), text: $settings.remoteCodexHosts, prompt: Text("myserver, windows-pc"))
+                            .onSubmit { remoteCodex.apply() }
+                        Button(L("연결", "Connect")) { remoteCodex.apply() }
+                    }
+                    Text(L("호스트의 Codex 세션 기록을 SSH로 읽어 노치에 표시 · 호스트에 설치하는 것 없음 · 리눅스·맥·윈도우 · 권한 요청과 노치에서 답하기는 안 됨",
+                           "Reads the host's Codex session logs over SSH · installs nothing there · Linux, macOS, Windows · no approval requests or answering from the notch"))
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                .disabled(!codexEnabled.wrappedValue)
+                .onChange(of: settings.enableCodexJSONL) { remoteCodex.apply() }
+                ForEach(remoteCodex.statuses.keys.sorted(), id: \.self) { host in
+                    LabeledContent(host, value: remoteCodex.statuses[host] ?? "")
+                }
             } header: {
                 Text("Codex")
             }
