@@ -13,12 +13,12 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-both.gif" width="100%" alt="Claude Code and Codex working together: answering a question from the notch, then done">
+  <img src="assets/demo-both.webp" width="100%" alt="Claude Code and Codex working together: answering a question from the notch, then done">
 </p>
 
 <p align="center">
-  <img src="assets/demo-claude.gif" width="49%" alt="Claude Code working → question → done">
-  <img src="assets/demo-codex.gif" width="49%" alt="Codex working → question → done">
+  <img src="assets/demo-claude.webp" width="49%" alt="Claude Code working → question → done">
+  <img src="assets/demo-codex.webp" width="49%" alt="Codex working → question → done">
 </p>
 
 ---
@@ -55,7 +55,7 @@ Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same s
 Each one is a tab in the open notch, and each can be turned off in Settings.
 
 <p align="center">
-  <img src="assets/demo-tools.gif" width="80%" alt="Clipboard, per-app volume, batteries, speed test, Sidecar and display arrangement, and key test tabs">
+  <img src="assets/demo-tools.webp" width="80%" alt="Clipboard, per-app volume, batteries, speed test, Sidecar and display arrangement, and key test tabs">
 </p>
 
 - Clipboard history (text only, kept in memory). Items you reuse can be pinned
@@ -68,8 +68,8 @@ Each one is a tab in the open notch, and each can be turned off in Settings.
 - Keyboard lock and key test
 
 <p align="center">
-  <img src="assets/demo-lowbattery.gif" width="49%" alt="An iPhone at 12% in the closed notch's wing, then the Battery tab">
-  <img src="assets/demo-tether.gif" width="49%" alt="Tethering at home: the notch says so, then SKT shared data in the Speed tab">
+  <img src="assets/demo-lowbattery.webp" width="49%" alt="An iPhone at 12% in the closed notch's wing, then the Battery tab">
+  <img src="assets/demo-tether.webp" width="49%" alt="Tethering at home: the notch says so, then SKT shared data in the Speed tab">
 </p>
 
 In the open notch, ⌘1–⌘7 switch tabs.
@@ -80,19 +80,19 @@ Once enabled, the volume and brightness keys show ClangNotch's own slider instea
 - If MonitorControl, Lunar or BetterDisplay sets your external display's brightness, the brightness keys can be passed through to it
 
 <p align="center">
-  <img src="assets/demo-osd.gif" width="60%" alt="Volume and brightness sliders under the notch">
+  <img src="assets/demo-osd.webp" width="60%" alt="Volume and brightness sliders under the notch">
 </p>
 
 Connect AirPods or a Bluetooth headset and a card drops from the notch with its battery. AirPods show the moment the case opens, and with one bud in, only the bud you're wearing. AirPods Max show when you put them on and fold when you take them off.
 
 <p align="center">
-  <img src="assets/demo-airpods.gif" width="60%" alt="AirPods Pro and AirPods Max cards dropping from the notch">
+  <img src="assets/demo-airpods.webp" width="60%" alt="AirPods Pro and AirPods Max cards dropping from the notch">
 </p>
 
 When your Mac runs low, the same card drops at 20% and again at 10%, drawn as your Mac's model.
 
 <p align="center">
-  <img src="assets/demo-macbattery.gif" width="60%" alt="A MacBook Pro low battery card dropping from the notch at 20%, then at 10%">
+  <img src="assets/demo-macbattery.webp" width="60%" alt="A MacBook Pro low battery card dropping from the notch at 20%, then at 10%">
 </p>
 
 **Notch and settings**

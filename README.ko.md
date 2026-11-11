@@ -13,12 +13,12 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo-both.gif" width="100%" alt="Claude Code와 Codex가 함께 작업: 질문에 노치에서 답하고 완료까지">
+  <img src="assets/demo-both.webp" width="100%" alt="Claude Code와 Codex가 함께 작업: 질문에 노치에서 답하고 완료까지">
 </p>
 
 <p align="center">
-  <img src="assets/demo-claude.gif" width="49%" alt="Claude Code 작업 중 → 질문 → 완료">
-  <img src="assets/demo-codex.gif" width="49%" alt="Codex 작업 중 → 질문 → 완료">
+  <img src="assets/demo-claude.webp" width="49%" alt="Claude Code 작업 중 → 질문 → 완료">
+  <img src="assets/demo-codex.webp" width="49%" alt="Codex 작업 중 → 질문 → 완료">
 </p>
 
 ---
@@ -55,7 +55,7 @@ macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위�
 펼친 노치의 탭으로 하나씩 들어 있고, 설정에서 끌 수 있습니다.
 
 <p align="center">
-  <img src="assets/demo-tools.gif" width="80%" alt="클립보드, 앱별 볼륨, 배터리, 속도 측정, 사이드카와 화면 정렬, 키 입력 테스트 탭">
+  <img src="assets/demo-tools.webp" width="80%" alt="클립보드, 앱별 볼륨, 배터리, 속도 측정, 사이드카와 화면 정렬, 키 입력 테스트 탭">
 </p>
 
 - 클립보드 기록(텍스트만, 메모리에만 보관). 자주 쓰는 건 고정가능
@@ -68,8 +68,8 @@ macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위�
 - 키보드 잠금과 키 입력 테스트
 
 <p align="center">
-  <img src="assets/demo-lowbattery.gif" width="49%" alt="닫힌 노치 날개에 뜬 아이폰 12%, 이어서 배터리 탭">
-  <img src="assets/demo-tether.gif" width="49%" alt="집에서 테더링하면 노치가 알리고, 속도 탭에 SKT 데이터 잔량">
+  <img src="assets/demo-lowbattery.webp" width="49%" alt="닫힌 노치 날개에 뜬 아이폰 12%, 이어서 배터리 탭">
+  <img src="assets/demo-tether.webp" width="49%" alt="집에서 테더링하면 노치가 알리고, 속도 탭에 SKT 데이터 잔량">
 </p>
 
 펼친 노치에서는 ⌘1~⌘7로 탭을 옮깁니다.
@@ -80,13 +80,13 @@ macOS 14.2 이상이 필요합니다. 노치가 없는 맥에서는 화면 위�
 - MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기를 조절한다면 밝기 키를 그 앱에 바이패스 시킬 수 있음
 
 <p align="center">
-  <img src="assets/demo-osd.gif" width="60%" alt="노치 아래에 뜨는 볼륨·밝기 조절창">
+  <img src="assets/demo-osd.webp" width="60%" alt="노치 아래에 뜨는 볼륨·밝기 조절창">
 </p>
 
 에어팟이나 블루투스 헤드셋을 연결하면 노치에서 배터리 카드가 내려옵니다. 에어팟은 케이스를 열 때 바로 뜨고, 한쪽만 끼면 착용한 쪽 유닛만 보입니다. 에어팟 맥스는 머리에 쓸 때 뜨고 벗으면 접힙니다.
 
 <p align="center">
-  <img src="assets/demo-airpods.gif" width="60%" alt="노치에서 내려오는 에어팟 프로와 에어팟 맥스 카드">
+  <img src="assets/demo-airpods.webp" width="60%" alt="노치에서 내려오는 에어팟 프로와 에어팟 맥스 카드">
 </p>
 
 **노치와 설정**
