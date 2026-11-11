@@ -305,8 +305,12 @@ struct AirPodsDropdownContent: View {
 /// iOS's little battery: outline, fill to the level, nub. Same colours as the 기기 줄.
 private struct AirPodsBatteryGlyph: View {
     let level: Int
-    /// iOS's bolt over the fill while charging.
+    /// A dark grey bolt over the fill while charging.
     var charging = false
+
+    private var bolt: some View {
+        Image(systemName: "bolt.fill").font(.system(size: 10.5, weight: .heavy))
+    }
 
     var body: some View {
         HStack(spacing: 1) {
@@ -320,11 +324,17 @@ private struct AirPodsBatteryGlyph: View {
             .frame(width: 24, height: 11)
             .overlay {
                 if charging {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(.primary)
-                        .shadow(color: .black.opacity(0.35), radius: 0.5)
-                        .transition(.scale.combined(with: .opacity))
+                    // iOS's look: a big dark bolt as tall as the battery, cut out of the fill by a
+                    // light rim (the same symbol drawn around it, a point out each way).
+                    ZStack {
+                        ForEach(0..<16, id: \.self) { i in
+                            let angle = Double(i) * .pi / 8
+                            bolt.foregroundStyle(Color(white: 0.95))
+                                .offset(x: cos(angle), y: sin(angle))
+                        }
+                        bolt.foregroundStyle(Color(white: 0.22))
+                    }
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: charging)
