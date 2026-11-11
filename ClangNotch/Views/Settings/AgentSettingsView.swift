@@ -869,6 +869,14 @@ struct FeaturesSettingsTab: View {
                                 "Drawn as this Mac's model, once at 20% and once at 10% · not while charging"),
                               isOn: $settings.macLowBatteryDropdown)
                     .disabled(!settings.enableBattery)
+                if settings.macLowBatteryDropdown {
+                    SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's card by itself"),
+                                  L("10초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음",
+                                    "Folds after 10 seconds · off, it stays until you press X or push it up into the notch"),
+                                  isOn: $settings.macLowBatteryAutoHide)
+                        .padding(.leading, 20)
+                        .disabled(!settings.enableBattery)
+                }
             } header: {
                 Text(L("에어팟 드롭다운", "AirPods card"))
             }

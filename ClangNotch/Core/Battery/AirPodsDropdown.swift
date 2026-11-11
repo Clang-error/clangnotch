@@ -64,8 +64,13 @@ final class AirPodsDropdown: ObservableObject {
         card.map { $0.symbol != nil || AirPodsArt.kind(for: $0.productID) == .headphones } ?? false
     }
 
+    /// This Mac's low battery card has its own switch (맥 배터리 부족 시 드롭다운 › 자동으로 접기):
+    /// 10 s, or until closed.
+    private var isMacCard: Bool { card?.isThisMac ?? false }
+
     private var visibleTime: TimeInterval {
-        foldsAnyway && !AppSettings.shared.airPodsDropdownAutoHide ? Self.headphonesDuration : Self.visibleDuration
+        if isMacCard { return Self.headphonesDuration }
+        return foldsAnyway && !AppSettings.shared.airPodsDropdownAutoHide ? Self.headphonesDuration : Self.visibleDuration
     }
 
     /// Set by the notch view. The card skips while the notch is open and leaves when it opens;
@@ -370,7 +375,11 @@ final class AirPodsDropdown: ObservableObject {
         // 설정 › 기능 › 에어팟 연결 알림 자동으로 접기, read when the time is up so switching it
         // off keeps a card that is already down. The demo scene and headphones always fold.
         let work = DispatchWorkItem { [weak self] in
-            guard let self, AppSettings.shared.airPodsDropdownAutoHide || DemoMode.isActive || self.foldsAnyway else { return }
+            guard let self else { return }
+            let settings = AppSettings.shared
+            let folds = self.isMacCard ? settings.macLowBatteryAutoHide
+                : settings.airPodsDropdownAutoHide || self.foldsAnyway
+            guard folds || DemoMode.isActive else { return }
             self.dismiss()
         }
         hideWork = work
