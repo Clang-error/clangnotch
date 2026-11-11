@@ -1683,17 +1683,16 @@ struct ClangNotchContentView: View {
         return { answers in center.answerQuestion(sessionId: sessionId, answers: answers) }
     }
 
-    /// A Codex app question that outlives its turn takes its answer as a message, which the
-    /// notch can send through the app. Other Codex questions, and ones without options to
-    /// pick from, are answered where they were asked.
+    /// Set when the notch can answer the Codex question itself (`canAnswerFromNotch`); the
+    /// rest are answered where they were asked.
     private var codexQuestionAnswer: (([String: Any]) -> Void)? {
-        // 실험 기능: it rides the Codex app's internal socket, which an update can change.
+        // 실험 기능: it rides Codex's internal sockets, which an update can change.
         guard settings.experimentalCodexAppAnswers,
-              let request = codexInputRequest, request.isAsync,
-              request.questions.allSatisfy({ !$0.options.isEmpty }),
+              let request = codexInputRequest,
               let sessionId = codexManager.sessionStates.first(where: {
                   $0.value.pendingInputRequest?.id == request.id
-              })?.key else { return nil }
+              })?.key,
+              codexManager.canAnswerFromNotch(request, sessionId: sessionId) else { return nil }
         let manager = codexManager
         return { answers in manager.answerInputRequest(request, sessionId: sessionId, answers: answers) }
     }

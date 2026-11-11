@@ -1093,9 +1093,9 @@ struct ExperimentalSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                SettingToggle(L("Codex 앱 질문에 노치에서 답하기", "Answer Codex app questions from the notch"),
-                              L("Codex 앱이 선택지로 물으면 노치에서 바로 답함 · Codex 앱 내부 연결을 써서 앱이 업데이트되면 안 될 수 있음",
-                                "Answers the Codex app's multiple-choice questions from the notch · uses the app's internal connection, so an app update may break it"),
+                SettingToggle(L("Codex 질문에 노치에서 답하기", "Answer Codex questions from the notch"),
+                              L("Codex 앱과 터미널 Codex(Plan 모드)가 선택지로 물으면 노치에서 바로 답함 · Codex 내부 연결을 써서 업데이트되면 안 될 수 있음",
+                                "Answers multiple-choice questions from the Codex app and from Codex in a terminal (Plan mode) · uses Codex's internal connections, so an update may break it"),
                               isOn: $settings.experimentalCodexAppAnswers)
                     .disabled(!(settings.showSourceCodex && settings.enableCodexJSONL))
             } header: {

@@ -65,18 +65,37 @@ final class CodexManager: ObservableObject {
     /// Questions whose answer is on its way to the Codex app, so a second tap can't send a second message.
     private var answeringInputRequestIDs: Set<String> = []
 
-    /// The 질문 드롭다운's answer to a Codex app question that outlives its turn
-    /// (`request_user_input_async`): the app takes it as the user's next message. `answers`
-    /// maps each question's text to the picked label. If the app can't take it, go there instead.
+    /// Whether the 질문 드롭다운 can answer this question itself: every question has options
+    /// to pick from, and it is one of the two kinds with a way in. A Codex app question that
+    /// outlives its turn (`request_user_input_async`) goes through the app; a terminal
+    /// session's `request_user_input` (Plan mode) goes through the shared daemon. The app's own
+    /// Plan mode questions have neither.
+    func canAnswerFromNotch(_ request: CodexInputRequest, sessionId: String) -> Bool {
+        guard request.questions.allSatisfy({ !$0.options.isEmpty }) else { return false }
+        // The TUI leaves this file for each of its threads; app and phone threads have none.
+        return request.isAsync || FileManager.default.fileExists(
+            atPath: NSHomeDirectory() + "/.codex/tui-thread-reference-capabilities/" + sessionId)
+    }
+
+    /// The 질문 드롭다운's answer to a Codex question. `answers` maps each question's text to
+    /// the picked label. If Codex can't take it, go to the session instead.
     func answerInputRequest(_ request: CodexInputRequest, sessionId: String, answers: [String: Any]) {
         let picked = request.questions.enumerated().compactMap { index, question in
             (answers[question.question] as? String).map { (index: index, question: question.question, answer: $0) }
         }
-        guard request.isAsync, !answeringInputRequestIDs.contains(request.id),
-              let text = CodexAppIPC.questionReply(callId: request.id, answers: picked) else { return }
+        guard picked.count == request.questions.count, !answeringInputRequestIDs.contains(request.id) else { return }
+        // The app takes the answer as the user's next message; the daemon as the tool's result.
+        let send: @Sendable () -> CodexAppIPC.Outcome
+        if request.isAsync {
+            guard let text = CodexAppIPC.questionReply(callId: request.id, answers: picked) else { return }
+            send = { CodexAppIPC.startTurn(threadId: sessionId, text: text) }
+        } else {
+            let labels = picked.map(\.answer)
+            send = { CodexDaemonIPC.answerQuestion(threadId: sessionId, callId: request.id, labels: labels) }
+        }
         answeringInputRequestIDs.insert(request.id)
         Task.detached(priority: .userInitiated) {
-            let outcome = CodexAppIPC.startTurn(threadId: sessionId, text: text)
+            let outcome = send()
             debugLog("[Codex] Question \(request.id.prefix(13)) answered from the notch: \(outcome)")
             guard case .refused = outcome else { return }
             await MainActor.run {

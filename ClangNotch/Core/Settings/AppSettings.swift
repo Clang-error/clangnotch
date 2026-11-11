@@ -97,8 +97,9 @@ public final class AppSettings: ObservableObject {
     // "사용량 한도 표시" under Codex: the Codex 사용량 카드 (notch and menu bar popover). Its
     // limits come in the session logs, so unlike Claude's there is nothing to poll.
     @AppStorage("showCodexUsage") public var showCodexUsage: Bool = true
-    // 설정 › 에이전트 › 실험 기능 › "Codex 앱 질문에 노치에서 답하기": answers go in through the
-    // Codex app's internal IPC socket (CodexAppIPC), which an app update can change. Off by default.
+    // 설정 › 실험 기능 › "Codex 질문에 노치에서 답하기": answers go in through the Codex app's
+    // internal IPC socket (CodexAppIPC) and the shared daemon's experimental API (CodexDaemonIPC),
+    // which an update can change. Off by default. The key keeps its first name.
     @AppStorage("experimentalCodexAppAnswers") public var experimentalCodexAppAnswers: Bool = false
     /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true

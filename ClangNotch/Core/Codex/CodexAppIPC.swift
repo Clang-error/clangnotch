@@ -57,7 +57,8 @@ enum CodexAppIPC {
         return String(data: data, encoding: .utf8)
     }
 
-    private static func connect(to path: String) -> Int32 {
+    /// A connected Unix socket, or -1. `timeout` bounds each read and write, in seconds.
+    static func connect(to path: String, timeout seconds: Int = 12) -> Int32 {
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         let bytes = Array(path.utf8)
@@ -66,9 +67,10 @@ enum CodexAppIPC {
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return -1 }
-        // The app answers for a thread it holds in well under a second, but its router waits
-        // 10s before saying that no window holds the thread ("no-client-found").
-        var timeout = timeval(tv_sec: 12, tv_usec: 0)
+        // The default is for the app's socket: it answers for a thread it holds in well under a
+        // second, but its router waits 10s before saying that no window holds the thread
+        // ("no-client-found").
+        var timeout = timeval(tv_sec: seconds, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
         var on: Int32 = 1
@@ -86,10 +88,14 @@ enum CodexAppIPC {
         guard let body = try? JSONSerialization.data(withJSONObject: message) else { return false }
         var frame = withUnsafeBytes(of: UInt32(body.count)) { Data($0) }
         frame.append(body)
-        return frame.withUnsafeBytes { buffer in
+        return write(frame, to: fd)
+    }
+
+    static func write(_ data: Data, to fd: Int32) -> Bool {
+        data.withUnsafeBytes { buffer in
             var sent = 0
             while sent < buffer.count {
-                let n = write(fd, buffer.baseAddress! + sent, buffer.count - sent)
+                let n = Darwin.write(fd, buffer.baseAddress! + sent, buffer.count - sent)
                 guard n > 0 else { return false }
                 sent += n
             }
@@ -120,7 +126,7 @@ enum CodexAppIPC {
         return nil
     }
 
-    private static func read(_ count: Int, from fd: Int32) -> Data? {
+    static func read(_ count: Int, from fd: Int32) -> Data? {
         var data = Data(count: count)
         var filled = 0
         let complete = data.withUnsafeMutableBytes { buffer -> Bool in
