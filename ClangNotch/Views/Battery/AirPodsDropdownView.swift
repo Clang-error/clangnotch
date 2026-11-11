@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import SwiftUI
 
@@ -237,21 +238,28 @@ struct AirPodsDropdownContent: View {
                                     removal: .offset(x: left ? 34 : -34).combined(with: .opacity)))
                             }
                         } else {
-                            let art = card.side.map { AirPodsArt.singleBud(for: card.productID, left: $0 == "L") }
+                            let art = card.isThisMac ? AirPodsArt.thisMac
+                                : card.side.map { AirPodsArt.singleBud(for: card.productID, left: $0 == "L") }
                                 ?? AirPodsArt.frontPair(for: card.productID)
                                 ?? AirPodsArt.device(for: card.productID, color: card.color)
                             let charging = card.side.map { $0 == "L" ? card.leftCharging : card.rightCharging }
                                 ?? (card.leftCharging && card.rightCharging)
-                            item(art, symbol: card.symbol ?? AirPodsArt.deviceSymbol(for: card.productID),
-                                 height: kind == .headphones || card.symbol != nil ? 92 : 58, level: card.level,
+                            // The pair (not one bud) and the Max turn like macOS's own banner.
+                            let video = card.side == nil && card.symbol == nil && !card.isThisMac
+                                ? AirPodsArt.bannerVideo(for: card.productID, color: card.color) : nil
+                            item(art, symbol: card.isThisMac ? "laptopcomputer"
+                                    : card.symbol ?? AirPodsArt.deviceSymbol(for: card.productID),
+                                 height: video != nil ? 100 : kind == .headphones || card.symbol != nil || card.isThisMac ? 92 : 58,
+                                 video: video, level: card.level,
                                  charging: charging, visible: visible, delay: 0,
                                  bounceKey: card.side ?? "both")
                             .transition(.scale(scale: 0.75, anchor: .bottom).combined(with: .opacity))
                         }
                         if kind == .buds, let caseLevel = card.caseLevel {
+                            let caseVideo = AirPodsArt.bannerVideo(for: card.productID, isCase: true, color: card.color)
                             item(AirPodsArt.chargingCase, symbol: "airpods.chargingcase",
-                                 height: 62, level: caseLevel, charging: card.caseCharging,
-                                 visible: visible, delay: 0.1)
+                                 height: caseVideo != nil ? 100 : 62, video: caseVideo, level: caseLevel,
+                                 charging: card.caseCharging, visible: visible, delay: 0.1)
                         }
                     }
                     // Splitting into L and R, or merging back into the pair, springs with a bounce.
@@ -274,11 +282,13 @@ struct AirPodsDropdownContent: View {
         .environment(\.colorScheme, appearance.theme(settings).scheme)
     }
 
-    private func item(_ image: NSImage?, symbol: String, height: CGFloat, level: Int?, charging: Bool = false,
-                      visible: Bool, delay: Double, bounceKey: String = "") -> some View {
+    private func item(_ image: NSImage?, symbol: String, height: CGFloat, video: URL? = nil, level: Int?,
+                      charging: Bool = false, visible: Bool, delay: Double, bounceKey: String = "") -> some View {
         VStack(spacing: 6) {
             Group {
-                if let image {
+                if let video {
+                    LoopingVideo(url: video).frame(width: height)
+                } else if let image {
                     Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
                 } else {
                     Image(systemName: symbol).resizable().scaledToFit().foregroundStyle(.secondary)
@@ -348,5 +358,59 @@ private struct AirPodsBatteryGlyph: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: charging)
             RoundedRectangle(cornerRadius: 1).fill(.secondary).frame(width: 1.5, height: 4)
         }
+    }
+}
+
+/// One of macOS's AirPods banner loops, playing round and round with no sound, transparent
+/// where the video is (HEVC with alpha). It plays only while the card is up.
+private struct LoopingVideo: NSViewRepresentable {
+    let url: URL
+
+    final class PlayerView: NSView {
+        let player = AVQueuePlayer()
+        var looper: AVPlayerLooper?
+        var url: URL?
+        private let playerLayer = AVPlayerLayer()
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            playerLayer.player = player
+            playerLayer.videoGravity = .resizeAspect
+            playerLayer.backgroundColor = NSColor.clear.cgColor
+            layer?.addSublayer(playerLayer)
+            player.isMuted = true
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            playerLayer.frame = bounds
+            CATransaction.commit()
+        }
+
+        func play(_ url: URL) {
+            guard url != self.url else { return }
+            self.url = url
+            player.removeAllItems()
+            looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+            player.play()
+        }
+    }
+
+    func makeNSView(context: Context) -> PlayerView {
+        let view = PlayerView()
+        view.play(url)
+        return view
+    }
+
+    func updateNSView(_ view: PlayerView, context: Context) { view.play(url) }
+
+    static func dismantleNSView(_ view: PlayerView, coordinator: ()) {
+        view.player.pause()
+        view.looper = nil
     }
 }

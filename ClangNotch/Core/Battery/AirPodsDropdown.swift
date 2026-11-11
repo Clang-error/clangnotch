@@ -34,6 +34,8 @@ final class AirPodsDropdown: ObservableObject {
         var leftCharging = false
         var rightCharging = false
         var caseCharging = false
+        /// This Mac (`AirPodsArt.thisMac`) instead of a headset.
+        var isThisMac = false
 
         /// One bud charging in the case and the other out: the card shows each bud with its own
         /// battery instead of the pair.
@@ -207,6 +209,13 @@ final class AirPodsDropdown: ObservableObject {
             new.caseCharging = charging.case
         }
         if drops { show(new) } else { refresh(new) }
+    }
+
+    /// `--demo --demo-scene macbattery`: this Mac running low, drawn as this Mac's model.
+    func demoShowMacLow(level: Int) {
+        var card = Card(address: "demo-mac", productID: 0, name: AirPodsArt.thisMacName, level: level, caseLevel: nil)
+        card.isThisMac = true
+        show(card)
     }
 
     /// `--demo --demo-scene airpods`: a made-up card, no real device behind it.

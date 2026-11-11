@@ -71,6 +71,78 @@ enum AirPodsArt {
     /// The only case render on the Mac is the newest AirPods Pro's; every model borrows it.
     static var chargingCase: NSImage? { catalogImage("B788_case-closed-charged", in: headphoneSettingsUI) }
 
+    // MARK: - Banner videos
+
+    /// The turning 3D loops macOS shows in its own AirPods banner: 6 s, 168 px, one per model
+    /// (product ID in decimal), a case loop beside most, a Max per colour code
+    /// (Banner-PID-8223-18-Loop.mov = midnight). Models without one borrow their nearest
+    /// sibling's; nil leaves the still render.
+    private static let banners = "/System/Library/CoreServices/BluetoothUIService.app/Contents/Resources"
+
+    static func bannerVideo(for productID: UInt16, isCase: Bool = false, color: UInt8? = nil) -> URL? {
+        let ids: [Int]
+        switch productID {
+        case 0x2024:         ids = [0x2024, 0x2014]   // Pro 2 USB-C → Lightning's
+        case 0x201B:         ids = [0x201B, 0x2019]   // AirPods 4 ANC → AirPods 4's
+        case 0x202D, 0x200D: ids = [Int(productID), 0x201F, 0x200A]   // Max USB-C → Max's
+        default:             ids = [Int(productID)]
+        }
+        let suffix = isCase ? "-Case" : ""
+        for id in ids {
+            let folder = "\(banners)/Banner-PID-\(id)\(suffix)-mov"
+            var names: [String] = []
+            if let color { names.append("Banner-PID-\(id)-\(color)\(suffix)-Loop.mov") }
+            names.append("Banner-PID-\(id)\(suffix)-Loop.mov")
+            for name in names where FileManager.default.fileExists(atPath: "\(folder)/\(name)") {
+                return URL(fileURLWithPath: "\(folder)/\(name)")
+            }
+        }
+        return nil
+    }
+
+    // MARK: - This Mac
+
+    /// This Mac's picture from ProductKitCore (what the Finder sidebar uses), by its marketing
+    /// name: MacBook Pro / Air with a notch on Apple silicon, the older shapes on Intel.
+    static var thisMac: NSImage? {
+        guard let name = thisMacImageName else { return nil }
+        return cached("mac-\(name)") {
+            Bundle(path: "/System/Library/PrivateFrameworks/ProductKitCore.framework")?.image(forResource: name)
+        }
+    }
+
+    /// "MacBook Pro", from system_profiler once (the model identifier alone doesn't say Pro or Air).
+    static let thisMacName: String = {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
+        process.arguments = ["SPHardwareDataType", "-json"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return "Mac" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let item = (root?["SPHardwareDataType"] as? [[String: Any]])?.first
+        return item?["machine_name"] as? String ?? "Mac"
+    }()
+
+    private static var thisMacImageName: String? {
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        var model = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.model", &model, &size, nil, 0)
+        let identifier = String(cString: model)
+        let appleSilicon = identifier.hasPrefix("Mac") && !identifier.hasPrefix("MacBook")
+        switch thisMacName {
+        case "MacBook Pro": return appleSilicon ? "MacBookProBlack" : "MacBookPro"
+        case "MacBook Air": return appleSilicon ? "MacBookAir2025" : "MacBookAir"
+        case "MacBook Neo": return "MacBookNeo"
+        case let name where name.hasPrefix("MacBook"): return "MacBook"
+        default: return nil
+        }
+    }
+
     nonisolated static func deviceSymbol(for productID: UInt16) -> String {
         switch productID {
         case 0x200A, 0x200D, 0x201F, 0x202D: return "airpodsmax"
