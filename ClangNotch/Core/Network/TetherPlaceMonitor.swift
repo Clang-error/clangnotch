@@ -80,8 +80,16 @@ final class TetherPlaceMonitor: NSObject, ObservableObject {
     }
 
     /// Called at launch — the alert has to fire without any tab being open.
+    /// `--demo --demo-scene tether`: tethering at a saved place, with no location or network read.
+    func demoTether(place: String) {
+        activePlaceName = place
+        connectedMinutes = 12
+        alert = TetherAlert(placeName: place)
+    }
+
     func start() {
-        guard timer == nil else { return }
+        // The demo reads no location or network; `demoTether` sets what it shows.
+        guard timer == nil, !DemoMode.isActive else { return }
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }

@@ -34,8 +34,17 @@ final class TWorldSession: ObservableObject {
     /// When the 10-minute loop is allowed to query again; the tick that follows may be up to 30s late.
     var nextAutoRefresh: Date? { lastAttempt?.addingTimeInterval(600) }
 
+    /// `--demo --demo-scene tether`: a made-up balance; the account is never asked.
+    func demoApply(_ balance: TWorldBalance) {
+        self.balance = balance
+        requiresLogin = false
+        errorMessage = nil
+    }
+
     func prepare() async {
-        guard AppSettings.shared.enableTWorld else { return }
+        // The demo shows `demoApply`'s numbers only: a real refresh would put this account's
+        // balance in a recording.
+        guard AppSettings.shared.enableTWorld, !DemoMode.isActive else { return }
         if let restoreTask { await restoreTask.value; return }
         let task = Task {
             do {
@@ -87,7 +96,7 @@ final class TWorldSession: ObservableObject {
     /// Runs as its own task: the card that asks for a refresh lives only while the popover or
     /// Speed tab is open, and closing it must not cancel a sign-in halfway through.
     func refresh(force: Bool = false) async {
-        guard AppSettings.shared.enableTWorld else { return }
+        guard AppSettings.shared.enableTWorld, !DemoMode.isActive else { return }
         if let refreshTask { await refreshTask.value; return }
         let task = Task { [self] in
             await performRefresh(force: force)

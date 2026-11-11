@@ -1,13 +1,18 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods|osd]`: the notch runs
-/// on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard, volume,
-/// battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
-/// project name, path, device or copied text from this Mac can end up in a video.
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods|osd|lowbattery|tether]`:
+/// the notch runs on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard,
+/// volume, battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
+/// project name, path, device, copied text or account balance from this Mac can end up in a video.
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, tools, many, airpods, osd }
+    enum Scene: String { case claude, codex, both, tools, many, airpods, osd, lowbattery, tether }
+
+    /// Every scene's clock starts this long after launch, once the startup glow (3 s and a 0.3 s
+    /// fade) is gone: started at launch, the first dropdown came down inside the glow and the two
+    /// read as one effect (2026-11-11). Recordings start from here too.
+    static let startDelay: TimeInterval = 4
 
     static var scene: Scene {
         let args = CommandLine.arguments
@@ -42,20 +47,44 @@ final class DemoDriver {
 
     func start() {
         guard task == nil else { return }
+        task = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(DemoMode.startDelay))
+            guard !Task.isCancelled else { return }
+            await self?.play()
+        }
+    }
+
+    private func play() async {
         if DemoMode.scene == .tools {
             applyTools()
             return
         }
+        // lowbattery: an idle notch; the iPhone, ranked for the closed notch, is down to 12%, so
+        // its battery shows in the wing (배터리 부족 날개).
+        if DemoMode.scene == .lowbattery {
+            applyTools(iPhonePercent: 12)
+            BatteryManager.shared.demoPriorityIDs = ["demo-iphone"]
+            return
+        }
+        // tether: tethering to the iPhone at a saved place: the red glow, the wing's place and
+        // time, the 테더링 드롭다운, and in the Speed tab the SKT shared data balance.
+        if DemoMode.scene == .tether {
+            applyTools()
+            let now = Date()
+            TWorldSession.shared.demoApply(TWorldBalance(name: "T플랜 공유 데이터", totalKB: 40 * 1_048_576,
+                                                         usedKB: 13.62 * 1_048_576, remainingKB: 26.38 * 1_048_576,
+                                                         fetchedAt: now.addingTimeInterval(-4 * 60)))
+            TetherPlaceMonitor.shared.demoTether(place: L("집", "Home"))
+            return
+        }
         // airpods: an idle notch; the 에어팟 드롭다운 drops every 12 s, AirPods Pro then Max.
         if DemoMode.scene == .airpods {
-            task = Task {
-                var max = false
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
-                    AirPodsDropdown.shared.demoShow(max: max)
-                    max.toggle()
-                    try? await Task.sleep(for: .seconds(10))
-                }
+            var max = false
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                AirPodsDropdown.shared.demoShow(max: max)
+                max.toggle()
+                try? await Task.sleep(for: .seconds(10))
             }
             return
         }
@@ -71,31 +100,27 @@ final class DemoDriver {
             plan[plan.count - 1].2 = 500
             plan += brighten
             plan[plan.count - 1].2 = 3500
-            task = Task { @MainActor in
-                let osd = SystemControlOSD.shared
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
-                    for (volume, level, pause) in plan {
-                        if volume { osd.demoVolume(Double(level) / 16) } else { osd.demoBrightness(Double(level) / 16) }
-                        try? await Task.sleep(for: .milliseconds(pause))
-                    }
+            let osd = SystemControlOSD.shared
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                for (volume, level, pause) in plan {
+                    if volume { osd.demoVolume(Double(level) / 16) } else { osd.demoBrightness(Double(level) / 16) }
+                    try? await Task.sleep(for: .milliseconds(pause))
                 }
             }
             return
         }
         let scripts = Self.scripts(for: DemoMode.scene)
-        task = Task { [weak self] in
-            var loop = 0
-            while !Task.isCancelled {
-                let began = Date()
-                var completed: Set<String> = []
-                self?.answered = []
-                while Date().timeIntervalSince(began) < Self.loopLength, !Task.isCancelled {
-                    self?.render(scripts, at: Date().timeIntervalSince(began), loop: loop, began: began, completed: &completed)
-                    try? await Task.sleep(for: .milliseconds(250))
-                }
-                loop += 1
+        var loop = 0
+        while !Task.isCancelled {
+            let began = Date()
+            var completed: Set<String> = []
+            answered = []
+            while Date().timeIntervalSince(began) < Self.loopLength, !Task.isCancelled {
+                render(scripts, at: Date().timeIntervalSince(began), loop: loop, began: began, completed: &completed)
+                try? await Task.sleep(for: .milliseconds(250))
             }
+            loop += 1
         }
     }
 
@@ -197,7 +222,7 @@ final class DemoDriver {
         switch scene {
         case .claude: return [orbit, lumen]
         case .codex: return [atlas, prism]
-        case .tools, .airpods, .osd: return []
+        case .tools, .airpods, .osd, .lowbattery, .tether: return []
         case .many:
             let claudeNames = ["orbit-api", "lumen-web", "nova-docs", "pulse-ios", "relay-bot"]
             let codexNames = ["atlas-cli", "prism-app", "quill-sdk"]
@@ -337,10 +362,11 @@ final class DemoDriver {
                     state.isThinking = state.activeTools.isEmpty && !asking
                 }
                 if asking, let question = script.question {
+                    // An app question (async), the kind the notch can answer with 실험 기능 on.
                     state.pendingInputRequest = CodexInputRequest(id: "demo-\(loop)-\(script.name)-question", questions: [
                         AgentInputQuestion(header: question.header, question: question.text,
                                            options: question.options.map { AgentInputOption(label: $0.0, description: $0.1) }),
-                    ])
+                    ], isAsync: true)
                 }
                 codexSessions.append(session)
                 codexStates[session.id] = state
@@ -370,7 +396,7 @@ final class DemoDriver {
 
     // MARK: - Tools
 
-    private func applyTools() {
+    private func applyTools(iPhonePercent: Int = 64) {
         let now = Date()
         // The notch may open on the agents tab first; its usage cards shouldn't read "sign in".
         CodexManager.shared.demoApply(sessions: [], states: [:], rateLimits: CodexRateLimits(
@@ -408,7 +434,7 @@ final class DemoDriver {
         }
         BatteryManager.shared.demoApply([
             device("mac", "MacBook Pro", "macbook", 82, minutesLeft: 344),
-            device("demo-iphone", "iPhone", "iphone", 64),
+            device("demo-iphone", "iPhone", "iphone", iPhonePercent),
             device("demo-ipad", "iPad Pro", "ipad", 91, charging: true),
             device("demo-airpodspro", "AirPods Pro", "airpodspro", 74,
                    parts: [BatteryPart(label: "L", percent: 78), BatteryPart(label: "R", percent: 74),

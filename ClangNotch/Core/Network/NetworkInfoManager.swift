@@ -99,9 +99,11 @@ final class NetworkInfoManager: NSObject, ObservableObject {
 
     private func readCurrent() {
         if DemoMode.isActive {
-            ssid = "Studio Wi-Fi"
+            // The tether scene is on the iPhone's hotspot.
+            let demoName = DemoMode.scene == .tether ? "iPhone" : "Studio Wi-Fi"
+            ssid = demoName
             ssidBlocked = false
-            name = "Studio Wi-Fi"
+            name = demoName
             return
         }
         let interface = CWWiFiClient.shared().interface()

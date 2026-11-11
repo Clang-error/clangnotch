@@ -46,6 +46,9 @@ struct SpeedTestView: View {
             if settings.enableSpeedTest, settings.enableTWorld, !settings.tworldHotspotSSID.isEmpty,
                network.ssid == settings.tworldHotspotSSID {
                 TWorldUsageView()
+            } else if DemoMode.isActive && DemoMode.scene == .tether {
+                // The demo's hotspot, whatever this Mac's settings say.
+                TWorldUsageView()
             }
             Spacer(minLength: 0)
             if let finishedAt = manager.finishedAt {

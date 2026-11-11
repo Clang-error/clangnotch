@@ -1690,7 +1690,8 @@ struct ClangNotchContentView: View {
     /// rest are answered where they were asked.
     private var codexQuestionAnswer: (([String: Any]) -> Void)? {
         // 실험 기능: it rides Codex's internal sockets, which an update can change.
-        guard settings.experimentalCodexAppAnswers,
+        // The demo shows it switched on without touching the saved setting.
+        guard settings.experimentalCodexAppAnswers || DemoMode.isActive,
               let request = codexInputRequest,
               let sessionId = codexManager.sessionStates.first(where: {
                   $0.value.pendingInputRequest?.id == request.id

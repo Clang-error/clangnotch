@@ -296,8 +296,12 @@ final class BatteryManager: ObservableObject {
 
     /// 닫힌 노치 경고 순위, 앞이 높은 순위. 헤더 목록과는 따로 지정한다.
     var closedPriorityIDs: [String] {
-        AppSettings.shared.closedBatteryPriorityIDs.split(separator: "\n").map(String.init)
+        if DemoMode.isActive { return demoPriorityIDs }
+        return AppSettings.shared.closedBatteryPriorityIDs.split(separator: "\n").map(String.init)
     }
+
+    /// `--demo`: the 닫힌 노치 순위 in place of the saved one (which names this Mac's devices).
+    @Published var demoPriorityIDs: [String] = []
 
     /// 순위 기기 중 지금 부족한 것, 순위 순. 충전 중이면 곧 회복되므로 제외한다(알림과 같은 기준).
     var lowPriorityDevices: [BatteryDevice] {
@@ -314,7 +318,8 @@ final class BatteryManager: ObservableObject {
     }
 
     var snoozedIDs: Set<String> {
-        Set(AppSettings.shared.lowBatteryNotchSnoozedIDs.split(separator: "\n").map(String.init))
+        if DemoMode.isActive { return [] }
+        return Set(AppSettings.shared.lowBatteryNotchSnoozedIDs.split(separator: "\n").map(String.init))
     }
 
     func setSnoozed(_ snoozed: Bool, for id: String) {

@@ -80,6 +80,11 @@ final class CodexManager: ObservableObject {
     /// The 질문 드롭다운's answer to a Codex question. `answers` maps each question's text to
     /// the picked label. If Codex can't take it, go to the session instead.
     func answerInputRequest(_ request: CodexInputRequest, sessionId: String, answers: [String: Any]) {
+        // `--demo`: the script takes the pick and drops its question, like a Claude one.
+        if DemoMode.isActive {
+            DemoDriver.shared.answer(sessionId: sessionId)
+            return
+        }
         let picked = request.questions.enumerated().compactMap { index, question in
             (answers[question.question] as? String).map { (index: index, question: question.question, answer: $0) }
         }
