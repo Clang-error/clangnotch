@@ -398,8 +398,8 @@ final class BatteryManager: ObservableObject {
 
     private func checkAlerts() {
         for device in devices {
-            // 맥은 macOS가 이미 저전력 경고를 띄우므로 중복이다.
-            guard device.id != "mac" else { continue }
+            // 맥은 macOS가 이미 저전력 경고를 띄우므로 시스템 알림은 중복이다. 드롭다운만.
+            if device.id == "mac" { dropLowBatteryCard(device); continue }
             // 캐시값으로 울리면 오작동이다. 실시간으로 확인된 것만.
             guard device.live else { continue }
 
@@ -415,16 +415,17 @@ final class BatteryManager: ObservableObject {
             armed[device.id] = false
             // 에어팟·헤드셋은 설정에 따라 드롭다운만 띄우고 시스템 알림은 건너뛴다.
             let settings = AppSettings.shared
-            if device.isHeadphones, settings.enableAirPodsDropdown, settings.airPodsLowBatteryDropdown,
+            if device.isHeadphones, settings.airPodsLowBatteryDropdown,
                !settings.airPodsLowBatteryNotification { continue }
             notify(device)
         }
     }
 
-    /// 에어팟·맥스·헤드셋의 배터리 부족 드롭다운: 20% 이하에서 한 번, 10% 이하에서 한 번.
+    /// 에어팟·맥스·헤드셋·이 맥의 배터리 부족 드롭다운: 20% 이하에서 한 번, 10% 이하에서 한 번.
     /// 20%를 넘게 충전되면 다시 장전한다. 충전 중엔 띄우지 않는다.
     private func dropLowBatteryCard(_ device: BatteryDevice) {
-        guard device.isHeadphones else { return }
+        let isMac = device.id == "mac"
+        guard device.isHeadphones || isMac else { return }
         let level = device.displayLevel
         if level > alertThreshold {
             lowCardStage[device.id] = 0
@@ -436,8 +437,13 @@ final class BatteryManager: ObservableObject {
         guard next > stage else { return }
         lowCardStage[device.id] = next
         let settings = AppSettings.shared
-        guard settings.enableAirPodsDropdown, settings.airPodsLowBatteryDropdown else { return }
-        AirPodsDropdown.shared.lowBattery(device)
+        if isMac {
+            guard settings.macLowBatteryDropdown else { return }
+            AirPodsDropdown.shared.macLowBattery(level: level)
+        } else {
+            guard settings.airPodsLowBatteryDropdown else { return }
+            AirPodsDropdown.shared.lowBattery(device)
+        }
     }
 
     /// 기기별로 이미 띄운 단계: 1 = 20%, 2 = 10%.

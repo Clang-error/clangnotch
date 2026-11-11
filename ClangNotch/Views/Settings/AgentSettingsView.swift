@@ -780,33 +780,6 @@ struct FeaturesSettingsTab: View {
                 SettingToggle(L("배터리 잔량", "Battery levels"),
                               L("Mac·블루투스 기기·iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
                               isOn: $settings.enableBattery)
-                SettingToggle(L("에어팟 연결 알림", "AirPods connection card"),
-                              L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시 · 배터리 잔량이 켜져 있어야 함",
-                                "Name and battery under the notch when AirPods or a Bluetooth headset connect · needs Battery levels"),
-                              isOn: $settings.enableAirPodsDropdown)
-                    .disabled(!settings.enableBattery)
-                // Only means something with the card on: shown under it, indented.
-                if settings.enableAirPodsDropdown {
-                    SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods card by itself"),
-                                  L("6초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 (에어팟 맥스·헤드셋은 10초 뒤 접힘)",
-                                    "Folds after 6 seconds · off, it stays until you press X or push it up into the notch (AirPods Max and headsets fold after 10 seconds)"),
-                                  isOn: $settings.airPodsDropdownAutoHide)
-                        .padding(.leading, 20)
-                        .disabled(!settings.enableBattery)
-                    SettingToggle(L("배터리 부족 시 드롭다운 표시", "Card when the battery runs low"),
-                                  L("에어팟·에어팟 맥스·헤드셋이 20%, 10%가 되면 한 번씩 · 20% 넘게 충전될 때까지 다시 안 뜸",
-                                    "Once at 20% and once at 10% for AirPods, AirPods Max and headsets · not again until charged past 20%"),
-                                  isOn: $settings.airPodsLowBatteryDropdown)
-                        .padding(.leading, 20)
-                        .disabled(!settings.enableBattery)
-                    if settings.airPodsLowBatteryDropdown {
-                        SettingToggle(L("macOS 알림도 보내기", "Also send the macOS notification"),
-                                      L("끄면 이 기기들은 시스템 배터리 부족 알림 없이 드롭다운만", "Off, these devices get only the card, no system low-battery notification"),
-                                      isOn: $settings.airPodsLowBatteryNotification)
-                            .padding(.leading, 40)
-                            .disabled(!settings.enableBattery)
-                    }
-                }
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
                               L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
                               isOn: $settings.enableSpeedTest)
@@ -861,6 +834,43 @@ struct FeaturesSettingsTab: View {
                 }
             } header: {
                 Text(L("기능", "Features"))
+            }
+            // 에어팟 드롭다운: every switch for the card that drops under the notch, apart from the
+            // features above now that there are several of them (2026-11-12).
+            Section {
+                SettingToggle(L("에어팟 연결 알림", "AirPods connection card"),
+                              L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시 · 배터리 잔량이 켜져 있어야 함",
+                                "Name and battery under the notch when AirPods or a Bluetooth headset connect · needs Battery levels"),
+                              isOn: $settings.enableAirPodsDropdown)
+                    .disabled(!settings.enableBattery)
+                // Only means something with the card on: shown under it, indented.
+                if settings.enableAirPodsDropdown {
+                    SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods card by itself"),
+                                  L("6초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 (에어팟 맥스·헤드셋은 10초 뒤 접힘)",
+                                    "Folds after 6 seconds · off, it stays until you press X or push it up into the notch (AirPods Max and headsets fold after 10 seconds)"),
+                                  isOn: $settings.airPodsDropdownAutoHide)
+                        .padding(.leading, 20)
+                        .disabled(!settings.enableBattery)
+                }
+                SettingToggle(L("에어팟·헤드셋 배터리 부족 시 드롭다운", "Card when AirPods or a headset run low"),
+                              L("에어팟·에어팟 맥스·헤드셋이 20%, 10%가 되면 한 번씩 · 20% 넘게 충전될 때까지 다시 안 뜸",
+                                "Once at 20% and once at 10% for AirPods, AirPods Max and headsets · not again until charged past 20%"),
+                              isOn: $settings.airPodsLowBatteryDropdown)
+                    .disabled(!settings.enableBattery)
+                if settings.airPodsLowBatteryDropdown {
+                    SettingToggle(L("macOS 알림도 보내기", "Also send the macOS notification"),
+                                  L("끄면 이 기기들은 시스템 배터리 부족 알림 없이 드롭다운만", "Off, these devices get only the card, no system low-battery notification"),
+                                  isOn: $settings.airPodsLowBatteryNotification)
+                        .padding(.leading, 20)
+                        .disabled(!settings.enableBattery)
+                }
+                SettingToggle(L("맥 배터리 부족 시 드롭다운", "Card when this Mac runs low"),
+                              L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩 · 충전 중엔 안 뜸",
+                                "Drawn as this Mac's model, once at 20% and once at 10% · not while charging"),
+                              isOn: $settings.macLowBatteryDropdown)
+                    .disabled(!settings.enableBattery)
+            } header: {
+                Text(L("에어팟 드롭다운", "AirPods card"))
             }
         }
         .formStyle(.grouped)

@@ -65,6 +65,8 @@ public final class AppSettings: ObservableObject {
     // notification for those devices as well (off: the card alone).
     @AppStorage("airPodsLowBatteryDropdown") public var airPodsLowBatteryDropdown: Bool = true
     @AppStorage("airPodsLowBatteryNotification") public var airPodsLowBatteryNotification: Bool = true
+    // The same card, drawn as this Mac's model, when the Mac itself falls to 20% and 10%.
+    @AppStorage("macLowBatteryDropdown") public var macLowBatteryDropdown: Bool = true
 
     // Off: the 에어팟 드롭다운 stays until its X is pressed or it is pushed up into the notch;
     // a Max or another headset still folds after 10 s.

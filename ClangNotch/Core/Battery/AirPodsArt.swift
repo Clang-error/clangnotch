@@ -173,7 +173,7 @@ enum AirPodsArt {
     }
 
     /// "MacBook Pro", from system_profiler once (the model identifier alone doesn't say Pro or Air).
-    static let thisMacName: String = {
+    nonisolated static let thisMacName: String = {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
         process.arguments = ["SPHardwareDataType", "-json"]
@@ -193,15 +193,41 @@ enum AirPodsArt {
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var model = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.model", &model, &size, nil, 0)
-        let identifier = String(cString: model)
-        let appleSilicon = identifier.hasPrefix("Mac") && !identifier.hasPrefix("MacBook")
-        switch thisMacName {
-        case "MacBook Pro": return appleSilicon ? "MacBookProBlack" : "MacBookPro"
-        case "MacBook Air": return appleSilicon ? "MacBookAir2025" : "MacBookAir"
-        case "MacBook Neo": return "MacBookNeo"
-        case let name where name.hasPrefix("MacBook"): return "MacBook"
-        default: return nil
+        return macImageName(identifier: String(cString: model), name: thisMacName)
+    }
+
+    /// ProductKitCore's picture for a Mac model. Identifiers before 2023 name the line
+    /// ("MacBookPro18,3"); later ones are just "Mac15,6", so the marketing name says Pro or Air.
+    /// - MacBookPro17,1 (M1 13") has no notch → the silver one without; 18,x (M1 Pro/Max 14/16")
+    ///   and every "MacXX" Pro have one → space black; 16 and before (Intel) → the Touch Bar shape.
+    /// - MacBookAir10,1 (M1) and Intel → the wedge; Mac14/15 Airs (M2, M3) → notch, midnight;
+    ///   Mac16,12 on (M4 and later) → the 2025 Air.
+    nonisolated static func macImageName(identifier: String, name: String) -> String? {
+        func numbers(after prefix: String) -> (Int, Int)? {
+            guard identifier.hasPrefix(prefix) else { return nil }
+            let parts = identifier.dropFirst(prefix.count).split(separator: ",").compactMap { Int($0) }
+            return parts.count == 2 ? (parts[0], parts[1]) : nil
         }
+        if let (major, _) = numbers(after: "MacBookPro") {
+            switch major {
+            case 18...:  return "MacBookProBlack"
+            case 17:     return "MacBookPro2"
+            default:     return "MacBookPro"
+            }
+        }
+        if numbers(after: "MacBookAir") != nil { return "MacBookAir" }
+        if numbers(after: "MacBook") != nil { return "MacBook" }
+        if let (major, minor) = numbers(after: "Mac") {
+            switch name {
+            // Mac14,7, the M2 13", kept the Touch Bar body.
+            case "MacBook Pro": return identifier == "Mac14,7" ? "MacBookPro" : "MacBookProBlack"
+            case "MacBook Air": return major > 16 || (major == 16 && minor >= 12) ? "MacBookAir2025" : "MacBookAir2"
+            case "MacBook Neo": return "MacBookNeo"
+            case let other where other.hasPrefix("MacBook"): return "MacBook"
+            default: return nil   // a desktop Mac: no battery card anyway
+            }
+        }
+        return nil
     }
 
     nonisolated static func deviceSymbol(for productID: UInt16) -> String {

@@ -211,6 +211,20 @@ final class AirPodsDropdown: ObservableObject {
         if drops { show(new) } else { refresh(new) }
     }
 
+    /// This Mac fell to 20% or 10% (`BatteryManager`). Its marketing name takes a
+    /// system_profiler run the first time, so that happens off the main thread.
+    func macLowBattery(level: Int) {
+        guard AppSettings.shared.enableBattery, !DemoMode.isActive else { return }
+        Task.detached(priority: .userInitiated) {
+            let name = AirPodsArt.thisMacName
+            await MainActor.run {
+                var card = Card(address: "mac", productID: 0, name: name, level: level, caseLevel: nil)
+                card.isThisMac = true
+                AirPodsDropdown.shared.show(card)
+            }
+        }
+    }
+
     /// `--demo --demo-scene macbattery`: this Mac running low, drawn as this Mac's model.
     func demoShowMacLow(level: Int) {
         var card = Card(address: "demo-mac", productID: 0, name: AirPodsArt.thisMacName, level: level, caseLevel: nil)
