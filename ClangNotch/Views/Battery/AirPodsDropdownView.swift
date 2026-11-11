@@ -230,6 +230,11 @@ struct AirPodsDropdownContent: View {
                                      level: left ? card.leftLevel : card.rightLevel,
                                      charging: left ? card.leftCharging : card.rightCharging,
                                      visible: visible, delay: left ? 0 : 0.05, bounceKey: "split")
+                                // The pair comes apart: each bud springs out sideways from the middle.
+                                .transition(.asymmetric(
+                                    insertion: .offset(x: left ? 34 : -34).combined(with: .scale(scale: 0.7, anchor: .bottom))
+                                        .combined(with: .opacity),
+                                    removal: .offset(x: left ? 34 : -34).combined(with: .opacity)))
                             }
                         } else {
                             let art = card.side.map { AirPodsArt.singleBud(for: card.productID, left: $0 == "L") }
@@ -241,6 +246,7 @@ struct AirPodsDropdownContent: View {
                                  height: kind == .headphones || card.symbol != nil ? 92 : 58, level: card.level,
                                  charging: charging, visible: visible, delay: 0,
                                  bounceKey: card.side ?? "both")
+                            .transition(.scale(scale: 0.75, anchor: .bottom).combined(with: .opacity))
                         }
                         if kind == .buds, let caseLevel = card.caseLevel {
                             item(AirPodsArt.chargingCase, symbol: "airpods.chargingcase",
@@ -248,6 +254,8 @@ struct AirPodsDropdownContent: View {
                                  visible: visible, delay: 0.1)
                         }
                     }
+                    // Splitting into L and R, or merging back into the pair, springs with a bounce.
+                    .animation(.spring(response: 0.5, dampingFraction: 0.58), value: split)
                     .padding(.bottom, 16)
                 }
                 .opacity(visible ? 1 : 0)
