@@ -1687,7 +1687,9 @@ struct ClangNotchContentView: View {
     /// notch can send through the app. Other Codex questions, and ones without options to
     /// pick from, are answered where they were asked.
     private var codexQuestionAnswer: (([String: Any]) -> Void)? {
-        guard let request = codexInputRequest, request.isAsync,
+        // 실험 기능: it rides the Codex app's internal socket, which an update can change.
+        guard settings.experimentalCodexAppAnswers,
+              let request = codexInputRequest, request.isAsync,
               request.questions.allSatisfy({ !$0.options.isEmpty }),
               let sessionId = codexManager.sessionStates.first(where: {
                   $0.value.pendingInputRequest?.id == request.id

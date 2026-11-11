@@ -1074,6 +1074,17 @@ struct AgentsSettingsTab: View {
             } header: {
                 Text("Codex")
             }
+
+            // Things that lean on another app's internals and may stop working after its update.
+            Section {
+                SettingToggle(L("Codex 앱 질문에 노치에서 답하기", "Answer Codex app questions from the notch"),
+                              L("Codex 앱이 선택지로 물으면 노치에서 바로 답함 · Codex 앱 내부 연결을 써서 앱이 업데이트되면 안 될 수 있음",
+                                "Answers the Codex app's multiple-choice questions from the notch · uses the app's internal connection, so an app update may break it"),
+                              isOn: $settings.experimentalCodexAppAnswers)
+                    .disabled(!codexEnabled.wrappedValue)
+            } header: {
+                Text(L("실험 기능", "Experimental"))
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
