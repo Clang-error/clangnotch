@@ -132,7 +132,7 @@ struct AgentMenuBarContentView: View {
                 }
             }
 
-            if settings.showSourceCodex {
+            if settings.showSourceCodex && settings.showCodexUsage {
                 MenuSection {
                     if codexManager.rateLimits.hasData {
                         ClangNotchContentView.CodexUsageNotchSection(rateLimits: codexManager.rateLimits)

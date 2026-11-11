@@ -1544,7 +1544,7 @@ struct ClangNotchContentView: View {
                     }
                 }
             }
-            if settings.showSourceCodex {
+            if settings.showSourceCodex && settings.showCodexUsage {
                 NotchSection {
                     if codexManager.rateLimits.hasData {
                         CodexUsageNotchSection(rateLimits: codexManager.rateLimits)

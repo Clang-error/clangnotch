@@ -94,6 +94,9 @@ public final class AppSettings: ObservableObject {
     // 사용량 카드's title.
     @AppStorage("showClaudePlan") public var showClaudePlan: Bool = true
     @AppStorage("showCodexPlan") public var showCodexPlan: Bool = true
+    // "사용량 한도 표시" under Codex: the Codex 사용량 카드 (notch and menu bar popover). Its
+    // limits come in the session logs, so unlike Claude's there is nothing to poll.
+    @AppStorage("showCodexUsage") public var showCodexUsage: Bool = true
     /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.

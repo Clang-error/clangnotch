@@ -1063,14 +1063,50 @@ struct AgentsSettingsTab: View {
 
             Section {
                 Toggle(L("사용", "Enabled"), isOn: codexEnabled)
-                Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
+                SettingToggle(L("사용량 한도 표시", "Show usage limits"),
+                              L("Codex가 세션 기록에 남기는 5시간·주간 한도를 사용량 카드에 표시 · 따로 로그인이나 조회 없음",
+                                "Shows the 5-hour and weekly limits Codex writes into its session logs · no extra sign-in or polling"),
+                              isOn: $settings.showCodexUsage)
                     .disabled(!codexEnabled.wrappedValue)
+                CodexAccountStatus()
+                Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
+                    .disabled(!codexEnabled.wrappedValue || !settings.showCodexUsage)
             } header: {
                 Text("Codex")
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+/// Codex 묶음's account line, the counterpart of "Claude Code 계정": Codex's own sign-in file
+/// is there. Only its presence is checked; the usage itself comes in the session logs.
+private struct CodexAccountStatus: View {
+    private var detected: Bool {
+        FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.codex/auth.json")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(L("Codex 계정", "Codex Account"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(detected ? Color.green : Color.orange)
+                        .frame(width: 8, height: 8)
+                    Text(detected ? L("감지됨", "Detected") : L("감지 안 됨", "Not detected"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            Text(L("Codex가 이 Mac에 남긴 로그인 확인 · 감지 안 되면 Codex에서 로그인", "Checks the sign-in Codex left on this Mac · sign in with Codex if not detected"))
+                .font(.caption2)
+                .foregroundColor(.secondary.opacity(0.7))
+        }
     }
 }
 
