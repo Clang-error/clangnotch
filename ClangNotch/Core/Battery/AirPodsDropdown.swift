@@ -202,6 +202,13 @@ final class AirPodsDropdown: ObservableObject {
         var card = Self.card(address: device.id, productID: productID, device: device)
         card.leftLevel = device.parts.first { $0.label == "L" }?.percent
         card.rightLevel = device.parts.first { $0.label == "R" }?.percent
+        // Only one bud connected: that bud alone, as when it alone is in an ear.
+        if (card.leftLevel == nil) != (card.rightLevel == nil) { card.side = card.leftLevel != nil ? "L" : "R" }
+        // A bud charging in the case (the other one is the low one) keeps its bolt.
+        if let charging = AirPodsLidWatcher.shared.charging(device.id) {
+            card.leftCharging = charging.left
+            card.rightCharging = charging.right
+        }
         card.splitsOnLevels = true
         show(card)
     }

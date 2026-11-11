@@ -62,6 +62,9 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         var inEar: Int
         /// Buds out of the case.
         var out = 0
+        /// Which buds sit in the case, where they charge.
+        var leftIn = false
+        var rightIn = false
     }
     private var sightings: [UUID: Sighting] = [:]
 
@@ -225,7 +228,8 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // they're worn now; only later frames can show a bud going in.
         let wasInEar = silent ? inEarCount : before?.inEar ?? 0
         let moved = !silent && before?.out != outNow
-        remember(id, Sighting(address: address, at: now, lidShut: lidShut, inEar: inEarCount, out: outNow))
+        remember(id, Sighting(address: address, at: now, lidShut: lidShut, inEar: inEarCount, out: outNow,
+                              leftIn: !leftOut, rightIn: !rightOut))
 
         let closing = lidShut && !wasShut
         // Like an iPhone: the lid opening, one bud in, the second bud in. Nothing else while worn.
@@ -320,6 +324,16 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     func caseShut(_ address: String) -> Bool {
         guard let last = said(address), Date().timeIntervalSince(last.at) <= 10 else { return false }
         return last.lidShut && last.out == 0
+    }
+
+    /// What is charging, by the pair's own peripheral's last word: a bud in the case, a Max on
+    /// its cable (both sides alike). Bluetooth's battery levels don't tell. nil without a word in
+    /// the last 30 s, so silence is never taken for "not charging" or "charging": a worn Max
+    /// stops the scan, and its cable going in or out after that goes unheard.
+    func charging(_ address: String) -> (left: Bool, right: Bool)? {
+        guard let last = said(address), Date().timeIntervalSince(last.at) <= 30 else { return nil }
+        if let cable = maxCharging[address] { return (cable, cable) }
+        return (last.leftIn, last.rightIn)
     }
 
     /// The buds disconnected (lid closed on them): the next opening counts again. Only a lid

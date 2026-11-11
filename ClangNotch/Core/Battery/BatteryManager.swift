@@ -399,17 +399,22 @@ final class BatteryManager: ObservableObject {
     private func checkAlerts() {
         for device in devices {
             // 맥은 macOS가 이미 저전력 경고를 띄우므로 시스템 알림은 중복이다. 드롭다운만.
-            if device.id == "mac" { dropLowBatteryCard(device); continue }
+            if device.id == "mac" { dropLowBatteryCard(device, level: device.displayLevel); continue }
             // 캐시값으로 울리면 오작동이다. 실시간으로 확인된 것만.
             guard device.live else { continue }
 
             // 헤더와 같은 기준: 에어팟은 케이스를 뺀다. 케이스가 낮을 때마다 꺼낼 때 울렸다(2026-10-24).
+            // 다시 장전하는 건 충전 중인 유닛까지 넣은 잔량으로 본다: 부족한 유닛을 케이스에 잠깐
+            // 넣었다 꺼내면 또 울렸을 것이다.
             if device.displayLevel >= rearmThreshold {
                 armed[device.id] = true
+                lowCardStage[device.id] = nil
                 continue
             }
-            dropLowBatteryCard(device)
-            guard device.displayLevel <= alertThreshold, !device.charging,
+            // 충전 중인 유닛·맥스는 곧 회복되므로 뺀다. 전부 충전 중이면 아무것도 하지 않는다.
+            guard let level = alertLevel(device) else { continue }
+            dropLowBatteryCard(device, level: level)
+            guard level <= alertThreshold, !device.charging,
                   armed[device.id] ?? true else { continue }
 
             armed[device.id] = false
@@ -423,12 +428,12 @@ final class BatteryManager: ObservableObject {
 
     /// 에어팟·맥스·헤드셋·이 맥의 배터리 부족 드롭다운: 20% 이하에서 한 번, 10% 이하에서 한 번.
     /// 30% 이상 충전되면 다시 장전한다(알림과 같은 기준; 20·21%를 오가면 또 떴다). 충전 중엔 띄우지 않는다.
-    private func dropLowBatteryCard(_ device: BatteryDevice) {
+    /// `level`은 충전 중인 유닛을 뺀 잔량이다(`alertLevel`).
+    private func dropLowBatteryCard(_ device: BatteryDevice, level: Int) {
         let isMac = device.id == "mac"
         guard device.isHeadphones || isMac else { return }
-        let level = device.displayLevel
         if level > alertThreshold {
-            if level >= rearmThreshold { lowCardStage[device.id] = nil }
+            if device.displayLevel >= rearmThreshold { lowCardStage[device.id] = nil }
             return
         }
         guard !device.charging else { return }
@@ -444,6 +449,19 @@ final class BatteryManager: ObservableObject {
             guard settings.airPodsLowBatteryDropdown else { return }
             AirPodsDropdown.shared.lowBattery(device)
         }
+    }
+
+    /// 알림·드롭다운 기준 잔량. 케이스에서 충전 중인 유닛은 빼고, 전부 충전 중이면(케이블 꽂은
+    /// 맥스 포함) nil이다. 블루투스 잔량엔 충전 여부가 없어 에어팟의 BLE 광고에서 듣는다.
+    /// 최근에 들은 게 없으면 모르는 것이므로 전처럼 낮은 쪽 그대로다. 케이스에 꽂아 둔 15%짜리
+    /// 유닛 때문에 연결하자마자 부족 카드가 떴다(2026-11-12).
+    private func alertLevel(_ device: BatteryDevice) -> Int? {
+        guard device.isHeadphones, let charging = AirPodsLidWatcher.shared.charging(device.id) else {
+            return device.displayLevel
+        }
+        let sides = device.parts.filter { $0.label == "L" || $0.label == "R" }
+        if sides.isEmpty { return charging.left && charging.right ? nil : device.displayLevel }
+        return sides.filter { $0.label == "L" ? !charging.left : !charging.right }.map(\.percent).min()
     }
 
     /// 기기별로 이미 띄운 단계: 1 = 20%, 2 = 10%. 재시작해도 남긴다: 앱이 다시 켜질 때마다
