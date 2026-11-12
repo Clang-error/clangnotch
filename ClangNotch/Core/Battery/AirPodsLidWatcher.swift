@@ -143,10 +143,12 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         scanning = false
     }
 
-    /// While a case of ours stands open (up to a minute from its opening), the scan runs nonstop,
-    /// so the lid shutting folds the card within a frame instead of the next 1 s window.
+    /// While a case of ours stands open (up to a minute from its opening), and for 15 s after one
+    /// of ours connects, the scan runs nonstop, so the lid shutting or a Max going on shows
+    /// within a frame instead of the next 1 s window.
     private var listensNonstop: Bool {
         if Self.traceAll { return true }
+        if let at = lastConnection, Date().timeIntervalSince(at) < 15 { return true }
         guard let at = lastOpening, Date().timeIntervalSince(at) < 60 else { return false }
         return sightings.values.contains { !$0.lidShut && Date().timeIntervalSince($0.at) < 4 }
     }
@@ -405,7 +407,17 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     func connected(address: String) {
         connections[address] = Date()
         prove(address)
+        // A Max put on connects at once, and its "on" frame was then up to a scan window late
+        // (user, 2026-11-12): listen nonstop for a while, starting now.
+        lastConnection = Date()
+        traceNote("connected")
+        if !scanning {
+            cycleWork?.cancel()
+            cycleWork = nil
+            cycle()
+        }
     }
+    private var lastConnection: Date?
 
     private func prove(_ address: String) {
         guard let connection = connections[address] else { return }
@@ -484,7 +496,9 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         remember(id, Sighting(address: address, at: now, inEar: worn ? 1 : 0))
         let putOn = worn && was == false
         if putOn { opened(id, address, at: now) }
+        trace(b, id: id, leftSpeaking: true, out: 0, inEar: worn ? 1 : 0, lidShut: false)
         guard acting else { return }
+        if putOn { traceNote("→ drop (Max on)") }
 
         AirPodsDropdown.shared.knownColors[address] = b[11]
         if was != worn { reevaluate() }
