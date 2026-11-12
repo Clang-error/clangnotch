@@ -221,6 +221,7 @@ struct MediaDropdownCardContent: View {
                     control("forward.fill", size: 19) { NowPlayingMonitor.shared.send(.next) }
                 }
                 HStack {
+                    PinButton()
                     Spacer()
                     AudioOutputMenu()
                 }
@@ -244,6 +245,26 @@ struct MediaDropdownCardContent: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The card's 핀: pinned, it stays and can be dragged anywhere; unpinned, back under the notch.
+private struct PinButton: View {
+    @ObservedObject private var dropdown = AirPodsDropdown.media
+
+    var body: some View {
+        Button { dropdown.togglePin() } label: {
+            Image(systemName: dropdown.pinned ? "pin.fill" : "pin")
+                .font(.system(size: 17, weight: .regular))
+                .rotationEffect(.degrees(dropdown.pinned ? 0 : 45))
+                .foregroundStyle(dropdown.pinned ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .frame(width: 32, height: 30)
+                .contentShape(Rectangle())
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: dropdown.pinned)
+        }
+        .buttonStyle(.plain)
+        .help(dropdown.pinned ? L("핀 풀기: 원래 자리로", "Unpin: back under the notch")
+                              : L("핀 꽂기: 접히지 않고 끌어서 옮길 수 있음", "Pin: stays up and can be dragged anywhere"))
     }
 }
 
@@ -462,9 +483,9 @@ final class AudioOutputPicker: NSObject {
             menu.addItem(item)
         }
         // The card would fold under the open menu: the cursor has left it.
-        AirPodsDropdown.shared.setHovering(true)
+        AirPodsDropdown.media.setHovering(true)
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-        AirPodsDropdown.shared.setHovering(false)
+        AirPodsDropdown.media.setHovering(false)
     }
 
     @objc private func pick(_ item: NSMenuItem) {

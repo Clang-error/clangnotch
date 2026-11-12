@@ -217,7 +217,7 @@ final class NowPlayingMonitor: ObservableObject {
         guard new != old else { return }
         let change = policy.change(from: old, to: new)
         if case .started(let key) = change, AppSettings.shared.enableNowPlayingDropdown,
-           AirPodsDropdown.shared.canDropMedia,
+           AirPodsDropdown.media.canDropMedia,
            policy.wouldAllowCard(for: new, key: key,
                                  frontmostBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, now: Date()) {
             cardIsComing = true
@@ -226,10 +226,10 @@ final class NowPlayingMonitor: ObservableObject {
         switch change {
         case .started(let key):
             // A card that is up shows the new track at once (its 다음 button, a playlist).
-            AirPodsDropdown.shared.refreshMedia(new)
+            AirPodsDropdown.media.refreshMedia(new)
             scheduleCard(for: key)
         // Fresh artwork for a card that is up, or paused.
-        case .sameTrack: AirPodsDropdown.shared.refreshMedia(new)
+        case .sameTrack: AirPodsDropdown.media.refreshMedia(new)
         case .nothing: break
         }
     }
@@ -268,7 +268,7 @@ final class NowPlayingMonitor: ObservableObject {
         let now = Date()
         guard policy.allowsCard(for: playing, key: key,
                                 frontmostBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, now: now),
-              AirPodsDropdown.shared.showMedia(playing) else { return }
+              AirPodsDropdown.media.showMedia(playing) else { return }
         policy.cardShown(for: playing, at: now)
     }
 }

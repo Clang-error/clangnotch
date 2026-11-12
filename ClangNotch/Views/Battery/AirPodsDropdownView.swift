@@ -284,10 +284,12 @@ struct AirPodsDropdownContent: View {
         .contentShape(Rectangle())
         // A device's card opens the Battery tab, the 미디어 드롭다운 the app that plays.
         .onTapGesture { model.openBatteryTab() }
-        // Pressed and pushed up toward the notch: back in it goes.
-        .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { drag in
-            if drag.translation.height < -12 { model.dismiss() }
-        })
+        // Pressed and pushed up toward the notch: back in it goes. A pinned card moves instead.
+        .simultaneousGesture(DragGesture(minimumDistance: 3)
+            .onChanged { drag in
+                if model.pinned { model.drag(ended: false) } else if drag.translation.height < -12 { model.dismiss() }
+            }
+            .onEnded { _ in model.drag(ended: true) })
         .onHover { model.setHovering($0) }
         .environment(\.colorScheme, appearance.theme(settings).scheme)
     }

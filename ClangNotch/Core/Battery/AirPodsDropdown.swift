@@ -12,7 +12,15 @@ extension Notification.Name {
 /// the 조절창, so the closed notch's wings can change width under it without redrawing it.
 @MainActor
 final class AirPodsDropdown: ObservableObject {
-    static let shared = AirPodsDropdown()
+    /// AirPods, headsets and this Mac.
+    static let shared = AirPodsDropdown(isMedia: false)
+    /// The 미디어 드롭다운, a card of its own (user, 2026-11-12): a pinned player no longer keeps
+    /// the AirPods and battery cards from coming down.
+    static let media = AirPodsDropdown(isMedia: true)
+
+    let isMedia: Bool
+    /// The other one of the two cards, for stacking under it.
+    private var other: AirPodsDropdown { isMedia ? .shared : .media }
 
     struct Card: Equatable {
         let address: String
@@ -59,7 +67,30 @@ final class AirPodsDropdown: ObservableObject {
     /// gone all the way back into the notch: coming back as it started to rise, they showed
     /// beside the blob still going up (user's recording, 2026-11-12).
     private func tellMediaCard() {
+        guard isMedia else { return }
         NowPlayingMonitor.shared.setCardIsDown(phase != .hidden && card?.media != nil)
+    }
+
+    /// Where the other card's bottom edge is while it is down under the notch (not pinned away),
+    /// so this one comes down under it; 0 when it isn't there.
+    var stackDepth: CGFloat = 0 {
+        didSet {
+            guard stackDepth != oldValue, phase == .settled, !pinned, let panel, let screen = NotchDetector.notchScreen else { return }
+            layOut(on: screen)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.4
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.1, 0.4, 1)
+                panel.animator().setFrame(cardFrame(on: screen), display: true)
+            }
+        }
+    }
+
+    /// This card's bottom edge from the top of the screen while it is down in its place.
+    private var occupiedDepth: CGFloat {
+        switch phase {
+        case .dropping, .settled: return pinned ? 0 : cardTop + cardSize.height
+        case .hidden, .rising: return 0
+        }
     }
     /// Name, renders and levels fade in just before the blob settles.
     @Published private(set) var contentVisible = false
@@ -103,20 +134,60 @@ final class AirPodsDropdown: ObservableObject {
     /// Set by the notch view. The card skips while the notch is open and leaves when it opens;
     /// a dropdown coming down only pushes it lower (`peekDepth`).
     var notchState: NotchState = .closed {
-        didSet { if notchState == .open { dismiss() } }
+        didSet { if notchState == .open, !pinned { dismiss() } }
+    }
+
+    /// The 미디어 드롭다운's 핀: pinned, it doesn't fold and can be dragged anywhere on screen;
+    /// unpinned, it glides back under the notch and folds after its usual time. A device's card
+    /// waits meanwhile, since the cards share one panel (2026-11-12, a first version).
+    @Published private(set) var pinned = false
+    private var dragStart: (mouse: NSPoint, origin: NSPoint)?
+
+    func togglePin() {
+        guard card?.media != nil, phase == .settled, let panel, let screen = NotchDetector.notchScreen else { return }
+        pinned.toggle()
+        if pinned {
+            hideWork?.cancel()
+            hideDeadline = nil
+            // Its place under the notch is free for the other card.
+            if other.stackDepth > 0 { other.stackDepth = 0 }
+            return
+        }
+        // Back to its place, under the other card if that one is down there now.
+        stackDepth = other.occupiedDepth
+        layOut(on: screen)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.45
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.1, 0.4, 1)
+            panel.animator().setFrame(cardFrame(on: screen), display: true)
+        }
+        if !hovering { scheduleHide(after: visibleTime) }
+    }
+
+    /// Dragging a pinned card: it follows the pointer, wherever it goes.
+    func drag(ended: Bool) {
+        guard pinned, let panel else { return }
+        if ended { dragStart = nil; return }
+        let mouse = NSEvent.mouseLocation
+        let start = dragStart ?? (mouse, panel.frame.origin)
+        dragStart = start
+        panel.setFrameOrigin(NSPoint(x: start.origin.x + mouse.x - start.mouse.x,
+                                     y: start.origin.y + mouse.y - start.mouse.y))
     }
 
     /// How far a dropdown (완료, 질문, 권한 …) reaches down from the top of the screen, 0 when
     /// none is down. The card sits under it, and goes back up when it folds.
     var peekDepth: CGFloat = 0 {
         didSet {
-            guard peekDepth != oldValue, phase == .settled, let panel, let screen = NotchDetector.notchScreen else { return }
+            guard peekDepth != oldValue, phase == .settled, !pinned, let panel, let screen = NotchDetector.notchScreen else { return }
             layOut(on: screen)
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.4
                 context.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.1, 0.4, 1)
                 panel.animator().setFrame(cardFrame(on: screen), display: true)
             }
+            // The card stacked under this one moves with it.
+            if other.stackDepth > 0 { other.stackDepth = occupiedDepth }
         }
     }
 
@@ -144,7 +215,9 @@ final class AirPodsDropdown: ObservableObject {
     }
     private static let colorsKey = "airPodsKnownColors"
 
-    private init() {}
+    private init(isMedia: Bool) {
+        self.isMedia = isMedia
+    }
 
     // MARK: - Trigger
 
@@ -356,7 +429,7 @@ final class AirPodsDropdown: ObservableObject {
     private func show(_ new: Card) {
         var new = new
         if new.color == nil { new.color = knownColors[new.address] }
-        guard notchState != .open, let screen = NotchDetector.notchScreen else { return }
+        guard notchState != .open || pinned, let screen = NotchDetector.notchScreen else { return }
         // Reconnected right after a drop-out: refresh the card that's up.
         // The same AirPods again (other bud in, fresh levels): update the card and give it
         // its full time again.
@@ -371,6 +444,8 @@ final class AirPodsDropdown: ObservableObject {
         hovering = false
         card = new
         contentVisible = false
+        // The other card is already down there: come down under it.
+        stackDepth = other.occupiedDepth
         layOut(on: screen)
         let panel = self.panel ?? makePanel()
         self.panel = panel
@@ -413,6 +488,7 @@ final class AirPodsDropdown: ObservableObject {
 
     func dismiss() {
         guard phase == .settled || isDropping, let panel, let screen = NotchDetector.notchScreen else { return }
+        if pinned { pinned = false; dragStart = nil }
         hideWork?.cancel()
         generation += 1
         let current = generation
@@ -428,11 +504,18 @@ final class AirPodsDropdown: ObservableObject {
             panel.orderOut(nil)
             self.phase = .hidden
             self.card = nil
+            self.stackDepth = 0
+            // A card that came down under this one moves up into its place.
+            if self.other.stackDepth > 0 { self.other.stackDepth = 0 }
         }
     }
 
     func openBatteryTab() {
-        if let media = card?.media { openMediaApp(media); return }
+        // A pinned card stays where it is; the app just comes forward.
+        if let media = card?.media {
+            if pinned { NowPlayingMonitor.openApp(of: media) } else { openMediaApp(media) }
+            return
+        }
         dismiss()
         NotificationCenter.default.post(name: .notchOpenBattery, object: nil)
     }
@@ -450,6 +533,7 @@ final class AirPodsDropdown: ObservableObject {
     }
 
     private func scheduleHide(after seconds: TimeInterval) {
+        guard !pinned else { return }
         hideWork?.cancel()
         hovering = false
         hideDeadline = Date().addingTimeInterval(seconds)
@@ -471,7 +555,7 @@ final class AirPodsDropdown: ObservableObject {
 
     private func layOut(on screen: NSScreen) {
         menuBar = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
-        cardTop = max(menuBar, peekDepth) + Self.gapBelowMenuBar
+        cardTop = max(menuBar, peekDepth, stackDepth) + Self.gapBelowMenuBar
         if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea?.width,
            let right = screen.auxiliaryTopRightArea?.width {
             notchWidth = screen.frame.width - left - right

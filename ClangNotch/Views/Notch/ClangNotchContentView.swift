@@ -680,6 +680,7 @@ struct ClangNotchContentView: View {
         .onChange(of: notchVM.notchState) { _, state in
             NotchTabShortcuts.shared.setActive(state == .open)
             AirPodsDropdown.shared.notchState = state
+            AirPodsDropdown.media.notchState = state
             // 배경 따라: catches a wallpaper changed since the last look.
             if state != .closed { appearance.refreshWallpaper() }
         }
@@ -691,6 +692,7 @@ struct ClangNotchContentView: View {
         // The 에어팟 드롭다운 stays up under a dropdown that comes down meanwhile.
         .onChange(of: notchVM.notchState == .peeking ? notchVM.notchSize.height : 0, initial: true) { _, depth in
             AirPodsDropdown.shared.peekDepth = depth
+            AirPodsDropdown.media.peekDepth = depth
         }
         .onChange(of: settings.notchWallpaperSource) { appearance.refreshWallpaper() }
         .onAppear { appearance.refreshWallpaper() }
