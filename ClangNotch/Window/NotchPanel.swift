@@ -33,7 +33,13 @@ final class NotchPanel: NSPanel {
         let container = NSView(frame: frame)
         hosting.frame = container.bounds
         container.addSubview(hosting)
-        container.addSubview(StageSwitchKeepalive(frame: NSRect(x: 0, y: 0, width: 1, height: 1)))
+        // Top centre, behind the notch: a window screenshot crops to what the window draws, and
+        // in the bottom-left corner it stretched the shot to that corner, the notch pushed to
+        // one side (user, 2026-11-12).
+        let keepalive = StageSwitchKeepalive(frame: NSRect(x: container.bounds.midX, y: container.bounds.maxY - 1,
+                                                          width: 1, height: 1))
+        keepalive.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin]
+        container.addSubview(keepalive)
         contentView = container
     }
 
