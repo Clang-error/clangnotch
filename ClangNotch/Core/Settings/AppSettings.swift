@@ -85,6 +85,17 @@ public final class AppSettings: ObservableObject {
     // resting meanwhile).
     @AppStorage("nowPlayingHideAfterStop") public var nowPlayingHideAfterStop: String = "later"
 
+    // 드롭다운 머무는 시간 (설정 › 노치), in seconds, counted from when the dropdown is all the way
+    // down. The AirPods and Mac cards use theirs only while their 자동으로 접기 is on, except
+    // headphones and buds worn with the lid shut, which always fold.
+    @AppStorage("foldSecondsDone") public var foldSecondsDone: Int = 5
+    @AppStorage("foldSecondsTether") public var foldSecondsTether: Int = 8
+    @AppStorage("foldSecondsSpeed") public var foldSecondsSpeed: Int = 5
+    @AppStorage("foldSecondsAirPods") public var foldSecondsAirPods: Int = 6
+    @AppStorage("foldSecondsHeadphones") public var foldSecondsHeadphones: Int = 10
+    @AppStorage("foldSecondsMac") public var foldSecondsMac: Int = 10
+    @AppStorage("foldSecondsMedia") public var foldSecondsMedia: Int = 5
+
     // Battery device ids shown in the open notch header, newline-separated.
     @AppStorage("headerBatteryDeviceIDs") public var headerBatteryDeviceIDs: String = ""
 

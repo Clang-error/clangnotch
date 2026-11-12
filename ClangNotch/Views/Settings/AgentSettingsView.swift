@@ -672,6 +672,29 @@ struct AboutSettingsTab: View {
 struct NotchSettingsTab: View {
     @ObservedObject var settings: AppSettings
 
+    /// A dropdown's time: a bordered box to type the seconds in, and − / + beside it. Typed
+    /// values outside 2…60 are brought back into range.
+    /// In a grouped Form a bare HStack with a text field becomes a label column with the field
+    /// dropped below it (user's screenshot, 2026-11-12); LabeledContent keeps one centred row.
+    private func foldRow(_ title: String, _ seconds: Binding<Int>) -> some View {
+        LabeledContent(title) {
+            HStack(alignment: .center, spacing: 6) {
+                TextField("", value: Binding(get: { seconds.wrappedValue },
+                                             set: { seconds.wrappedValue = min(60, max(2, $0)) }),
+                          format: .number)
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .monospacedDigit()
+                    .frame(width: 46)
+                Text(L("초", "s"))
+                    .foregroundColor(.secondary)
+                Stepper("", value: seconds, in: 2...60)
+                    .labelsHidden()
+            }
+        }
+    }
+
     var body: some View {
         Form {
             Section {
@@ -729,6 +752,22 @@ struct NotchSettingsTab: View {
                 }
             } header: {
                 Text(L("열기와 햅틱", "Opening and haptics"))
+            }
+
+            Section {
+                foldRow(L("완료 드롭다운", "Done"), $settings.foldSecondsDone)
+                foldRow(L("미디어 드롭다운", "Now playing card"), $settings.foldSecondsMedia)
+                foldRow(L("에어팟 드롭다운", "AirPods card"), $settings.foldSecondsAirPods)
+                foldRow(L("에어팟 맥스·헤드셋 · 뚜껑 닫힌 채 낀 에어팟", "AirPods Max, headsets, buds worn with the lid shut"),
+                        $settings.foldSecondsHeadphones)
+                foldRow(L("맥 배터리 부족", "Mac low battery"), $settings.foldSecondsMac)
+                foldRow(L("테더링 드롭다운", "Tethering"), $settings.foldSecondsTether)
+                foldRow(L("속도 드롭다운 (결과가 나온 뒤)", "Speed test (after the result)"), $settings.foldSecondsSpeed)
+                Text(L("다 내려온 뒤부터 셈 · 커서를 올려 두면 멈춤 · 에어팟·맥 카드는 '자동으로 접기'를 켰을 때만(맥스·헤드셋·뚜껑 닫힌 채 낀 에어팟은 늘 접힘)",
+                       "Counted from when it is all the way down · paused while the cursor is on it · AirPods and Mac cards only with their auto-fold on (Max, headsets and buds worn with the lid shut always fold)"))
+                    .font(.caption).foregroundColor(.secondary)
+            } header: {
+                Text(L("드롭다운 머무는 시간", "How long dropdowns stay"))
             }
 
             Section {
@@ -856,8 +895,8 @@ struct FeaturesSettingsTab: View {
                 // Only means something with the card on: shown under it, indented.
                 if settings.enableAirPodsDropdown {
                     SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods card by itself"),
-                                  L("6초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 (에어팟 맥스·헤드셋은 10초 뒤 접힘)",
-                                    "Folds after 6 seconds · off, it stays until you press X or push it up into the notch (AirPods Max and headsets fold after 10 seconds)"),
+                                  L("\(settings.foldSecondsAirPods)초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 (에어팟 맥스·헤드셋, 뚜껑 닫힌 채 낀 에어팟은 \(settings.foldSecondsHeadphones)초 뒤 접힘) · 시간은 설정 › 노치",
+                                    "Folds after \(settings.foldSecondsAirPods) seconds · off, it stays until you press X or push it up into the notch (AirPods Max, headsets and buds worn with the lid shut fold after \(settings.foldSecondsHeadphones) seconds) · times in Settings › Notch"),
                                   isOn: $settings.airPodsDropdownAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -881,8 +920,8 @@ struct FeaturesSettingsTab: View {
                     .disabled(!settings.enableBattery)
                 if settings.macLowBatteryDropdown {
                     SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's card by itself"),
-                                  L("10초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음",
-                                    "Folds after 10 seconds · off, it stays until you press X or push it up into the notch"),
+                                  L("\(settings.foldSecondsMac)초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 · 시간은 설정 › 노치",
+                                    "Folds after \(settings.foldSecondsMac) seconds · off, it stays until you press X or push it up into the notch · time in Settings › Notch"),
                                   isOn: $settings.macLowBatteryAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -898,8 +937,8 @@ struct FeaturesSettingsTab: View {
                     .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
                 if settings.enableNowPlaying {
                     SettingToggle(L("재생 시작 시 드롭다운", "Card when something starts playing"),
-                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 앨범 그림과 제목 · 5초 뒤 접힘 · 그 앱이 맨 앞이면, 같은 곡이면 10분 동안, 방금 뜬 지 20초 안이면 안 뜸",
-                                    "Artwork and title under the notch when something starts playing or the track changes · folds after 5 seconds · not while its app is in front, not again for the same track for 10 minutes, not within 20 seconds of the last one"),
+                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 플레이어 카드 · \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 › 노치) · 같은 앱에서 곡을 넘기면 매번 · 그 앱이 맨 앞이면 안 뜸 · 다른 앱으로 넘어갈 땐 같은 곡 10분, 직전 카드 20초 안이면 안 뜸",
+                                    "A player card under the notch when something starts playing or the track changes · folds after \(settings.foldSecondsMedia) seconds (time in Settings › Notch) · every track within the same app · not while its app is in front · when another app takes over, not again for the same track for 10 minutes, nor within 20 seconds of the last card"),
                                   isOn: $settings.enableNowPlayingDropdown)
                         .padding(.leading, 20)
                     SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),

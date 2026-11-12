@@ -72,10 +72,12 @@ final class AirPodsDropdown: ObservableObject {
     static let gapBelowMenuBar: CGFloat = 10
     static let dropDuration: TimeInterval = 0.9
     static let riseDuration: TimeInterval = 0.65
-    private static let visibleDuration: TimeInterval = 6
+    /// 설정 › 노치 › 드롭다운 머무는 시간, counted from when the card has settled.
+    private static var visibleDuration: TimeInterval { TimeInterval(AppSettings.shared.foldSecondsAirPods) }
     /// Headphones (a Max, another headset) fold after this even with 자동으로 접기 off: they're on
     /// the head by then (user, 2026-11-10). Other cards then stay until closed.
-    private static let headphonesDuration: TimeInterval = 10
+    private static var headphonesDuration: TimeInterval { TimeInterval(AppSettings.shared.foldSecondsHeadphones) }
+    private static var macDuration: TimeInterval { TimeInterval(AppSettings.shared.foldSecondsMac) }
 
     /// Buds put in the ears with the lid shut fold the same way: no lid will close on their card
     /// (user, 2026-11-12: with 자동으로 접기 off it stayed up for good).
@@ -90,12 +92,12 @@ final class AirPodsDropdown: ObservableObject {
 
     /// The 미디어 드롭다운 always folds, whatever 자동으로 접기 says: it isn't about a device.
     private var isMediaCard: Bool { card?.media != nil }
-    private static let mediaDuration: TimeInterval = 5
+    private static var mediaDuration: TimeInterval { TimeInterval(AppSettings.shared.foldSecondsMedia) }
 
     private var visibleTime: TimeInterval {
         if isMediaCard { return Self.mediaDuration }
-        if isMacCard { return Self.headphonesDuration }
-        return foldsAnyway && !AppSettings.shared.airPodsDropdownAutoHide ? Self.headphonesDuration : Self.visibleDuration
+        if isMacCard { return Self.macDuration }
+        return foldsAnyway ? Self.headphonesDuration : Self.visibleDuration
     }
 
     /// Set by the notch view. The card skips while the notch is open and leaves when it opens;

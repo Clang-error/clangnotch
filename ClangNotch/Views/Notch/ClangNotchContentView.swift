@@ -2666,11 +2666,11 @@ struct ClangNotchContentView: View {
         }
     }
 
-    /// 결과를 읽을 5초를 주고 드롭다운을 접는다.
+    /// 결과를 읽을 시간(설정 › 노치 › 드롭다운 머무는 시간)을 주고 드롭다운을 접는다.
     private func scheduleSpeedNoticeDismiss() {
         speedDismissTask?.cancel()
         speedDismissTask = Task {
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: .seconds(Double(settings.foldSecondsSpeed)))
             guard !Task.isCancelled else { return }
             await MainActor.run { dismissSpeedNotice() }
         }
@@ -2695,7 +2695,7 @@ struct ClangNotchContentView: View {
         notchVM.peek(duration: nil, additionalHeight: 64)
         tetherNoticeTask?.cancel()
         tetherNoticeTask = Task {
-            try? await Task.sleep(for: .seconds(8))
+            try? await Task.sleep(for: .seconds(Double(settings.foldSecondsTether) + Self.peekSettleTime))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.3)) { dismissTetherNotice() }
@@ -2857,8 +2857,13 @@ struct ClangNotchContentView: View {
         resetClosedJellyReveal()
         notchVM.peek(duration: nil, additionalHeight: peekHeight(for: doneDropdown(notice), width: permissionNotchWidth),
                      width: permissionNotchWidth)
-        scheduleDoneNoticeDismiss(after: 5)
+        // 설정 › 노치 › 드롭다운 머무는 시간, from when it is all the way down.
+        scheduleDoneNoticeDismiss(after: Double(settings.foldSecondsDone) + Self.peekSettleTime)
     }
+
+    /// How long a dropdown takes to come all the way down (`notchOpenSpring`); its time to stay
+    /// is counted from there, as the AirPods card's is.
+    private static let peekSettleTime: Double = 0.5
 
     private func scheduleDoneNoticeDismiss(after seconds: Double) {
         doneNoticeTask?.cancel()
