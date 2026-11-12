@@ -466,6 +466,11 @@ swift += '''}
         _ = try sessionFile("replayed-history", realStart + "\\n" + oldCodexLine)
         let restarted = CodexFixture(); restarted.sessionsDir = discoveryFolder; restarted.scanForSessions()
         precondition(restarted.availableSessions.contains { $0.id == "replayed-history" }, "Older replayed records must not hide recent real work after restart")
+        let guardian = discoveryFolder.appendingPathComponent("rollout-guardian.jsonl")
+        try Data(("{\\"timestamp\\":\\"\\(importTimestamp)\\",\\"type\\":\\"session_meta\\",\\"payload\\":{\\"id\\":\\"guardian\\",\\"cwd\\":\\"/example\\",\\"originator\\":\\"codex_chatgpt_ios_remote\\",\\"source\\":{\\"subagent\\":{\\"other\\":\\"guardian\\"}}}}\\n" + realStart + "\\n").utf8).write(to: guardian)
+        restarted.scanForSessions()
+        precondition(!restarted.availableSessions.contains { $0.id == "guardian" }, "A thread Codex starts for itself (the command reviewer) is not a session")
+        try FileManager.default.removeItem(at: guardian)
         let retained = discovery.availableSessions.first { $0.id == "real" }!
         var running = CodexState()
         running.activeTools = [CodexToolExecution(id: "tool", toolName: "Bash", argument: nil, startTime: oldDate)]
