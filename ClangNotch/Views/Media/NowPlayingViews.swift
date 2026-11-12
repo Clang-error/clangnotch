@@ -417,12 +417,15 @@ struct NotchBandNowPlaying: View {
     @ObservedObject private var monitor = NowPlayingMonitor.shared
     /// The camera housing's width, kept clear in the middle.
     let housingWidth: CGFloat
+    /// The artwork and title were clicked: the notch closes and the 미디어 드롭다운 comes down
+    /// (user, 2026-11-12; it used to bring the playing app forward).
+    let showCard: (NowPlaying) -> Void
 
     var body: some View {
         if let playing = monitor.nowPlaying, !monitor.pausedLong {
             HStack(spacing: 0) {
                 HStack(spacing: 6) {
-                    Button { NowPlayingMonitor.openApp(of: playing) } label: {
+                    Button { showCard(playing) } label: {
                         HStack(spacing: 7) {
                             ZStack(alignment: .bottom) {
                                 MediaArtwork(playing: playing, size: 22)
@@ -440,7 +443,7 @@ struct NotchBandNowPlaying: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(playing.appName.map { L("\($0)에서 보기", "Show in \($0)") } ?? "")
+                    .help(L("재생 카드 보기", "Show the player card"))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Color.clear.frame(width: housingWidth + 16)

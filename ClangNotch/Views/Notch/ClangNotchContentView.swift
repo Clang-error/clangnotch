@@ -1369,7 +1369,14 @@ struct ClangNotchContentView: View {
             ZStack {
                 Color.clear
                 if settings.enableNowPlaying {
-                    NotchBandNowPlaying(housingWidth: notchVM.closedNotchSize.width)
+                    NotchBandNowPlaying(housingWidth: notchVM.closedNotchSize.width) { playing in
+                        notchVM.close()
+                        Task { @MainActor in
+                            // Once the notch is back in place, so the card doesn't drop through it.
+                            try? await Task.sleep(for: .seconds(notchCloseDuration))
+                            AirPodsDropdown.media.showMedia(nowPlayingMonitor.nowPlaying ?? playing)
+                        }
+                    }
                 }
             }
             .frame(height: notchVM.closedNotchSize.height)
