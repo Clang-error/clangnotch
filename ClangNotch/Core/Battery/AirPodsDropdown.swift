@@ -114,7 +114,19 @@ final class AirPodsDropdown: ObservableObject {
     /// (user, 2026-11-12: with 자동으로 접기 off it stayed up for good).
     private var foldsAnyway: Bool {
         card.map { $0.symbol != nil || AirPodsArt.kind(for: $0.productID) == .headphones
-            || AirPodsLidWatcher.shared.wornWithLidShut($0.address) } ?? false
+            || AirPodsLidWatcher.shared.wornWithLidShut($0.address) } ?? false || foldsSoon
+    }
+
+    /// Both buds in the ears (`AirPodsLidWatcher`): no bud is left in the case to tell its lid,
+    /// so the card folds 2 s after the second bud went in, whatever 자동으로 접기 says, with no
+    /// setting of its own (user, 2026-11-12).
+    private var bothWorn: String?
+    private var foldsSoon: Bool { card != nil && card?.address == bothWorn }
+    private static let bothWornDuration: TimeInterval = 2
+
+    func setBothWorn(_ worn: Bool, address: String) {
+        if worn { bothWorn = address } else if bothWorn == address { bothWorn = nil }
+        if worn { keepAlive(address: address) }
     }
 
     /// This Mac's low battery card has its own switch (맥 배터리 부족 시 드롭다운 › 자동으로 접기):
@@ -128,6 +140,7 @@ final class AirPodsDropdown: ObservableObject {
     private var visibleTime: TimeInterval {
         if isMediaCard { return Self.mediaDuration }
         if isMacCard { return Self.macDuration }
+        if foldsSoon { return Self.bothWornDuration }
         return foldsAnyway ? Self.headphonesDuration : Self.visibleDuration
     }
 
@@ -313,7 +326,12 @@ final class AirPodsDropdown: ObservableObject {
     func caseOpened(address: String, productID: UInt16, level: Int?, caseLevel: Int?, side: String? = nil,
                     sides: (left: Int?, right: Int?)? = nil,
                     charging: (left: Bool, right: Bool, case: Bool)? = nil, drops: Bool = true) {
-        if drops { openedByCase[address] = Date() }
+        if drops {
+            openedByCase[address] = Date()
+            // The scan stops while both are worn, so their going back into the case can go
+            // unseen: a fresh opening starts with the buds in the case.
+            if bothWorn == address { bothWorn = nil }
+        }
         _ = AirPodsArt.device(for: productID, color: knownColors[address])
         _ = AirPodsArt.chargingCase
         let device = BatteryManager.shared.devices.first { $0.id == address }

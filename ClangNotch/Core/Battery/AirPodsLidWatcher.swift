@@ -14,8 +14,8 @@ import IOBluetooth
 /// peripheral counts as the pair (`owners`).
 ///
 /// Scanning runs 1 s in every 3 (nonstop measured about 4.5% of a core; 2 s in 10 missed
-/// openings) while one of our AirPods is paired but not connected, and 8 s past the connection
-/// the opening causes. Closing is read from the lid byte, and from the disconnection.
+/// openings) while one of our AirPods is paired but not connected or not fully worn, and 1 s
+/// in 10 once every pair is connected and fully worn. Closing is read from the lid byte, and from the disconnection.
 @MainActor
 final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     static let shared = AirPodsLidWatcher()
@@ -65,6 +65,8 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         /// Which buds sit in the case, where they charge.
         var leftIn = false
         var rightIn = false
+        /// The last frame that said the lid is open.
+        var openSeenAt: Date?
     }
     private var sightings: [UUID: Sighting] = [:]
 
@@ -88,7 +90,9 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     /// Pro 2 in the room read -92…-104 (2026-11-09).
     private static let nearRSSI = -82
 
-    private var stopWork: DispatchWorkItem?
+    /// Every pair connected and fully worn: nothing to drop for, so the scan only checks in.
+    private var slow = false
+    private static let slowPauseSeconds: TimeInterval = 9
 
     /// Called once IOBluetooth is up, and on every connect / disconnect.
     func reevaluate() {
@@ -116,17 +120,15 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
             stop()
             return
         }
-        if !needsScan {
-            // Just connected because the lid opened: keep listening a little for its frames.
-            if stopWork == nil {
-                let work = DispatchWorkItem { [weak self] in self?.stopWork = nil; self?.stop() }
-                stopWork = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: work)
-            }
-            return
+        // Fully worn the scan used to stop, and a bud going back into the case went unseen: the
+        // pair stayed "both worn", nothing scanned, and the next opening dropped no card
+        // (2026-11-12). It goes on at 1 s in 10 instead.
+        let wasSlow = slow
+        slow = !needsScan
+        if wasSlow, !slow, !scanning {
+            cycleWork?.cancel()
+            cycleWork = nil
         }
-        stopWork?.cancel()
-        stopWork = nil
         if central == nil {
             central = CBCentralManager(delegate: self, queue: queue)
         } else {
@@ -141,19 +143,38 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         scanning = false
     }
 
+    /// While a case of ours stands open (up to a minute from its opening), the scan runs nonstop,
+    /// so the lid shutting folds the card within a frame instead of the next 1 s window.
+    private var listensNonstop: Bool {
+        if Self.traceAll { return true }
+        guard let at = lastOpening, Date().timeIntervalSince(at) < 60 else { return false }
+        return sightings.values.contains { !$0.lidShut && Date().timeIntervalSince($0.at) < 4 }
+    }
+    private var lastOpening: Date?
+
     /// 1 s on, 2 s off. An opening case sends frames fast for several seconds, so a 2 s gap
     /// still catches it (2 s on / 8 s off missed openings, 2026-11-09).
     private func cycle() {
         guard let central, central.state == .poweredOn, !candidates.isEmpty, cycleWork == nil else { return }
-        central.scanForPeripherals(withServices: nil, options: nil)
+        // Without duplicates a scan reports our pair once (both buds share one peripheral), so
+        // a nonstop scan has to allow them.
+        let nonstop = listensNonstop
+        central.scanForPeripherals(withServices: nil,
+                                   options: nonstop ? [CBCentralManagerScanOptionAllowDuplicatesKey: true] : nil)
         scanning = true
         let pause = DispatchWorkItem { [weak self] in
             guard let self, self.scanning else { return }
+            if self.listensNonstop {
+                self.cycleWork = nil
+                self.cycle()
+                return
+            }
             central.stopScan()
             self.scanning = false
             let resume = DispatchWorkItem { [weak self] in self?.cycleWork = nil; self?.cycle() }
             self.cycleWork = resume
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.pauseSeconds, execute: resume)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (self.slow ? Self.slowPauseSeconds : Self.pauseSeconds),
+                                          execute: resume)
         }
         cycleWork = pause
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.scanSeconds, execute: pause)
@@ -206,9 +227,18 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // buds are out of the case comes from the charging flags in the case byte's high nibble,
         // from the sender's side: 0x2 it is charging, 0x1 the other is (B = both in the case,
         // 9 / A = one out; 2026-11-09). A bud out of the case while some bud is in counts as in.
+        // With a bud out and the lid shut, the case is out of the buds' reach: the case level
+        // nibble reads 0xF and the charging flags say nothing (8F). The lid bit stays clear then,
+        // so this is how a lid shut on a bud in an ear shows (traced 2026-11-12: 98 / A8 with the
+        // lid open, 8F once shut, with one bud or both in the ears). Each bud's own ear bits are
+        // still right then: 0x02 it is in an ear, 0x08 the other is.
+        let caseOutOfReach = b[9] & 0x0F == 0x0F
         let anyInEar = b[7] & 0x02 != 0
         let flags = b[9] >> 4
-        let thisOut = flags & 0x2 == 0, otherOut = flags & 0x1 == 0
+        // A bud speaking while the case is out of reach is out of it; the other is out if it is
+        // in an ear, else taken to be in the case.
+        let thisOut = caseOutOfReach ? true : flags & 0x2 == 0
+        let otherOut = caseOutOfReach ? b[7] & 0x08 != 0 : flags & 0x1 == 0
         let leftOut = leftSpeaking ? thisOut : otherOut
         let rightOut = leftSpeaking ? otherOut : thisOut
         let leftTenths = leftSpeaking ? Int(b[8] >> 4) : Int(b[8] & 0x0F)
@@ -219,26 +249,54 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         let silent = before.map { now.timeIntervalSince($0.at) > 10 } ?? true
         let wasShut = silent ? true : before?.lidShut ?? true
         let outNow = (leftOut ? 1 : 0) + (rightOut ? 1 : 0)
-        // The lid bit tells the lid only while both buds sit in the case. With a bud out it comes
-        // set though the lid is open: the card for one bud folded and the second bud dropped a new
-        // one, while bluetoothd had the lid open throughout (2026-11-10). So the last word stands.
-        let lidShut = outNow == 0 ? b[10] & 0x08 != 0 : wasShut
-        let inEarCount = anyInEar ? outNow : 0
+        // The lid bit (32/33 open, 3A/3B shut). With a bud out, only frames whose lid byte reads
+        // 3x/5x carry it: the bud in the case sends 1x, with no lid in it, and keeps sending for a
+        // few seconds after the lid shuts. The worn bud's frame turns 31 → 39 as the lid shuts, 4 s
+        // before the case drops out of its reach (8F); nonstop trace 2026-11-12, opened, a bud
+        // put in and shut 3 s apart. 8F also lingers 1–2 s after an opening (the card dropped,
+        // folded and dropped again), so it only means shut 3 s past the last open frame. With
+        // both buds out no bud is in the case to reach it: 8F with the lid open (2026-11-12), so
+        // the lid stays as last known.
+        let carriesLid = outNow == 0 || b[10] & 0x60 != 0
+        let openSeenAt = carriesLid && b[10] & 0x08 == 0 ? now : silent ? nil : before?.openSeenAt
+        let lidShut: Bool
+        if carriesLid {
+            lidShut = b[10] & 0x08 != 0
+        } else if caseOutOfReach && outNow < 2 {
+            lidShut = openSeenAt.map { now.timeIntervalSince($0) >= 3 } ?? true || wasShut
+        } else {
+            // No word on the lid: as it was, and after a silence taken as shut, so the next frame
+            // that carries the lid open counts as an opening.
+            lidShut = wasShut
+        }
+        let inEarCount = caseOutOfReach ? (b[7] & 0x02 != 0 ? 1 : 0) + (b[7] & 0x08 != 0 ? 1 : 0)
+            : anyInEar ? outNow : 0
         // The first frame after a silence (app launch, scan resumed while worn) only tells us how
         // they're worn now; only later frames can show a bud going in.
         let wasInEar = silent ? inEarCount : before?.inEar ?? 0
         let moved = !silent && before?.out != outNow
         remember(id, Sighting(address: address, at: now, lidShut: lidShut, inEar: inEarCount, out: outNow,
-                              leftIn: !leftOut, rightIn: !rightOut))
+                              leftIn: !leftOut, rightIn: !rightOut, openSeenAt: openSeenAt))
 
+        trace(b, id: id, leftSpeaking: leftSpeaking, out: outNow, inEar: inEarCount, lidShut: lidShut)
         let closing = lidShut && !wasShut
-        // Like an iPhone: the lid opening, one bud in, the second bud in. Nothing else while worn.
-        let opening = !closing && (inEarCount > wasInEar || (inEarCount == 0 && !lidShut && wasShut))
-        if opening { opened(id, address, at: now) }
+        // The lid opening (worn or not: shut on a bud in an ear and opened again, the card comes
+        // back until the lid shuts, user 2026-11-12), one bud in, the second bud in. After a
+        // silence only a frame that carries the lid says it is open: worn, the scan had stopped,
+        // and a lid opened minutes later on one bud in an ear dropped nothing (2026-11-12).
+        let lidOpened = !lidShut && wasShut && (inEarCount == 0 || !silent || carriesLid)
+        let signal = !closing && (inEarCount > wasInEar || lidOpened)
+        if signal { opened(id, address, at: now) }
+        // The second bud going in drops nothing: the card that's up folds soon (`setBothWorn`).
+        let opening = signal && inEarCount < 2
+        if closing || opening { traceNote(closing ? "→ fold (lid shut)" : "→ drop") }
         guard acts(id, for: address) else { return }
 
         if moved { AirPodsDropdown.shared.keepAlive(address: address) }
-        if (inEarCount == 2) != (wasInEar == 2) { reevaluate() }
+        let wornChanged = (inEarCount == 2) != (wasInEar == 2)
+        // While checking in slowly a frame can come after a silence, which hides the change.
+        if wornChanged || (slow && inEarCount < 2) { reevaluate() }
+        if wornChanged { AirPodsDropdown.shared.setBothWorn(inEarCount == 2, address: address) }
         if closing {
             AirPodsDropdown.shared.caseClosed(address: address)
             return
@@ -258,6 +316,52 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
                                           caseLevel: tenths(caseTenths), side: side,
                                           sides: (tenths(leftTenths), tenths(rightTenths)),
                                           charging: (!leftOut, !rightOut, caseCharging), drops: opening)
+    }
+
+    // MARK: - Frame trace
+
+    /// `defaults write com.clangerror.ClangNotch airPodsFrameTrace -bool true`: each new frame of
+    /// our pair, and how it was read, to ~/Library/Logs/ClangNotch/airpods-frames.log. Only the
+    /// installed app hears the advertisements, so this is how a case is studied. Off by default.
+    private var lastTraced: [Bool: [UInt8]] = [:]
+    /// `airPodsFrameTraceAll` as well: every frame, with the peripheral, and the scan runs
+    /// nonstop with duplicates so the log shows how often each bud speaks. For a study only.
+    private static var traceAll: Bool { UserDefaults.standard.bool(forKey: "airPodsFrameTraceAll") }
+
+    private func trace(_ b: [UInt8], id: UUID, leftSpeaking: Bool, out: Int, inEar: Int, lidShut: Bool) {
+        guard UserDefaults.standard.bool(forKey: "airPodsFrameTrace") else { return }
+        // The counter bytes past 11 change every frame; the state is in 7…10.
+        let state = Array(b.prefix(11))
+        if !Self.traceAll {
+            guard lastTraced[leftSpeaking] != state else { return }
+        }
+        lastTraced[leftSpeaking] = state
+        let hex = b.map { String(format: "%02X", $0) }.joined(separator: " ")
+        let read = "out=\(out) inEar=\(inEar) lidShut=\(lidShut)"
+        let peripheral = Self.traceAll ? "\(id.uuidString.prefix(4)) " : ""
+        appendTrace("\(peripheral)\(leftSpeaking ? "L" : "R") b7=\(String(format: "%02X", b[7])) b8=\(String(format: "%02X", b[8])) b9=\(String(format: "%02X", b[9])) b10=\(String(format: "%02X", b[10])) \(read) | \(hex)")
+    }
+
+    /// What the card was told, between the frames.
+    private func traceNote(_ text: String) {
+        guard UserDefaults.standard.bool(forKey: "airPodsFrameTrace") else { return }
+        appendTrace(text)
+    }
+
+    private func appendTrace(_ text: String) {
+        let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/ClangNotch")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("airpods-frames.log")
+        let time = Date().formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().second()
+            .secondFraction(.fractional(2)))
+        let line = "\(time) \(text)\n"
+        if let handle = try? FileHandle(forWritingTo: file) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: file)
+        }
     }
 
     // MARK: - Whose frames
@@ -293,6 +397,7 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     private func opened(_ id: UUID, _ address: String, at now: Date) {
         openings = openings.filter { now.timeIntervalSince($0.value.at) < 10 }
         openings[id] = (address, now)
+        lastOpening = now
         prove(address)
     }
 
