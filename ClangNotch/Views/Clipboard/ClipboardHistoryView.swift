@@ -19,7 +19,7 @@ struct ClipboardHistoryView: View {
                     Text(L("클립보드 기록 없음", "No clipboard history yet"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(NotchPalette.ink.opacity(0.5))
-                    Text(L("글을 복사하면 여기에 쌓입니다. 누르면 다시 복사합니다.", "Text you copy collects here. Click one to copy it again."))
+                    Text(L("글·이미지·파일을 복사하면 여기에 쌓입니다. 누르면 다시 복사합니다.", "Text, images and files you copy collect here. Click one to copy it again."))
                         .font(.system(size: 10))
                         .foregroundColor(NotchPalette.ink.opacity(0.35))
                 }
@@ -83,6 +83,15 @@ private struct ClipboardRowView: View {
                         .font(.system(size: 9))
                         .foregroundColor(NotchPalette.ink.opacity(0.5))
                         .padding(.top, 2)
+                }
+                if let thumbnail = item.thumbnail {
+                    // An image's thumbnail, or the copied file's icon.
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: item.imageFile != nil ? 40 : 18, height: item.imageFile != nil ? 28 : 18)
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                 }
                 Text(item.text)
                     .font(.system(size: 11))

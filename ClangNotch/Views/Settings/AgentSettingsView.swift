@@ -762,7 +762,8 @@ struct FeaturesSettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("클립보드 기록", "Clipboard history"),
-                              L("최근 복사한 글", "Recently copied text"),
+                              L("최근 복사한 글·이미지·파일 · 파일은 위치만 기억하고 이미지는 앱을 끄면 지움",
+                                "Recently copied text, images and files · files by their location, images deleted when the app quits"),
                               isOn: $settings.enableClipboardHistory)
                     .onChange(of: settings.enableClipboardHistory) { _, _ in
                         ClipboardManager.shared.syncWithSettings()
