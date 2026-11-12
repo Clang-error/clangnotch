@@ -43,7 +43,7 @@ final class RemoteSessionFollower {
         /// running process's registry record, which says when it waits on the user.
         /// Only the registry records: for a host whose hooks already report the rest.
         static let claudeRegistry = Source(environmentVariable: "CLAUDE_CONFIG_DIR", homeFolder: ".claude", subfolder: "sessions",
-                                           fileFilter: "*.no-such-file", stateSubfolder: "sessions", processWord: "claude",
+                                           fileFilter: "", stateSubfolder: "sessions", processWord: "",
                                            accepts: { _ in false })
         static let claude = Source(environmentVariable: "CLAUDE_CONFIG_DIR", homeFolder: ".claude", subfolder: "projects",
                                    fileFilter: "*.jsonl", stateSubfolder: "sessions", processWord: "claude",
@@ -303,58 +303,65 @@ final class RemoteSessionFollower {
         first=1
         q=0
         e=3
+        su=
         while :; do
-          touch "$t/next"
-          if [ $first = 1 ]; then set -- -mmin -5; else set -- -newer "$t/mark"; fi
-          find "$d" -type f -name '__FILTER__' ! -name 'agent-*' ! -path '*/subagents/*' "$@" 2>/dev/null | while IFS= read -r f; do
-            k=${f##*/}
-            s=$(wc -c < "$f" 2>/dev/null) || continue
-            s=$((s))
-            send() {
-              tail -c "+$(($2 + 1))" "$f" 2>/dev/null | head -c "$(($3 - $2))" > "$t/buf"
-              c=$(wc -c < "$t/buf"); c=$((c))
-              printf '@F %s %s %s\n' "$k" "$1" "$c"
-              cat "$t/buf"
-            }
-            if [ -f "$t/o-$k" ]; then
-              o=$(cat "$t/o-$k")
-              [ "$s" -gt "$o" ] || continue
-              send data "$o" "$s"
-            else
-              m=$(head -n 1 "$f" | wc -c); m=$((m))
-              send meta 0 "$m"
-              o=$((s - 262144))
-              if [ "$o" -gt "$m" ]; then send part "$o" "$s"; else send tail "$m" "$s"; fi
-            fi
-            echo "$s" > "$t/o-$k"
-            : > "$t/hit"
-          done
-          mv -f "$t/next" "$t/mark"
-          first=0
-          if [ -n "__STATE__" ]; then
-            for f in "$sd"/*.json; do
-              [ -f "$f" ] || continue
+          if [ -n "__FILTER__" ]; then
+            touch "$t/next"
+            if [ $first = 1 ]; then set -- -mmin -5; else set -- -newer "$t/mark"; fi
+            find "$d" -type f -name '__FILTER__' ! -name 'agent-*' ! -path '*/subagents/*' "$@" 2>/dev/null | while IFS= read -r f; do
               k=${f##*/}
-              c=$(cksum < "$f" 2>/dev/null) || continue
-              [ "$c" = "$(cat "$t/s-$k" 2>/dev/null)" ] && continue
-              cat "$f" > "$t/buf" 2>/dev/null || continue
-              b=$(wc -c < "$t/buf"); b=$((b))
-              printf '@S %s %s\n' "$k" "$b"
-              cat "$t/buf"
-              echo "$c" > "$t/s-$k"
+              s=$(wc -c < "$f" 2>/dev/null) || continue
+              s=$((s))
+              send() {
+                tail -c "+$(($2 + 1))" "$f" 2>/dev/null | head -c "$(($3 - $2))" > "$t/buf"
+                c=$(wc -c < "$t/buf"); c=$((c))
+                printf '@F %s %s %s\n' "$k" "$1" "$c"
+                cat "$t/buf"
+              }
+              if [ -f "$t/o-$k" ]; then
+                o=$(cat "$t/o-$k")
+                [ "$s" -gt "$o" ] || continue
+                send data "$o" "$s"
+              else
+                m=$(head -n 1 "$f" | wc -c); m=$((m))
+                send meta 0 "$m"
+                o=$((s - 262144))
+                if [ "$o" -gt "$m" ]; then send part "$o" "$s"; else send tail "$m" "$s"; fi
+              fi
+              echo "$s" > "$t/o-$k"
               : > "$t/hit"
             done
-            for g in "$t"/s-*; do
-              [ -f "$g" ] || continue
-              k=${g##*/s-}
-              [ -f "$sd/$k" ] || { printf '@X %s\n' "$k"; rm -f "$g"; }
-            done
+            mv -f "$t/next" "$t/mark"
+            first=0
+          fi
+          if [ -n "__STATE__" ]; then
+            u=$(cksum "$sd"/*.json 2>/dev/null)
+            if [ "$u" != "$su" ]; then
+              su=$u
+              for f in "$sd"/*.json; do
+                [ -f "$f" ] || continue
+                k=${f##*/}
+                c=$(cksum < "$f" 2>/dev/null) || { su=; continue; }
+                [ "$c" = "$(cat "$t/s-$k" 2>/dev/null)" ] && continue
+                cat "$f" > "$t/buf" 2>/dev/null || { su=; continue; }
+                b=$(wc -c < "$t/buf"); b=$((b))
+                printf '@S %s %s\n' "$k" "$b"
+                cat "$t/buf"
+                echo "$c" > "$t/s-$k"
+                : > "$t/hit"
+              done
+              for g in "$t"/s-*; do
+                [ -f "$g" ] || continue
+                k=${g##*/s-}
+                [ -f "$sd/$k" ] || { printf '@X %s\n' "$k"; rm -f "$g"; }
+              done
+            fi
           fi
           q=$((q + 1))
           if [ -f "$t/hit" ]; then rm -f "$t/hit"; q=0; fi
           if [ "$e" -ge 3 ]; then
             e=0
-            if pgrep -f __WORD__ >/dev/null 2>&1; then a=1; else a=0; fi
+            if [ -z "__WORD__" ] || pgrep -f __WORD__ >/dev/null 2>&1; then a=1; else a=0; fi
             printf '@H %s\n' "$a" || exit 0
           fi
           if [ "$q" -lt 60 ]; then w=1; else w=3; fi
