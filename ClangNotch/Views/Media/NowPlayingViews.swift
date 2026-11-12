@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CoreAudio
+import IOBluetooth
 import SwiftUI
 
 /// 음파 막대: bars that follow the sound of what plays (`NowPlayingLevels`), in the artwork's
@@ -395,10 +396,11 @@ private struct MediaTimeline: View {
 /// icon stayed small whatever font it was given (user, 2026-11-12).
 struct AudioOutputMenu: View {
     var size: CGFloat = 19
+    @ObservedObject private var output = AudioOutputWatcher.shared
 
     var body: some View {
         Button { AudioOutputPicker.shared.show() } label: {
-            Image(systemName: "airplayaudio")
+            Image(systemName: output.symbol)
                 .font(.system(size: size, weight: .regular))
                 .foregroundStyle(.secondary)
                 .frame(width: size + 13, height: size + 11)
@@ -468,6 +470,43 @@ struct NotchBandNowPlaying: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The output button's picture follows the output: AirPods (pro, Max, the plain pair) by their
+/// Bluetooth product id, other Bluetooth audio as headphones, anything else the AirPlay mark
+/// (user, 2026-11-12). The id, not the name: a pair is often renamed ("에어팟 프로").
+@MainActor
+final class AudioOutputWatcher: ObservableObject {
+    static let shared = AudioOutputWatcher()
+    @Published private(set) var symbol = "airplayaudio"
+
+    private init() {
+        symbol = Self.currentSymbol()
+        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+                                                 mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main) { _, _ in
+            MainActor.assumeIsolated {
+                let symbol = AudioOutputWatcher.currentSymbol()
+                if AudioOutputWatcher.shared.symbol != symbol { AudioOutputWatcher.shared.symbol = symbol }
+            }
+        }
+    }
+
+    private static func currentSymbol() -> String {
+        guard let id = AudioOutputs.defaultOutput() else { return "airplayaudio" }
+        let transport = AudioMixerManager.transportType(id)
+        guard transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE else {
+            return "airplayaudio"
+        }
+        // A Bluetooth output's UID is its address and a suffix: "30-D8-75-21-10-F1:output".
+        if let uid = AudioMixerManager.strProp(id, kAudioDevicePropertyDeviceUID),
+           let device = IOBluetoothDevice(addressString: String(uid.prefix(17))) {
+            let productID = unsafeBitCast(device, to: BTBatteryDevice.self).productID
+            if AirPodsArt.kind(for: productID) != nil { return AirPodsArt.deviceSymbol(for: productID) }
+        }
+        return "headphones"
     }
 }
 
