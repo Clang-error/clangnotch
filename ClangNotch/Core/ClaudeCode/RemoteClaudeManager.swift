@@ -36,6 +36,7 @@ final class RemoteClaudeManager: ObservableObject {
 
     private nonisolated static let remoteScriptPath = "~/.claude/clangnotch-hook.sh"
     private nonisolated static let hookCommand = "$HOME/.claude/clangnotch-hook.sh"
+    private nonisolated static let askCommand = hookCommand + " ask"
     /// PostToolUseFailure: a tool that was cancelled or denied sends no PostToolUse. Without
     /// it a question dismissed with Esc stayed in the notch for good (2026-11-12).
     private nonisolated static let hookEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Notification", "Stop", "SessionEnd"]
@@ -278,6 +279,18 @@ final class RemoteClaudeManager: ObservableObject {
             hooks[event] = groups
             changed = true
         }
+        // The question hook: held (up to 600 s) so the 질문 드롭다운 can answer from here, as
+        // `PermissionHooks` does for this Mac's own sessions. Questions only: approving a
+        // host's commands from the notch is not offered.
+        var askGroups = hooks["PermissionRequest"] as? [[String: Any]] ?? []
+        if !askGroups.contains(where: { group in
+            (group["hooks"] as? [[String: Any]])?.contains { $0["command"] as? String == askCommand } == true
+        }) {
+            askGroups.append(["matcher": "AskUserQuestion",
+                              "hooks": [["type": "command", "command": askCommand, "timeout": 605]]])
+            hooks["PermissionRequest"] = askGroups
+            changed = true
+        }
         guard changed else { return remoteHome }
         settings["hooks"] = hooks
 
@@ -347,6 +360,18 @@ final class RemoteClaudeManager: ObservableObject {
         # from ~/.claude/settings.json to uninstall.
         host='__HOST__'
         payload=$(cat)
+        # "ask": a question (AskUserQuestion) about to be shown. It is held here while the notch
+        # on the Mac may answer it; what comes back is the decision Claude Code reads from this
+        # hook. Nothing back (the Mac is away, or the wait ran out) leaves it to Claude's own picker.
+        if [ "$1" = ask ]; then
+          if command -v jq >/dev/null 2>&1; then
+            body=$(printf '%s' "$payload" | jq -c --arg host "$host" '. + {clangnotch_host: $host}') || exit 0
+          else
+            body=$(printf '%s' "$payload" | python3 -c 'import json, sys; d = json.load(sys.stdin); d["clangnotch_host"] = sys.argv[1]; print(json.dumps(d))' "$host") || exit 0
+          fi
+          curl -s -m 600 --unix-socket "$HOME/.claude/clangnotch.sock" -X POST http://localhost/permission-hook -H 'Content-Type: application/json' --data-binary "$body" 2>/dev/null
+          exit 0
+        fi
         if command -v jq >/dev/null 2>&1; then
           body=$(printf '%s' "$payload" | jq -c --arg host "$host" '{session_id, hook_event_name, cwd, tool_name, tool_use_id, notification_type, is_interrupt,
             prompt: ((.prompt // "") | .[0:300]),

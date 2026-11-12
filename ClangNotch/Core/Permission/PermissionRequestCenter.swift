@@ -78,6 +78,23 @@ final class PermissionRequestCenter: ObservableObject {
         let transcript = json["transcript_path"] as? String ?? ""
         let agent: PermissionRequestItem.Agent = transcript.contains("/.codex/") ? .codex : .claude
         if toolName == Self.questionTool {
+            // A question on an SSH host, held by the hook script there (`RemoteClaudeManager`).
+            // Its session is made by the PreToolUse event, which is posted in the background
+            // and can land a moment later.
+            if let conversation = json["session_id"] as? String, json["clangnotch_host"] is String {
+                let input = json["tool_input"] as? [String: Any] ?? [:]
+                Task { [weak self] in
+                    for _ in 0..<8 {
+                        if let sessionId = ClaudeCodeManager.shared.remoteSessionId(conversation: conversation) {
+                            self?.holdQuestion(sessionId: sessionId, input: input, reply: reply)
+                            return
+                        }
+                        try? await Task.sleep(for: .milliseconds(250))
+                    }
+                    reply.send(nil)
+                }
+                return
+            }
             // Claude asks its questions through here too; the answer goes back as the input.
             if agent == .claude, let sessionId = ClaudeCodeManager.shared.sessionId(forTranscript: transcript) {
                 holdQuestion(sessionId: sessionId, input: json["tool_input"] as? [String: Any] ?? [:], reply: reply)

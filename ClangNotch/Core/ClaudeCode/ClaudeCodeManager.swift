@@ -662,6 +662,11 @@ final class ClaudeCodeManager: ObservableObject {
         sessionJSONLPaths.first(where: { $0.value == path })?.key
     }
 
+    /// The session of a conversation on an SSH host, once one of its hook events has made it.
+    func remoteSessionId(conversation: String) -> String? {
+        remoteSessions[conversation]?.id
+    }
+
     func conversationId(for session: ClaudeSession) -> String? {
         session.terminalSessionId ?? sessionJSONLPaths[session.id].map {
             URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
