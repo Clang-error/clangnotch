@@ -33,6 +33,9 @@ final class AirPodsDropdownContainer: NSView {
     private let blobLayer = CALayer()
     private let blobMask = CAShapeLayer()
     private let hosting: FirstClickHostingView<AirPodsDropdownContent>
+    /// As in the notch's own panel: without it a Stage Manager switch or a desktop switch while
+    /// the card dropped froze the drop for a moment and the card came apart (user, 2026-11-12).
+    private let keepalive = StageSwitchKeepalive(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
     private var geometry: AirPodsBlobGeometry?
     private var settled = false
 
@@ -48,12 +51,14 @@ final class AirPodsDropdownContainer: NSView {
         blobLayer.mask = blobMask
         layer?.addSublayer(blobLayer)
         addSubview(hosting)
+        addSubview(keepalive)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     /// The panel has just been sized to the full frame.
     func drop(_ geometry: AirPodsBlobGeometry, color: CGColor) {
+        keepalive.presentClearFrame()
         self.geometry = geometry
         settled = false
         cardLayer.fillColor = color

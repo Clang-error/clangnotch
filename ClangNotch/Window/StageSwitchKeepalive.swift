@@ -39,7 +39,8 @@ final class StageSwitchKeepalive: NSView {
         presentClearFrame()
     }
 
-    private func presentClearFrame() {
+    /// Again for a window that was ordered out and comes back (the 에어팟 드롭다운's panel).
+    func presentClearFrame() {
         guard window != nil, let queue, let drawable = metalLayer.nextDrawable(),
               let buffer = queue.makeCommandBuffer() else { return }
         let pass = MTLRenderPassDescriptor()
