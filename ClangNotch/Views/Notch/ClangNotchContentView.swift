@@ -1644,6 +1644,7 @@ struct ClangNotchContentView: View {
                     let sessionId = codexManager.sessionStates.first { $0.value.pendingInputRequest?.id == request.id }?.key
                     NotchSection(title: "NEEDS YOU · Codex", rail: codexGlowColor, onDismiss: { codexManager.dismissInputRequest(id: request.id) }) {
                         QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue,
+                                            onSubmit: codexQuestionAnswer(for: request),
                                             openTitle: sessionId.map { openTitle(.codex, $0) },
                                             onOpen: sessionId.map { id in {
                                                 if acknowledgesOnly(.codex, id) {
@@ -1687,8 +1688,10 @@ struct ClangNotchContentView: View {
                     let sessionId = claudeCodeManager.sessionStates.first { $0.value.pendingInputRequests.contains { $0.id == request.id } }?.key
                     NotchSection(title: "NEEDS YOU · Claude", rail: claudeGlowColor, onDismiss: { claudeCodeManager.dismissInputRequest(id: request.id) }) {
                         QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
-                                            // A next-step box the notch can answer: its options are buttons here too.
-                                            onSubmit: request.isWrapUp ? nextStepSubmit(for: request, sessionId: sessionId) : nil,
+                                            // A question or next-step box the notch can answer: its options are
+                                            // buttons here too, as in the dropdown.
+                                            onSubmit: request.isWrapUp ? nextStepSubmit(for: request, sessionId: sessionId)
+                                                : claudeQuestionAnswer(for: request),
                                             openTitle: sessionId.map { openTitle(.claude, $0) },
                                             onOpen: sessionId.map { id in {
                                                 if acknowledgesOnly(.claude, id) {
@@ -1766,11 +1769,15 @@ struct ClangNotchContentView: View {
     /// Set while the asking Claude session's hook waits on the notch, so picking an option
     /// answers the question from here.
     private var claudeQuestionAnswer: (([String: Any]) -> Void)? {
+        claudeInputRequest.flatMap(claudeQuestionAnswer(for:))
+    }
+
+    /// The same for any Claude question: the 질문 드롭다운's and the NEEDS YOU 카드's, so a
+    /// question still gets its answer after the notch was opened over the dropdown (user,
+    /// 2026-11-12). The hook stays held while the notch is open.
+    private func claudeQuestionAnswer(for request: ClaudeInputRequest) -> (([String: Any]) -> Void)? {
         // A next-step box's buttons send a message in the app; the notch can't press them.
-        guard let request = claudeInputRequest, !request.isWrapUp,
-              let sessionId = claudeCodeManager.sessionStates.first(where: {
-                  $0.value.pendingInputRequests.contains { $0.id == request.id }
-              })?.key,
+        guard !request.isWrapUp, let sessionId = claudeSessionId(asking: request),
               permissionCenter.answerableQuestionSessions.contains(sessionId) else { return nil }
         let center = permissionCenter
         return { answers in center.answerQuestion(sessionId: sessionId, answers: answers) }
@@ -1779,10 +1786,13 @@ struct ClangNotchContentView: View {
     /// Set when the notch can answer the Codex question itself (`canAnswerFromNotch`); the
     /// rest are answered where they were asked.
     private var codexQuestionAnswer: (([String: Any]) -> Void)? {
+        codexInputRequest.flatMap(codexQuestionAnswer(for:))
+    }
+
+    private func codexQuestionAnswer(for request: CodexInputRequest) -> (([String: Any]) -> Void)? {
         // 실험 기능: it rides Codex's internal sockets, which an update can change.
         // The demo shows it switched on without touching the saved setting.
         guard settings.experimentalCodexAppAnswers || DemoMode.isActive,
-              let request = codexInputRequest,
               let sessionId = codexManager.sessionStates.first(where: {
                   $0.value.pendingInputRequest?.id == request.id
               })?.key,
