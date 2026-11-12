@@ -140,6 +140,8 @@ final class RemoteSessionFollower {
         case .powershell:
             // -EncodedCommand reads the same from cmd.exe and from PowerShell as the default shell.
             let encoded = script(Self.powerShellTemplate).data(using: .utf16LittleEndian)!.base64EncodedString()
+            // cmd.exe, the usual default shell there, takes 8191 characters.
+            assert(encoded.count < 8050, "the PowerShell follower no longer fits cmd.exe's command line")
             // Through `sshWatch`, which ends ssh when this app is gone: see below.
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
             process.arguments = ["-c", Self.sshWatch, "sh"] + SSHHost.options + SSHHost.destination(host) + [
@@ -263,11 +265,12 @@ final class RemoteSessionFollower {
     // Both speak the same lines on stdout, read by `RemoteFollowerStream`:
     //   @C <shell> <unix time>          once, at the start
     //   @F <file name> <kind> <bytes>   followed by that many bytes of the file
-    //   @H <0|1>                        every 3 s: whether a process of the agent runs on the host
+    //   @H <0|1>                        every 3 s (15 s from PowerShell): whether a process of the agent runs on the host
     //   @S <file name> <bytes>          a state file's whole content, whenever it changes
     //   @X <file name>                  a state file is gone
     // The files are looked at every second, and every 3 s once nothing has changed for a minute:
-    // at one second the Linux follower took 1.4% of a core and the Windows one 0.6% (2026-11-12).
+    // at one second the Linux follower took 1.4% of a core and the Windows one 0.4 to 0.6%, at
+    // 3 s the Windows one 0.17% (2026-11-12; see `powerShellTemplate` for how it was measured).
     // A file modified in the last 5 minutes, or later, is sent as `meta` (its first line), then
     // `tail` (the rest) or `part` (its last 256 KB, starting mid-line); what it grows by after
     // that as `data`. Files are followed by their size: a file its writer holds open keeps a
@@ -372,6 +375,24 @@ final class RemoteSessionFollower {
     /// Windows' sshd leaves the command running when the connection goes, and its writes keep
     /// succeeding (measured 2026-11-12), so it ends when the sshd above it is gone. Kept short:
     /// encoded, it must fit cmd.exe's 8191-character command line.
+    ///
+    /// What it costs was measured on a 16-core Windows 11 laptop (2026-11-12), by CPU cycles:
+    /// the clock-tick times `Get-Process` shows read about half. A pass a second apart costs
+    /// ten times what the same code costs run back to back (a listing 6 ms against 0.5 ms,
+    /// looking a process up 12 ms), so what counts is how much each pass touches:
+    /// - Every pass: the files already followed, the state files, and with no state folder
+    ///   today's dated folder, where Codex puts a new session.
+    /// - Every 15 s, in one listing of the processes: whether the sshd above is still there
+    ///   and whether the agent runs. `Get-Process` every 3 s took the process from 59 MB to
+    ///   104 MB.
+    /// - The walk of the whole tree only as often as its own time allows, about 1% of a core:
+    ///   every 5 to 60 seconds, or a fifth of that after a state file changed, which is how a
+    ///   new Claude Code session shows. With 3000 session files `Get-ChildItem -Recurse`
+    ///   through a filter took 0.1 to 0.5 s, .NET's `GetFiles` a quarter of that; the latter
+    ///   gives up on a folder it may not read, so the former is what it falls back to. It is
+    ///   also the pass that asks each file created within 30 days for its real time: a session
+    ///   resumed in a file its writer holds open keeps its old time in the folder listing
+    ///   until the file itself is asked (seen again 2026-11-12).
     private static let powerShellTemplate = #"""
         $h=$env:__ENV__;if(!$h){$h=Join-Path $env:USERPROFILE '__HOME__'}
         $d=Join-Path $h '__SUB__'
@@ -382,32 +403,33 @@ final class RemoteSessionFollower {
         function F($p){New-Object IO.FileStream($p,'Open','Read','ReadWrite,Delete')}
         function L($p){try{$f=F $p;$l=$f.Length;$f.Close();$l}catch{-1}}
         function S($k,$y,$p,$a,$e){$n=[int]($e-$a);$b=New-Object byte[] $n;$r=0
-        try{$f=F $p;[void]$f.Seek($a,'Begin');while($r -lt $n){$c=$f.Read($b,$r,$n-$r);if($c -le 0){break};$r+=$c};$f.Close()}catch{}
+        try{$f=F $p;$f.Position=$a;while($r -lt $n){$c=$f.Read($b,$r,$n-$r);if($c -le 0){break};$r+=$c};$f.Close()}catch{}
         W "@F $k $y $r";try{$o.Write($b,0,$r);$o.Flush()}catch{exit}}
+        function N($q){$p=$q.FullName;if($t.ContainsKey($p) -or $p -like '*\subagents\*' -or $q.Name -like 'agent-*'){return};$t[$p]=-1;$g[$p]=$w}
         W("@C ps "+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
-        $t=@{};$g=@{};$m=(Get-Date).AddMinutes(-5);$n=0;$i=0;$e=3;$sd=Join-Path $h '__STATE__';$st=@{}
-        while($true){
-        $w=Get-Date;$x=($n%20 -eq 19)
-        Get-ChildItem $d -Recurse -Filter '__FILTER__' -ErrorAction SilentlyContinue|ForEach-Object{$p=$_.FullName;if($p -like '*\subagents\*' -or $_.Name -like 'agent-*'){return}
-        if(!$t.ContainsKey($p)){$u=($_.LastWriteTime -gt $m -or $_.CreationTime -gt $m)
-        if(!$u -and $x -and $_.CreationTime -gt $w.AddDays(-30)){$u=([IO.File]::GetLastWriteTime($p) -gt $w.AddSeconds(-90))}
-        if($u){$t[$p]=-1;$g[$p]=$w}}}
+        $t=@{};$g=@{};$m=(Get-Date).AddMinutes(-5);$n=0;$i=0;$e=15;$sd=Join-Path $h '__STATE__';$st=@{};$v=0;$nx=$m;$nf=$m
+        for(;;){
+        $w=Get-Date;$y=($w -ge $nx -or ($v -and $w -ge $nf))
+        if(!'__STATE__'){foreach($q in @(Get-ChildItem (Join-Path $d $w.ToString('yyyy\\MM\\dd')) -Filter '__FILTER__' -EA 0|?{$_.LastWriteTime -gt $m -or $_.CreationTime -gt $m})){N $q}}
+        if($y){$v=0;$x=$w.AddSeconds(-120);$c=$w.AddDays(-30)
+        try{$fs=[IO.DirectoryInfo]::new($d).GetFiles('__FILTER__','AllDirectories')}catch{$fs=@(Get-ChildItem $d -Recurse -Filter '__FILTER__' -EA 0)}
+        foreach($q in $fs){if($q.LastWriteTime -gt $m -or $q.CreationTime -gt $m -or ($q.CreationTime -gt $c -and [IO.File]::GetLastWriteTime($q.FullName) -gt $x)){N $q}}
+        $j=[Math]::Min(60,[Math]::Max(5,[int](((Get-Date)-$w).TotalMilliseconds/10)));$nx=$w.AddSeconds($j);$nf=$w.AddSeconds($j/5);$m=$w.AddSeconds(-5)}
         foreach($p in @($t.Keys)){$a=$t[$p]
         if($a -ge 0 -and $g[$p] -lt $w.AddHours(-2) -and $n%10){continue}
         $s=L $p;if($s -lt 0){$t.Remove($p);continue}
         $k=Split-Path $p -Leaf
-        if($a -lt 0){$c=0;$e=0;try{$f=F $p;while(($c=$f.ReadByte()) -ge 0){$e++;if($c -eq 10){break}};$f.Close()}catch{}
-        S $k meta $p 0 $e;$a=$s-262144;if($a -gt $e){S $k part $p $a $s}else{S $k tail $p $e $s};$t[$p]=$s;$g[$p]=$w;$i=0}
+        if($a -lt 0){$c=0;$b=0;try{$f=F $p;while(($c=$f.ReadByte()) -ge 0){$b++;if($c -eq 10){break}};$f.Close()}catch{}
+        S $k meta $p 0 $b;$a=$s-262144;if($a -gt $b){S $k part $p $a $s}else{S $k tail $p $b $s};$t[$p]=$s;$g[$p]=$w;$i=0}
         elseif($s -gt $a){S $k data $p $a $s;$t[$p]=$s;$g[$p]=$w;$i=0}}
-        if('__STATE__'){$sn=@{};Get-ChildItem $sd -Filter '*.json' -ErrorAction SilentlyContinue|ForEach-Object{$k=$_.Name;if($_.Extension -ne '.json'){return};$sn[$k]=1
+        if('__STATE__'){$sn=@{};Get-ChildItem $sd -Filter '*.json' -EA 0|%{$k=$_.Name;if($_.Extension -ne '.json'){return};$sn[$k]=1
         try{$b=[IO.File]::ReadAllBytes($_.FullName)}catch{return};$q=[Convert]::ToBase64String($b)
-        if($st[$k] -ne $q){$st[$k]=$q;W "@S $k $($b.Length)";try{$o.Write($b,0,$b.Length);$o.Flush()}catch{exit};$i=0}}
+        if($st[$k] -ne $q){$st[$k]=$q;W "@S $k $($b.Length)";try{$o.Write($b,0,$b.Length);$o.Flush()}catch{exit};$i=0;$v=1}}
         foreach($k in @($st.Keys)){if(!$sn[$k]){$st.Remove($k);W "@X $k"}}}
-        $m=$w.AddSeconds(-5);$n++;$i++
-        if($e -ge 3){$e=0;$v=0;if(Get-Process -ErrorAction SilentlyContinue|Where-Object{$_.ProcessName -like '*__WORD__*'}){$v=1};if($z -and !(Get-Process -Id $z -ErrorAction SilentlyContinue)){exit};W "@H $v"}
+        $n++;$i++
+        if($e -ge 15){$e=0;$u=0;$al=!$z;foreach($q in [Diagnostics.Process]::GetProcesses()){if($q.Id -eq $z){$al=1};if($q.ProcessName -like '*__WORD__*'){$u=1}};if(!$al){exit};W "@H $u"}
         $j=1;if($i -ge 60){$j=3};$e+=$j
         Start-Sleep $j}
-
         """#
 }
 
