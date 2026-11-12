@@ -438,8 +438,8 @@ private struct WallpaperColorSource: View {
                 }
             }
         } else if appearance.wallpaperUnreadable {
-            Text(L("폴더로 바뀌는 바탕화면은 지금 사진을 알 수 없어 다크로 표시 · 직접 지정 권장",
-                   "A rotating wallpaper folder doesn't say which picture is showing, so the notch stays dark · use Custom"))
+            Text(L("폴더로 바뀌는 바탕화면은 지금 사진을 알 수 없어 다크로 표시. 직접 지정 권장",
+                   "A rotating wallpaper folder doesn't say which picture is showing, so the notch stays dark. Use Custom"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -626,8 +626,8 @@ struct AboutSettingsTab: View {
 
             Section {
                 SettingToggle(L("업데이트 자동으로 받기", "Download updates automatically"),
-                              L("새 버전을 받아 두고 알림 · 설치는 재시작 버튼을 누를 때만",
-                                "Downloads a new version and tells you · installs only when you restart for it"),
+                              L("새 버전을 받아 두고 알림. 설치는 재시작 버튼을 누를 때만",
+                                "Downloads a new version and tells you. Installs only when you restart for it"),
                               isOn: $settings.checkForUpdates)
                     .onChange(of: settings.checkForUpdates) { _, _ in updates.syncWithSettings() }
                 if let version = updates.readyVersion {
@@ -758,13 +758,13 @@ struct NotchSettingsTab: View {
                 foldRow(L("완료 드롭다운", "Done"), $settings.foldSecondsDone)
                 foldRow(L("미디어 드롭다운", "Now playing card"), $settings.foldSecondsMedia)
                 foldRow(L("에어팟 드롭다운", "AirPods card"), $settings.foldSecondsAirPods)
-                foldRow(L("에어팟 맥스·헤드셋 · 뚜껑 닫힌 채 낀 에어팟", "AirPods Max, headsets, buds worn with the lid shut"),
+                foldRow(L("에어팟 맥스·헤드셋, 뚜껑 닫힌 채 낀 에어팟", "AirPods Max, headsets, buds worn with the lid shut"),
                         $settings.foldSecondsHeadphones)
                 foldRow(L("맥 배터리 부족", "Mac low battery"), $settings.foldSecondsMac)
                 foldRow(L("테더링 드롭다운", "Tethering"), $settings.foldSecondsTether)
                 foldRow(L("속도 드롭다운 (결과가 나온 뒤)", "Speed test (after the result)"), $settings.foldSecondsSpeed)
-                Text(L("다 내려온 뒤부터 셈 · 커서를 올려 두면 멈춤 · 에어팟·맥 카드는 '자동으로 접기'를 켰을 때만(맥스·헤드셋·뚜껑 닫힌 채 낀 에어팟은 늘 접힘)",
-                       "Counted from when it is all the way down · paused while the cursor is on it · AirPods and Mac cards only with their auto-fold on (Max, headsets and buds worn with the lid shut always fold)"))
+                Text(L("다 내려온 뒤부터 셈. 커서를 올려 두면 멈춤. 에어팟·맥 카드는 '자동으로 접기'를 켰을 때만(맥스·헤드셋·뚜껑 닫힌 채 낀 에어팟은 늘 접힘)",
+                       "Counted from when it is all the way down. Paused while the cursor is on it. AirPods and Mac cards only with their auto-fold on (Max, headsets and buds worn with the lid shut always fold)"))
                     .font(.caption).foregroundColor(.secondary)
             } header: {
                 Text(L("드롭다운 머무는 시간", "How long dropdowns stay"))
@@ -801,14 +801,14 @@ struct FeaturesSettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("클립보드 기록", "Clipboard history"),
-                              L("최근 복사한 글·이미지·파일 · 파일은 위치만 기억하고 이미지는 앱을 끄면 지움",
-                                "Recently copied text, images and files · files by their location, images deleted when the app quits"),
+                              L("최근 복사한 글·이미지·파일. 파일은 위치만 기억하고 이미지는 앱을 끄면 지움",
+                                "Recently copied text, images and files. Files by their location, images deleted when the app quits"),
                               isOn: $settings.enableClipboardHistory)
                     .onChange(of: settings.enableClipboardHistory) { _, _ in
                         ClipboardManager.shared.syncWithSettings()
                     }
                 SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
-                              L("앱마다 소리 크기 조절 · 오디오 캡처 권한 필요", "Volume per app · needs audio-capture permission"),
+                              L("앱마다 소리 크기 조절. 오디오 캡처 권한 필요", "Volume per app. Needs audio-capture permission"),
                               isOn: $settings.enableAudioMixer)
                     .onChange(of: settings.enableAudioMixer) { _, on in
                         if on { AudioMixerManager.shared.start() } else { AudioMixerManager.shared.stop() }
@@ -831,7 +831,7 @@ struct FeaturesSettingsTab: View {
                     AccessibilityMissingRow(permission: keyboardLock)
                 }
                 SettingToggle(L("키보드 잠금", "Keyboard lock"),
-                              L("키보드 입력 잠금 · 손쉬운 사용 권한 필요", "Locks keyboard input · needs Accessibility"),
+                              L("키보드 입력 잠금. 손쉬운 사용 권한 필요", "Locks keyboard input. Needs Accessibility"),
                               isOn: $settings.enableKeyboardLock)
                     .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
             } header: {
@@ -841,8 +841,8 @@ struct FeaturesSettingsTab: View {
             // 조절창: the volume and brightness HUD and what goes with it.
             Section {
                 SettingToggle(L("볼륨·밝기 표시 바꾸기", "Replace volume and brightness HUD"),
-                              L("macOS 볼륨·밝기 표시 대신 메뉴 막대 아래 조절창 사용 · 손쉬운 사용 권한 필요",
-                                "A HUD under the menu bar instead of macOS's volume and brightness display · needs Accessibility"),
+                              L("macOS 볼륨·밝기 표시 대신 메뉴 막대 아래 조절창 사용. 손쉬운 사용 권한 필요",
+                                "A HUD under the menu bar instead of macOS's volume and brightness display. Needs Accessibility"),
                               isOn: $settings.centerSystemBanners)
                     .onChange(of: settings.centerSystemBanners) { _, on in
                         SystemBannerCenterer.shared.syncWithSettings()
@@ -871,8 +871,8 @@ struct FeaturesSettingsTab: View {
                 }
                 // Its own switch: it keeps the volume key tap up even with the HUD switch off.
                 SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
-                              L("HDMI·DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생 · 손쉬운 사용 권한 필요",
-                                "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter · needs Accessibility"),
+                              L("HDMI·DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생. 손쉬운 사용 권한 필요",
+                                "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter. Needs Accessibility"),
                               isOn: $settings.enableSoftwareVolume)
                     .onChange(of: settings.enableSoftwareVolume) { _, on in
                         SoftwareVolume.shared.syncWithSettings()
@@ -888,22 +888,22 @@ struct FeaturesSettingsTab: View {
             // features above now that there are several of them (2026-11-12).
             Section {
                 SettingToggle(L("에어팟 연결 알림", "AirPods connection card"),
-                              L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시 · 배터리 잔량이 켜져 있어야 함",
-                                "Name and battery under the notch when AirPods or a Bluetooth headset connect · needs Battery levels"),
+                              L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시. 배터리 잔량이 켜져 있어야 함",
+                                "Name and battery under the notch when AirPods or a Bluetooth headset connect. Needs Battery levels"),
                               isOn: $settings.enableAirPodsDropdown)
                     .disabled(!settings.enableBattery)
                 // Only means something with the card on: shown under it, indented.
                 if settings.enableAirPodsDropdown {
                     SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods card by itself"),
-                                  L("\(settings.foldSecondsAirPods)초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 (에어팟 맥스·헤드셋, 뚜껑 닫힌 채 낀 에어팟은 \(settings.foldSecondsHeadphones)초 뒤 접힘) · 시간은 설정 › 노치",
-                                    "Folds after \(settings.foldSecondsAirPods) seconds · off, it stays until you press X or push it up into the notch (AirPods Max, headsets and buds worn with the lid shut fold after \(settings.foldSecondsHeadphones) seconds) · times in Settings › Notch"),
+                                  L("\(settings.foldSecondsAirPods)초 뒤 저절로 접음. 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 (에어팟 맥스·헤드셋, 뚜껑 닫힌 채 낀 에어팟은 \(settings.foldSecondsHeadphones)초 뒤 접힘). 시간은 설정 › 노치",
+                                    "Folds after \(settings.foldSecondsAirPods) seconds. Off, it stays until you press X or push it up into the notch (AirPods Max, headsets and buds worn with the lid shut fold after \(settings.foldSecondsHeadphones) seconds). Times in Settings › Notch"),
                                   isOn: $settings.airPodsDropdownAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
                 }
                 SettingToggle(L("에어팟·헤드셋 배터리 부족 시 드롭다운", "Card when AirPods or a headset run low"),
-                              L("에어팟·에어팟 맥스·헤드셋이 20%, 10%가 되면 한 번씩 · 20% 넘게 충전될 때까지 다시 안 뜸",
-                                "Once at 20% and once at 10% for AirPods, AirPods Max and headsets · not again until charged past 20%"),
+                              L("에어팟·에어팟 맥스·헤드셋이 20%, 10%가 되면 한 번씩. 20% 넘게 충전될 때까지 다시 안 뜸",
+                                "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged past 20%"),
                               isOn: $settings.airPodsLowBatteryDropdown)
                     .disabled(!settings.enableBattery)
                 if settings.airPodsLowBatteryDropdown {
@@ -914,14 +914,14 @@ struct FeaturesSettingsTab: View {
                         .disabled(!settings.enableBattery)
                 }
                 SettingToggle(L("맥 배터리 부족 시 드롭다운", "Card when this Mac runs low"),
-                              L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩 · 충전 중엔 안 뜸",
-                                "Drawn as this Mac's model, once at 20% and once at 10% · not while charging"),
+                              L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩. 충전 중엔 안 뜸",
+                                "Drawn as this Mac's model, once at 20% and once at 10%. Not while charging"),
                               isOn: $settings.macLowBatteryDropdown)
                     .disabled(!settings.enableBattery)
                 if settings.macLowBatteryDropdown {
                     SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's card by itself"),
-                                  L("\(settings.foldSecondsMac)초 뒤 저절로 접음 · 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음 · 시간은 설정 › 노치",
-                                    "Folds after \(settings.foldSecondsMac) seconds · off, it stays until you press X or push it up into the notch · time in Settings › Notch"),
+                                  L("\(settings.foldSecondsMac)초 뒤 저절로 접음. 끄면 X를 누르거나 노치 쪽으로 밀어 넣을 때까지 떠 있음. 시간은 설정 › 노치",
+                                    "Folds after \(settings.foldSecondsMac) seconds. Off, it stays until you press X or push it up into the notch. Time in Settings › Notch"),
                                   isOn: $settings.macLowBatteryAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -931,27 +931,27 @@ struct FeaturesSettingsTab: View {
             }
             Section {
                 SettingToggle(L("지금 재생 표시", "Show what's playing"),
-                              L("음악·영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파 · 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만 · macOS의 '지금 재생'을 읽음",
-                                "While music or a video plays, the closed notch shows its artwork on the left and bars on the right · while the agents work or you tether, just small bars at the right edge · reads macOS's Now Playing"),
+                              L("음악·영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파. 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만. MacOS의 '지금 재생'을 읽음",
+                                "While music or a video plays, the closed notch shows its artwork on the left and bars on the right. While the agents work or you tether, just small bars at the right edge. Reads macOS's Now Playing"),
                               isOn: $settings.enableNowPlaying)
                     .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
                 if settings.enableNowPlaying {
                     SettingToggle(L("재생 시작 시 드롭다운", "Card when something starts playing"),
-                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 플레이어 카드 · \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 › 노치) · 같은 앱에서 곡을 넘기면 매번 · 그 앱이 맨 앞이면 안 뜸 · 다른 앱으로 넘어갈 땐 같은 곡 10분, 직전 카드 20초 안이면 안 뜸",
-                                    "A player card under the notch when something starts playing or the track changes · folds after \(settings.foldSecondsMedia) seconds (time in Settings › Notch) · every track within the same app · not while its app is in front · when another app takes over, not again for the same track for 10 minutes, nor within 20 seconds of the last card"),
+                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 플레이어 카드. \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 › 노치). 같은 앱에서 곡을 넘기면 매번. 그 앱이 맨 앞이면 안 뜸. 다른 앱으로 넘어갈 땐 같은 곡 10분, 직전 카드 20초 안이면 안 뜸",
+                                    "A player card under the notch when something starts playing or the track changes. Folds after \(settings.foldSecondsMedia) seconds (time in Settings › Notch). Every track within the same app. Not while its app is in front. When another app takes over, not again for the same track for 10 minutes, nor within 20 seconds of the last card"),
                                   isOn: $settings.enableNowPlayingDropdown)
                         .padding(.leading, 20)
                     SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),
-                                  L("재생 중인 앱의 소리를 읽어 음파를 움직임(오디오 캡처 권한 필요) · 소리를 녹음하거나 저장하지 않음 · 끄면 음파가 혼자 튐",
-                                    "Reads the sound of the app that plays to move the bars (needs audio capture permission) · nothing is recorded or saved · off, the bars bounce by themselves"),
+                                  L("재생 중인 앱의 소리를 읽어 음파를 움직임(오디오 캡처 권한 필요). 소리를 녹음하거나 저장하지 않음. 끄면 음파가 혼자 튐",
+                                    "Reads the sound of the app that plays to move the bars (needs audio capture permission). Nothing is recorded or saved. Off, the bars bounce by themselves"),
                                   isOn: $settings.enableNowPlayingLevels)
                         .padding(.leading, 20)
                         .onChange(of: settings.enableNowPlayingLevels) {
                             NowPlayingLevels.shared.follow(NowPlayingMonitor.shared.nowPlaying)
                         }
                     SettingToggle(L("에이전트가 일할 때도 작은 음파 표시", "Small bars while the agents work"),
-                                  L("에이전트가 일하거나 테더링 중이면 날개 오른쪽 끝에 작은 음파\n끄면 그동안은 음악을 표시하지 않음",
-                                    "While the agents work or you tether, small bars at the right wing's edge\nOff, the music isn't shown meanwhile"),
+                                  L("에이전트가 일하거나 테더링 중이면 날개 오른쪽 끝에 작은 음파. 끄면 그동안은 음악을 표시하지 않음",
+                                    "While the agents work or you tether, small bars at the right wing's edge. Off, the music isn't shown meanwhile"),
                                   isOn: $settings.nowPlayingMiniWhileWorking)
                         .padding(.leading, 20)
                     Picker(L("멈추면 날개 숨기기", "When it stops, hide the wings"), selection: $settings.nowPlayingHideAfterStop) {
@@ -1011,8 +1011,8 @@ private struct SoftwareVolumeExcludedApps: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(L("제외할 앱", "Apps left out"))
-            Text(L("가로채지 않아 볼륨 키로 안 줄어듦 · 화면 공유에 다른 사람 소리가 섞이는 앱(디스코드 등)",
-                   "Not intercepted, so the volume keys don't turn them down · apps whose screen share picks up other people's voices (Discord, …)"))
+            Text(L("가로채지 않아 볼륨 키로 안 줄어듦. 화면 공유에 다른 사람 소리가 섞이는 앱(디스코드 등)",
+                   "Not intercepted, so the volume keys don't turn them down. Apps whose screen share picks up other people's voices (Discord, …)"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             ForEach(bundleIDs, id: \.self) { id in
@@ -1064,8 +1064,8 @@ struct NetworkSettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("Wi-Fi 이름 표시", "Show Wi-Fi name"),
-                              L("Speed 탭과 아래 기능에 사용 · macOS가 위치 권한 요구(위치는 다른 데 안 씀)",
-                                "Used by the Speed tab and the features below · macOS requires Location access (used for nothing else)"),
+                              L("Speed 탭과 아래 기능에 사용. MacOS가 위치 권한 요구(위치는 다른 데 안 씀)",
+                                "Used by the Speed tab and the features below. MacOS requires Location access (used for nothing else)"),
                               isOn: $settings.enableNetworkName)
                     .onChange(of: settings.enableNetworkName) { _, on in
                         if on { network.requestAccess() } else { network.refresh() }
@@ -1170,8 +1170,8 @@ struct AgentsSettingsTab: View {
                 Toggle(L("할 일 목록 표시 (Current Tasks 카드)", "Show todo list (Current Tasks card)"), isOn: $settings.showTodoList)
                     .disabled(!claudeEnabled.wrappedValue)
                 SettingToggle(L("사용량 한도 추적", "Enable usage quota tracking"),
-                              L("Claude Code 로그인 정보로 5시간·주간 한도 확인 · 키체인 확인 창이 한 번 뜰 수 있음",
-                                "Checks the 5-hour and weekly limits with Claude Code's sign-in · Keychain may ask once"),
+                              L("Claude Code 로그인 정보로 5시간·주간 한도 확인. 키체인 확인 창이 한 번 뜰 수 있음",
+                                "Checks the 5-hour and weekly limits with Claude Code's sign-in. Keychain may ask once"),
                               isOn: $settings.enableClaudeUsage)
                 ClaudeUsageSettingsView()
                     .disabled(!settings.enableClaudeUsage)
@@ -1187,10 +1187,10 @@ struct AgentsSettingsTab: View {
                     RemoteHostsEditor(
                         hosts: $settings.remoteClaudeHosts, statuses: remote.statuses,
                         details: [
-                            L("리눅스, 맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함 · 원래 파일은 settings.json.clangnotch-bak으로 남음 · 작업 중·질문·권한 대기·완료를 모두 표시함 · 선택지가 있는 질문은 노치에서 바로 답할 수 있음",
-                              "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json · the original is kept as settings.json.clangnotch-bak · working, questions, approvals and Done all show, and a question with options can be answered from the notch"),
-                            L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴 · 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음",
-                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes · a question or an approval shows only as waiting, without its text"),
+                            L("리눅스, 맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함. 원래 파일은 settings.json.clangnotch-bak으로 남음. 작업 중·질문·권한 대기·완료를 모두 표시함. 선택지가 있는 질문은 노치에서 바로 답할 수 있음",
+                              "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json. The original is kept as settings.json.clangnotch-bak. Working, questions, approvals and Done all show, and a question with options can be answered from the notch"),
+                            L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴. 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음",
+                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes. A question or an approval shows only as waiting, without its text"),
                             L("어느 환경인지는 연결할 때 확인해 상태에 표시함",
                               "The kind of computer is checked when connecting and shown in the state"),
                             L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
@@ -1206,8 +1206,8 @@ struct AgentsSettingsTab: View {
             Section {
                 Toggle(L("사용", "Enabled"), isOn: codexEnabled)
                 SettingToggle(L("사용량 한도 표시", "Show usage limits"),
-                              L("Codex가 세션 기록에 남기는 5시간·주간 한도를 사용량 카드에 표시 · 따로 로그인이나 조회 없음",
-                                "Shows the 5-hour and weekly limits Codex writes into its session logs · no extra sign-in or polling"),
+                              L("Codex가 세션 기록에 남기는 5시간·주간 한도를 사용량 카드에 표시. 따로 로그인이나 조회 없음",
+                                "Shows the 5-hour and weekly limits Codex writes into its session logs. No extra sign-in or polling"),
                               isOn: $settings.showCodexUsage)
                     .disabled(!codexEnabled.wrappedValue)
                 CodexAccountStatus()
@@ -1224,10 +1224,10 @@ struct AgentsSettingsTab: View {
                     RemoteHostsEditor(
                         hosts: $settings.remoteCodexHosts, statuses: remoteCodex.statuses,
                         details: [
-                            L("리눅스, 맥, 윈도우 컴퓨터 · 그 컴퓨터에는 아무것도 설치하거나 바꾸지 않고 Codex가 남기는 세션 기록만 읽어 옴",
-                              "Linux, macOS and Windows · installs and changes nothing there, only reads the session logs Codex writes"),
-                            L("작업 중·질문·완료가 표시됨 · 권한 요청 알림과 노치에서 답하기는 안 됨",
-                              "Working, questions and Done show · no approval requests or answering from the notch"),
+                            L("리눅스, 맥, 윈도우 컴퓨터. 그 컴퓨터에는 아무것도 설치하거나 바꾸지 않고 Codex가 남기는 세션 기록만 읽어 옴",
+                              "Linux, macOS and Windows. Installs and changes nothing there, only reads the session logs Codex writes"),
+                            L("작업 중·질문·완료가 표시됨. 권한 요청 알림과 노치에서 답하기는 안 됨",
+                              "Working, questions and Done show. No approval requests or answering from the notch"),
                             L("어느 환경인지는 연결할 때 확인함",
                               "The kind of computer is checked when connecting"),
                             L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
@@ -1254,8 +1254,8 @@ struct ExperimentalSettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("Codex 질문에 노치에서 답하기", "Answer Codex questions from the notch"),
-                              L("Codex 앱과 터미널 Codex(Plan 모드)가 선택지로 물으면 노치에서 바로 답함 · Codex 내부 연결을 써서 업데이트되면 안 될 수 있음",
-                                "Answers multiple-choice questions from the Codex app and from Codex in a terminal (Plan mode) · uses Codex's internal connections, so an update may break it"),
+                              L("Codex 앱과 터미널 Codex(Plan 모드)가 선택지로 물으면 노치에서 바로 답함. Codex 내부 연결을 써서 업데이트되면 안 될 수 있음",
+                                "Answers multiple-choice questions from the Codex app and from Codex in a terminal (Plan mode). Uses Codex's internal connections, so an update may break it"),
                               isOn: $settings.experimentalCodexAppAnswers)
                     .disabled(!(settings.showSourceCodex && settings.enableCodexJSONL))
             } header: {
@@ -1264,8 +1264,8 @@ struct ExperimentalSettingsTab: View {
 
             Section {
                 SettingToggle(L("Claude 다음 단계에 노치에서 답하기", "Answer Claude next steps from the notch"),
-                              L("Claude 앱이 다음 단계 상자로 물으면 노치에서 버튼을 눌러 답함 · 턴이 끝난 뒤 10분 동안 · Claude Code 훅으로 세션을 깨워 답을 전해서 앱에서 누른 것과 기록이 다름",
-                                "Press the Claude app's next-step buttons from the notch · for 10 minutes after the turn ends · a Claude Code hook wakes the session with the answer, so the record differs from pressing in the app"),
+                              L("Claude 앱이 다음 단계 상자로 물으면 노치에서 버튼을 눌러 답함. 턴이 끝난 뒤 10분 동안. Claude Code 훅으로 세션을 깨워 답을 전해서 앱에서 누른 것과 기록이 다름",
+                                "Press the Claude app's next-step buttons from the notch. For 10 minutes after the turn ends. A Claude Code hook wakes the session with the answer, so the record differs from pressing in the app"),
                               isOn: $settings.experimentalClaudeNextStepAnswers)
                     .disabled(!(settings.showSourceClaudeCode && settings.enableClaudeCodeJSONL))
                     .onChange(of: settings.experimentalClaudeNextStepAnswers) { _, _ in
@@ -1364,7 +1364,7 @@ private struct RemoteHostsEditor: View {
                     L("처음 연결하는 컴퓨터면 신뢰할지 묻고, 키로 로그인이 안 되면 비밀번호를 물음",
                       "A computer seen for the first time is confirmed once, and the password is asked when key login doesn't work"),
                 ], id: \.self) { line in
-                    Text("· " + line)
+                    Text(line)
                 }
             }
             .font(.caption2)
@@ -1396,7 +1396,7 @@ private struct CodexAccountStatus: View {
                         .foregroundColor(.secondary)
                 }
             }
-            Text(L("Codex가 이 Mac에 남긴 로그인 확인 · 감지 안 되면 Codex에서 로그인", "Checks the sign-in Codex left on this Mac · sign in with Codex if not detected"))
+            Text(L("Codex가 이 Mac에 남긴 로그인 확인. 감지 안 되면 Codex에서 로그인", "Checks the sign-in Codex left on this Mac. Sign in with Codex if not detected"))
                 .font(.caption2)
                 .foregroundColor(.secondary.opacity(0.7))
         }
