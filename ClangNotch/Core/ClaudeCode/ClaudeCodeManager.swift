@@ -1760,8 +1760,11 @@ final class ClaudeCodeManager: ObservableObject {
                 sessionState.recentTools.insert(tool, at: 0)
                 if sessionState.recentTools.count > 10 { sessionState.recentTools.removeLast() }
             }
-            // A background tool can finish after Stop; that isn't the turn resuming.
-            if sessionState.turnStartTime != nil { sessionState.isThinking = true }
+            // Not "thinking" yet: the wing keeps the finished tool for a few seconds as it does for
+            // a local session, and the next tool takes its place. Saying thinking at once made a
+            // run of Bash commands flicker Bash ↔ Thinking (user, 2026-11-12, chomelab). The turn
+            // still counts as working (`turnStartTime`), and with no tool for 5 s the wing says
+            // Thinking anyway.
             // Esc: the tool fails as interrupted and the turn ends there, with no Stop to say so.
             if event == "PostToolUseFailure", json["is_interrupt"] as? Bool == true {
                 sessionState.activeTools.removeAll()
