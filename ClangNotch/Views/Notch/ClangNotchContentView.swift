@@ -1381,6 +1381,9 @@ struct ClangNotchContentView: View {
                             AirPodsDropdown.media.showMedia(nowPlayingMonitor.nowPlaying ?? playing)
                         }
                     }
+                    // A little lower than the housing's middle, nearer the header under it
+                    // (user, 2026-11-12: it floated too far above the settings buttons).
+                    .offset(y: 5)
                 }
             }
             .frame(height: notchVM.closedNotchSize.height)
