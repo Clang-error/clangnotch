@@ -1756,6 +1756,14 @@ final class ClaudeCodeManager: ObservableObject {
             }
             // A background tool can finish after Stop; that isn't the turn resuming.
             if sessionState.turnStartTime != nil { sessionState.isThinking = true }
+        case "Interrupted":
+            // Esc, read from the host's transcript (`handleRemoteTranscript`); hooks have no
+            // event for it.
+            sessionState.activeTools.removeAll()
+            sessionState.pendingInputRequests.removeAll()
+            sessionState.isThinking = false
+            sessionState.turnStartTime = nil
+            sessionState.lastStopReason = "interrupted"
         case "Stop":
             sessionState.activeTools.removeAll()
             sessionState.pendingInputRequests.removeAll()
@@ -1763,8 +1771,12 @@ final class ClaudeCodeManager: ObservableObject {
             let turnStart = sessionState.turnStartTime
             sessionState.turnStartTime = nil
             sessionState.lastStopReason = "end_turn"
-            lastCompletedTurn = CompletedTurn(sessionId: session.id, answer: json["last_assistant_message"] as? String ?? "",
-                                              elapsed: turnStart.map { now.timeIntervalSince($0) })
+            // A turn rebuilt from a transcript's history (`handleRemoteTranscript`) ended before
+            // this Mac was listening: no Done for it.
+            if json["clangnotch_history"] as? Bool != true {
+                lastCompletedTurn = CompletedTurn(sessionId: session.id, answer: json["last_assistant_message"] as? String ?? "",
+                                                  elapsed: turnStart.map { now.timeIntervalSince($0) })
+            }
         case "Notification":
             guard let type = json["notification_type"] as? String,
                   Self.attentionNotificationTypes.contains(type) else { return }
@@ -1793,6 +1805,79 @@ final class ClaudeCodeManager: ObservableObject {
         resetIdleTimer()
     }
 
+    /// The end_turn message last announced, and the tools already started, per conversation
+    /// read from a host's transcript: its lines repeat both.
+    private var remoteTranscriptTurns: [String: String] = [:]
+    private var remoteTranscriptTools: [String: Set<String>] = [:]
+
+    /// New lines of a Claude Code transcript on an SSH host that can't take the hooks (Windows:
+    /// `RemoteClaudeManager.read`), as the hook events `handleRemoteHook` is driven by: a
+    /// prompt, each tool's start and end, an interruption, the end of the turn. What only a
+    /// hook says is missing: an approval prompt.
+    /// `skew` is this Mac's clock minus the host's. Lines older than two minutes (a resumed
+    /// conversation replayed, an old tail) are skipped. `history` lines, what the file held
+    /// when the connection opened, only rebuild where the session stands: a turn that ended
+    /// before this Mac was listening is not announced as Done (a relaunch or 다시 연결 within
+    /// two minutes of a Done dropped it a second time).
+    func handleRemoteTranscript(host: String, file: String, lines: Data, skew: TimeInterval, history: Bool) {
+        let fileConversation = file.hasSuffix(".jsonl") ? String(file.dropLast(6)) : file
+        for line in lines.split(separator: 0x0A) {
+            guard let json = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  json["isSidechain"] as? Bool != true,
+                  let type = json["type"] as? String, type == "user" || type == "assistant",
+                  let message = json["message"] as? [String: Any],
+                  let stamp = (json["timestamp"] as? String).flatMap({ raw in
+                      Self.lineTimestampFormatters.lazy.compactMap { $0.date(from: raw) }.first
+                  }),
+                  Date().timeIntervalSince(stamp.addingTimeInterval(skew)) < 120 else { continue }
+            let conversation = json["sessionId"] as? String ?? fileConversation
+            // A Windows folder (C:\Users\…): slashes, so its last part reads as the name.
+            let cwd = (json["cwd"] as? String ?? "").replacingOccurrences(of: "\\", with: "/")
+            func send(_ event: String, _ fields: [String: Any] = [:]) {
+                var hook = fields
+                hook["session_id"] = conversation
+                hook["cwd"] = cwd
+                hook["hook_event_name"] = event
+                // Read back in `handleRemoteHook`'s Stop.
+                if history { hook["clangnotch_history"] = true }
+                handleRemoteHook(host: host, json: hook)
+            }
+            let blocks = message["content"] as? [[String: Any]] ?? []
+            let texts = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+                + [message["content"] as? String].compactMap { $0 }
+
+            if type == "user" {
+                guard json["isMeta"] as? Bool != true else { continue }
+                let results = blocks.filter { $0["type"] as? String == "tool_result" }
+                for result in results {
+                    send("PostToolUse", ["tool_use_id": result["tool_use_id"] as? String ?? ""])
+                }
+                if texts.contains(where: { $0.contains("[Request interrupted") }) {
+                    send("Interrupted")
+                } else if results.isEmpty, let prompt = texts.first(where: { displayableUserPrompt($0) != nil }) {
+                    remoteTranscriptTools[conversation] = nil
+                    send("UserPromptSubmit", ["prompt": prompt])
+                }
+            } else {
+                for block in blocks where block["type"] as? String == "tool_use" {
+                    guard let id = block["id"] as? String,
+                          remoteTranscriptTools[conversation, default: []].insert(id).inserted else { continue }
+                    send("PreToolUse", ["tool_name": block["name"] as? String ?? "Tool", "tool_use_id": id,
+                                        "tool_input": block["input"] ?? [String: Any]()])
+                }
+                if texts.contains(where: { $0.contains("[Request interrupted") }) {
+                    send("Interrupted")
+                } else if message["stop_reason"] as? String == "end_turn", !texts.isEmpty,
+                          let id = message["id"] as? String, remoteTranscriptTurns[conversation] != id {
+                    // The final message comes as several lines that all say end_turn; its text
+                    // line is the end.
+                    remoteTranscriptTurns[conversation] = id
+                    send("Stop", ["last_assistant_message": texts.joined(separator: "\n")])
+                }
+            }
+        }
+    }
+
     /// Drops every session of `host` — called when its tunnel closes, since no further
     /// events (not even Stop) can arrive and the rows would otherwise read as working forever.
     func removeRemoteSessions(host: String) {
@@ -1801,6 +1886,9 @@ final class ClaudeCodeManager: ObservableObject {
         for (conversationId, session) in dropped {
             remoteSessions.removeValue(forKey: conversationId)
             sessionStates.removeValue(forKey: session.id)
+            // A reconnect replays the transcript's tail: its running tools must show again.
+            remoteTranscriptTools[conversationId] = nil
+            remoteTranscriptTurns[conversationId] = nil
         }
         scanForSessions()
         updateSessionsNeedingPermission()

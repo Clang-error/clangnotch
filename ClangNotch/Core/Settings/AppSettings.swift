@@ -144,6 +144,11 @@ public final class AppSettings: ObservableObject {
     /// `SSHHost`) whose Claude Code sessions are mirrored into the notch over an app-owned SSH
     /// reverse tunnel (see RemoteClaudeManager).
     @AppStorage("remoteClaudeHosts") public var remoteClaudeHosts: String = ""
+    /// 설정 › 에이전트 › SSH 원격 세션 switches: off, nothing connects and the host list is
+    /// folded away. A list that was filled in before the switches existed turns its switch on
+    /// (`migrateRemoteSwitches`).
+    @AppStorage("remoteClaudeEnabled") public var remoteClaudeEnabled: Bool = false
+    @AppStorage("remoteCodexEnabled") public var remoteCodexEnabled: Bool = false
     /// Comma-separated hosts, as above, whose Codex sessions are mirrored into the notch by
     /// reading their session files over SSH (see RemoteCodexManager).
     @AppStorage("remoteCodexHosts") public var remoteCodexHosts: String = ""
@@ -166,6 +171,14 @@ public final class AppSettings: ObservableObject {
     @AppStorage("settingsLanguage") public var settingsLanguage: String = "ko"
 
     public init() {}
+
+    /// The SSH switches came after the host lists (2026-11-12): a list someone already filled
+    /// in keeps working instead of going quiet behind a switch that defaults to off.
+    func migrateRemoteSwitches() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "remoteClaudeEnabled") == nil, !SSHHost.list(remoteClaudeHosts).isEmpty { remoteClaudeEnabled = true }
+        if defaults.object(forKey: "remoteCodexEnabled") == nil, !SSHHost.list(remoteCodexHosts).isEmpty { remoteCodexEnabled = true }
+    }
 }
 
 /// App copy in the language picked under General. Reads UserDefaults directly so it also

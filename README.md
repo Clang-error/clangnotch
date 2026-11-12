@@ -47,7 +47,7 @@ Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same s
 - Subagents Claude starts show under their session. Codex sessions go by their thread names from the Codex app
 - A context bar at the top of the session view
 - 5-hour and weekly usage for Claude and Codex
-- Claude Code sessions running on an SSH server (over a reverse tunnel)
+- Claude Code sessions running on an SSH host: hooks over a reverse tunnel on Linux and macOS, the transcripts read on Windows
 - Codex sessions running on an SSH host: Linux, macOS or Windows (reads the host's session logs, installs nothing there)
 
 **Tools**

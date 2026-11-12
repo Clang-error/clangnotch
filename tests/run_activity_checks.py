@@ -86,6 +86,8 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     var dismissedInputRequestIDs: Set<String> = []
     var externalImportSessions: Set<String> = []
     var sessionsDir = FileManager.default.temporaryDirectory
+    // Not this Mac's real mirror of SSH hosts: a session running there would show up in the checks.
+    var remoteSessionsDir = URL(fileURLWithPath: "/nonexistent-clangnotch-remote-codex")
     var availableSessions: [CodexSession] = []
     var sessionWatchers: [String: Bool] = [:]
     var sessionActivityCache: [URL: (modifiedAt: Date, fileSize: UInt64, activity: Date?)] = [:]

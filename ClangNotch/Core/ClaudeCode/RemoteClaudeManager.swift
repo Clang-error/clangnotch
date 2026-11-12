@@ -12,7 +12,12 @@ import Foundation
 /// tunnel so the host's `~/.claude/clangnotch.sock` reaches this app's receiver. The receiver's
 /// `/claude-hook` route hands those events to `ClaudeCodeManager.handleRemoteHook`.
 /// Everything runs through `/usr/bin/ssh` with the user's own `~/.ssh/config` and keys; what ssh
-/// has to ask goes through `SSHAskpass` (`SSHHost`). The host needs a POSIX shell: not Windows.
+/// has to ask goes through `SSHAskpass` (`SSHHost`).
+///
+/// A host that can't run the setup (Windows has no POSIX shell; no curl, jq or python3) is read
+/// instead, as Codex hosts are: a `RemoteSessionFollower` sends its transcripts' new lines and
+/// `ClaudeCodeManager.handleRemoteTranscript` turns them into the same events. Nothing is
+/// installed there; approval prompts, which only a hook reports, don't show for it.
 @MainActor
 final class RemoteClaudeManager: ObservableObject {
     static let shared = RemoteClaudeManager()
@@ -24,6 +29,8 @@ final class RemoteClaudeManager: ObservableObject {
     private var tunnels: [String: Process] = [:]
     /// Write end of each tunnel's stdin. Held open for the tunnel's lifetime — see `openTunnel`.
     private var tunnelInputs: [String: Pipe] = [:]
+    /// Followers of the hosts that are read instead of hooked.
+    private var readers: [String: RemoteSessionFollower] = [:]
     private var retryTasks: [String: Task<Void, Never>] = [:]
     private var failures: [String: Int] = [:]
     /// Bumped whenever a host is stopped, so an install still running for it gives up.
@@ -44,7 +51,8 @@ final class RemoteClaudeManager: ObservableObject {
     /// Follows the host list in settings: hosts that left it are dropped, new ones connected.
     /// `asking` is the host the user just added: its questions (trust it? password?) may open a window.
     func sync(asking: String? = nil) {
-        let wanted = SSHHost.list(AppSettings.shared.remoteClaudeHosts)
+        let settings = AppSettings.shared
+        let wanted = settings.remoteClaudeEnabled ? SSHHost.list(settings.remoteClaudeHosts) : []
         for host in hosts where !wanted.contains(host) { stop(host) }
         for host in wanted where !hosts.contains(host) {
             guard SSHHost.isValid(host) else {
@@ -76,6 +84,7 @@ final class RemoteClaudeManager: ObservableObject {
         let process = tunnels.removeValue(forKey: host)
         tunnelInputs[host] = nil
         process?.terminate()
+        readers.removeValue(forKey: host)?.stop()
         ClaudeCodeManager.shared.removeRemoteSessions(host: host)
         failures[host] = nil
     }
@@ -91,7 +100,12 @@ final class RemoteClaudeManager: ObservableObject {
                 remoteHome = try await Self.install(on: host, interactive: interactive)
             } catch {
                 guard self.generations[host, default: 0] == generation else { return }
-                // Waiting on the user (a host to confirm, a password, no POSIX shell there).
+                // The host can't take the hooks: its transcripts are read instead.
+                if (error as? RemoteClaudeError)?.cannotSetUp == true {
+                    read(host, interactive: interactive)
+                    return
+                }
+                // Waiting on the user (a host to confirm, a password).
                 if (error as? RemoteClaudeError)?.needsUser == true {
                     statuses[host] = error.localizedDescription
                 } else {
@@ -102,6 +116,33 @@ final class RemoteClaudeManager: ObservableObject {
             guard self.generations[host, default: 0] == generation else { return }
             openTunnel(host, remoteHome: remoteHome, interactive: interactive)
         }
+    }
+
+    /// The hookless way in: follow the host's transcripts (`RemoteSessionFollower`).
+    private func read(_ host: String, interactive: Bool) {
+        let follower = RemoteSessionFollower(host: host, source: .claude, sink: .lines { file, lines, skew, history in
+            // In order, on the main thread: the lines are a conversation.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    ClaudeCodeManager.shared.handleRemoteTranscript(host: host, file: file, lines: lines, skew: skew, history: history)
+                }
+            }
+        }) { [weak self] event in
+            guard let self, self.readers[host] != nil else { return }
+            switch event {
+            case .status(let text):
+                self.statuses[host] = text
+            case .connected:
+                self.statuses[host] = L("연결됨 · 대화 기록 읽기 (훅 없이: 권한 대기는 표시 안 됨)",
+                                        "Connected · reading transcripts (no hooks: approvals don't show)")
+            case .dropped:
+                ClaudeCodeManager.shared.removeRemoteSessions(host: host)
+            case .agentRunning, .sessionFile:
+                break
+            }
+        }
+        readers[host] = follower
+        follower.start(interactive: interactive)
     }
 
     private func openTunnel(_ host: String, remoteHome: String, interactive: Bool) {
@@ -261,12 +302,13 @@ final class RemoteClaudeManager: ObservableObject {
                 }
                 // The host ran the command and it failed. Our own complaints (no curl, a cut
                 // upload) come in plain text; a Windows host answers the sh syntax with an
-                // error in its own code page. Neither gets better by trying again.
+                // error in its own code page. Neither gets better by trying again: such a host
+                // is read instead (`read`).
                 let line = lastLine(stderr) ?? ""
                 let readable = !line.isEmpty && !line.unicodeScalars.contains("\u{FFFD}")
                 throw RemoteClaudeError(readable ? line
-                    : L("호스트가 명령을 실행하지 못했습니다 — Claude Code 원격은 리눅스·맥 호스트만 됩니다",
-                        "The host couldn't run the setup — Claude Code remote needs a Linux or macOS host"), needsUser: true)
+                    : L("호스트가 훅 설치 명령을 실행하지 못했습니다", "The host couldn't run the hook setup"),
+                    needsUser: true, cannotSetUp: true)
             }
             return String(decoding: output, as: UTF8.self)
         }.value
@@ -314,9 +356,12 @@ struct RemoteClaudeError: LocalizedError {
     let message: String
     /// Retrying by itself is pointless (`SSHHost.Failure`).
     let needsUser: Bool
-    init(_ message: String, needsUser: Bool = false) {
+    /// The host answered but can't run the hook setup.
+    let cannotSetUp: Bool
+    init(_ message: String, needsUser: Bool = false, cannotSetUp: Bool = false) {
         self.message = message
         self.needsUser = needsUser
+        self.cannotSetUp = cannotSetUp
     }
     var errorDescription: String? { message }
 }

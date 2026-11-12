@@ -32,6 +32,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task { @MainActor in
+            AppSettings.shared.migrateRemoteSwitches()
             RemoteClaudeManager.shared.apply()
             RemoteCodexManager.shared.apply()
         }

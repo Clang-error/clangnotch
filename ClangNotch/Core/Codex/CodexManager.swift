@@ -151,6 +151,8 @@ final class CodexManager: ObservableObject {
     }()
 
     private var sessionsDir: URL { codexDir.appendingPathComponent("sessions") }
+    /// Session files mirrored from SSH hosts (`RemoteCodexManager`), scanned like `sessionsDir`.
+    private var remoteSessionsDir: URL { CodexSession.remoteMirrorRoot }
 
     /// Thread names by session id: the app's thread list in `state_5.sqlite` for the sessions
     /// on screen, over `session_index.jsonl` (renaming a thread appends a line there).
@@ -297,7 +299,7 @@ final class CodexManager: ObservableObject {
         })
 
         // This Mac's own sessions, then the ones mirrored from SSH hosts (`RemoteCodexManager`).
-        for (root, isRemote) in [(sessionsDir, false), (CodexSession.remoteMirrorRoot, true)] {
+        for (root, isRemote) in [(sessionsDir, false), (remoteSessionsDir, true)] {
             let enumerator = fm.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.contentModificationDateKey],
