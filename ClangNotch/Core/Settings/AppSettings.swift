@@ -140,11 +140,12 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchSoundsVolume") public var notchSoundsVolume: Double = 0.7
     /// Newline-separated session IDs muted from the 세션 줄's context menu.
     @AppStorage("mutedSoundSessionIDs") public var mutedSoundSessionIDs: String = ""
-    /// Comma-separated `~/.ssh/config` host aliases whose Claude Code sessions are mirrored
-    /// into the notch over an app-owned SSH reverse tunnel (see RemoteClaudeManager).
+    /// Comma-separated hosts (`user@address`, `user@address:port` or a `~/.ssh/config` alias; see
+    /// `SSHHost`) whose Claude Code sessions are mirrored into the notch over an app-owned SSH
+    /// reverse tunnel (see RemoteClaudeManager).
     @AppStorage("remoteClaudeHosts") public var remoteClaudeHosts: String = ""
-    /// Comma-separated `~/.ssh/config` host aliases whose Codex sessions are mirrored into the
-    /// notch by reading their session files over SSH (see RemoteCodexManager).
+    /// Comma-separated hosts, as above, whose Codex sessions are mirrored into the notch by
+    /// reading their session files over SSH (see RemoteCodexManager).
     @AppStorage("remoteCodexHosts") public var remoteCodexHosts: String = ""
 
     // Codex JSONL Session Tracking

@@ -21,7 +21,7 @@ import Foundation
 ///
 /// The follower is POSIX `sh` (Linux, macOS, WSL, Git Bash) or Windows PowerShell 5.1; whichever
 /// answers with the hello line is used. Everything runs through `/usr/bin/ssh` with the user's
-/// own `~/.ssh/config` and keys.
+/// own `~/.ssh/config` and keys; what ssh has to ask goes through `SSHAskpass` (`SSHHost`).
 @MainActor
 final class RemoteCodexManager: ObservableObject {
     static let shared = RemoteCodexManager()
@@ -45,62 +45,66 @@ final class RemoteCodexManager: ObservableObject {
     private var retryTasks: [String: Task<Void, Never>] = [:]
     private var failures: [String: Int] = [:]
 
-    /// Never share (or tear down) the user's interactive ControlMaster connection; the alive
-    /// probes notice a dead connection within ~45s.
-    private nonisolated static let baseOptions = [
-        "-T", "-o", "BatchMode=yes", "-o", "ControlMaster=no", "-o", "ControlPath=none",
-        "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "ConnectTimeout=10",
-    ]
-
     private init() {}
 
     /// Whether some Codex process runs on the host, by its follower's last word. A session left
     /// working by a Codex that is gone is cleared on this (`CodexManager.clearEndedSessions`).
     func codexRunning(on host: String) -> Bool { hostsWithCodex.contains(host) }
 
-    /// Re-reads the host list from settings and reconnects every host.
+    /// Launch, or the agent switched on or off: every host from scratch, without asking anything.
     func apply() {
         stopAll()
         try? FileManager.default.removeItem(at: CodexSession.remoteMirrorRoot)
-        statuses = [:]
-        guard AppSettings.shared.enableCodexJSONL, !DemoMode.isActive else { return }
-        var seen = Set<String>()
-        hosts = AppSettings.shared.remoteCodexHosts
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && seen.insert($0).inserted }
-        for host in hosts {
-            // The alias is passed to ssh as an argument and names a folder that is later deleted.
-            guard !host.hasPrefix("-"), host != ".", host != "..",
-                  host.allSatisfy({ $0.isLetter || $0.isNumber || "._@-".contains($0) }) else {
-                statuses[host] = L("잘못된 호스트 별칭", "Invalid host alias")
+        sync()
+    }
+
+    /// Follows the host list in settings: hosts that left it are dropped, new ones connected.
+    /// `asking` is the host the user just added: its questions (trust it? password?) may open a window.
+    func sync(asking: String? = nil) {
+        let wanted = AppSettings.shared.enableCodexJSONL && !DemoMode.isActive
+            ? SSHHost.list(AppSettings.shared.remoteCodexHosts) : []
+        for host in hosts where !wanted.contains(host) { stop(host) }
+        for host in wanted where !hosts.contains(host) {
+            guard SSHHost.isValid(host) else {
+                statuses[host] = L("잘못된 주소", "Invalid address")
                 continue
             }
-            connect(host)
+            connect(host, interactive: host == asking)
         }
+        hosts = wanted
+        statuses = statuses.filter { wanted.contains($0.key) }
+    }
+
+    /// 다시 연결: this host again, and this time it may ask.
+    func reconnect(_ host: String) {
+        guard hosts.contains(host), SSHHost.isValid(host) else { return }
+        stop(host)
+        connect(host, interactive: true)
     }
 
     func stopAll() {
-        retryTasks.values.forEach { $0.cancel() }
-        retryTasks = [:]
-        // Cleared before terminating so `followerClosed` treats these exits as intentional.
-        let running = followers
-        followers = [:]
-        closeInputs()
-        running.values.forEach { $0.terminate() }
-        hosts.forEach(removeMirror)
+        hosts.forEach(stop)
         hosts = []
         greeted = []
-        failures = [:]
+    }
+
+    private func stop(_ host: String) {
+        retryTasks.removeValue(forKey: host)?.cancel()
+        // Cleared before terminating so `followerClosed` treats this exit as intentional.
+        let process = followers.removeValue(forKey: host)
+        closeInputs(host)
+        process?.terminate()
+        removeMirror(host)
+        failures[host] = nil
     }
 
     // MARK: - Connection
 
-    private func connect(_ host: String) {
-        start(host, shell: shells[host] ?? .sh)
+    private func connect(_ host: String, interactive: Bool = false) {
+        start(host, shell: shells[host] ?? .sh, interactive: interactive)
     }
 
-    private func start(_ host: String, shell: Shell) {
+    private func start(_ host: String, shell: Shell, interactive: Bool) {
         let directory = CodexSession.remoteMirrorRoot.appendingPathComponent(host, isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
@@ -111,16 +115,17 @@ final class RemoteCodexManager: ObservableObject {
         case .sh:
             // The script goes in on stdin: whatever the login shell is (fish, csh), nothing of
             // it has to survive that shell's quoting.
-            process.arguments = Self.baseOptions + [host, "sh"]
+            process.arguments = SSHHost.options + SSHHost.destination(host) + ["sh"]
         case .powershell:
             // -EncodedCommand reads the same from cmd.exe and from PowerShell as the default shell.
             let encoded = Self.powerShellFollower.data(using: .utf16LittleEndian)!.base64EncodedString()
             // Through `sshWatch`, which ends ssh when this app is gone: see below.
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", Self.sshWatch, "sh"] + Self.baseOptions + [
-                host, "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand \(encoded)",
+            process.arguments = ["-c", Self.sshWatch, "sh"] + SSHHost.options + SSHHost.destination(host) + [
+                "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand \(encoded)",
             ]
         }
+        process.environment = SSHHost.environment(for: host, interactive: interactive)
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errors
@@ -134,7 +139,9 @@ final class RemoteCodexManager: ObservableObject {
         }
         process.terminationHandler = { [weak self] process in
             let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            Task { @MainActor in self?.followerClosed(host, shell: shell, process: process, stderr: message) }
+            Task { @MainActor in
+                self?.followerClosed(host, shell: shell, interactive: interactive, process: process, stderr: message)
+            }
         }
         do {
             try process.run()
@@ -183,7 +190,7 @@ final class RemoteCodexManager: ObservableObject {
         }
     }
 
-    private func followerClosed(_ host: String, shell: Shell, process: Process, stderr: String) {
+    private func followerClosed(_ host: String, shell: Shell, interactive: Bool, process: Process, stderr: String) {
         let hadGreeted = greeted.remove(ObjectIdentifier(process)) != nil
         guard followers[host] === process else { return }
         followers[host] = nil
@@ -193,7 +200,7 @@ final class RemoteCodexManager: ObservableObject {
         // ssh itself failing is 255. Anything else before the hello is the host not having this
         // shell (Windows has no sh): the other one gets its turn before giving up.
         if !hadGreeted, process.terminationStatus != 255, shell == .sh, shells[host] == nil {
-            start(host, shell: .powershell)
+            start(host, shell: .powershell, interactive: interactive)
             return
         }
         if !hadGreeted, process.terminationStatus != 255 {
@@ -201,7 +208,13 @@ final class RemoteCodexManager: ObservableObject {
             scheduleRetry(host, reason: L("호스트에서 sh도 PowerShell도 실행하지 못했습니다", "Neither sh nor PowerShell ran on the host"))
             return
         }
-        scheduleRetry(host, reason: Self.lastLine(stderr) ?? L("연결 끊김", "Disconnected"))
+        let failure = SSHHost.failure(stderr, host: host)
+        // Waiting on the user (a host to confirm, a password): trying again alone can't help.
+        if failure.needsUser, !hadGreeted {
+            statuses[host] = failure.message
+            return
+        }
+        scheduleRetry(host, reason: failure.message)
     }
 
     /// Closed by hand: the `Process` keeps its pipe alive, and `sshWatch` waits on this end.
@@ -228,10 +241,6 @@ final class RemoteCodexManager: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.connect(host)
         }
-    }
-
-    private nonisolated static func lastLine(_ text: String) -> String? {
-        text.split(whereSeparator: \.isNewline).last.map { String($0).trimmingCharacters(in: .whitespaces) }
     }
 
     // MARK: - Followers

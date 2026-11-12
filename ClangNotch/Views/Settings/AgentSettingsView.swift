@@ -1101,14 +1101,18 @@ struct AgentsSettingsTab: View {
                     .disabled(!settings.enableClaudeUsage)
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showClaudePlan)
                     .disabled(!claudeEnabled.wrappedValue || !settings.enableClaudeUsage)
-                HStack {
-                    TextField(L("원격 SSH 호스트", "Remote SSH hosts"), text: $settings.remoteClaudeHosts, prompt: Text("myserver, other-host"))
-                        .onSubmit { remote.apply() }
-                    Button(L("연결", "Connect")) { remote.apply() }
-                }
-                ForEach(remote.statuses.keys.sorted(), id: \.self) { host in
-                    LabeledContent(host, value: remote.statuses[host] ?? "")
-                }
+                RemoteHostsEditor(
+                    hosts: $settings.remoteClaudeHosts, statuses: remote.statuses,
+                    details: [
+                        L("SSH로 접속되는 리눅스·맥 컴퓨터에서 도는 Claude Code 세션을 이 노치에 표시 (윈도우는 Codex만 됨)",
+                          "Shows Claude Code sessions running on a Linux or macOS computer you reach over SSH (Windows: Codex only)"),
+                        L("그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함 · 원래 파일은 settings.json.clangnotch-bak으로 남음 · curl과 jq(또는 python3) 필요",
+                          "Puts a hook script (clangnotch-hook.sh) in its ~/.claude and adds hook entries to settings.json · the original is kept as settings.json.clangnotch-bak · needs curl and jq (or python3)"),
+                        L("작업 중·질문·권한 대기·완료가 표시됨 · 이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
+                          "Working, questions, approvals and Done all show · one SSH connection stays open while this Mac is on"),
+                    ],
+                    sync: { remote.sync(asking: $0) }, reconnect: remote.reconnect)
+                    .disabled(!claudeEnabled.wrappedValue)
             } header: {
                 Text("Claude Code")
             }
@@ -1123,22 +1127,19 @@ struct AgentsSettingsTab: View {
                 CodexAccountStatus()
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
                     .disabled(!codexEnabled.wrappedValue || !settings.showCodexUsage)
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        TextField(L("원격 SSH 호스트", "Remote SSH hosts"), text: $settings.remoteCodexHosts, prompt: Text("myserver, windows-pc"))
-                            .onSubmit { remoteCodex.apply() }
-                        Button(L("연결", "Connect")) { remoteCodex.apply() }
-                    }
-                    Text(L("호스트의 Codex 세션 기록을 SSH로 읽어 노치에 표시 · 호스트에 설치하는 것 없음 · 리눅스·맥·윈도우 · 권한 요청과 노치에서 답하기는 안 됨",
-                           "Reads the host's Codex session logs over SSH · installs nothing there · Linux, macOS, Windows · no approval requests or answering from the notch"))
-                        .font(.caption2)
-                        .foregroundColor(.secondary.opacity(0.7))
-                }
-                .disabled(!codexEnabled.wrappedValue)
-                .onChange(of: settings.enableCodexJSONL) { remoteCodex.apply() }
-                ForEach(remoteCodex.statuses.keys.sorted(), id: \.self) { host in
-                    LabeledContent(host, value: remoteCodex.statuses[host] ?? "")
-                }
+                RemoteHostsEditor(
+                    hosts: $settings.remoteCodexHosts, statuses: remoteCodex.statuses,
+                    details: [
+                        L("SSH로 접속되는 다른 컴퓨터(리눅스·맥·윈도우)에서 도는 Codex 세션을 이 노치에 표시",
+                          "Shows Codex sessions running on another computer (Linux, macOS, Windows) you reach over SSH"),
+                        L("그 컴퓨터에는 아무것도 설치하거나 바꾸지 않음 · Codex가 남기는 세션 기록만 읽어 옴",
+                          "Installs and changes nothing there · only reads the session logs Codex writes"),
+                        L("작업 중·질문·완료가 표시됨 · 권한 요청 알림과 노치에서 답하기는 안 됨 · 이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
+                          "Working, questions and Done show · no approval requests or answering from the notch · one SSH connection stays open while this Mac is on"),
+                    ],
+                    sync: { remoteCodex.sync(asking: $0) }, reconnect: remoteCodex.reconnect)
+                    .disabled(!codexEnabled.wrappedValue)
+                    .onChange(of: settings.enableCodexJSONL) { remoteCodex.apply() }
             } header: {
                 Text("Codex")
             }
@@ -1185,6 +1186,88 @@ struct ExperimentalSettingsTab: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+/// 원격 SSH 호스트: the hosts of one agent, each with its connection state, 다시 연결 and
+/// remove; a field to add one (`user@address`, or picked from `~/.ssh/config`); and what
+/// connecting does, spelled out. The list is kept in settings as a comma-separated string.
+private struct RemoteHostsEditor: View {
+    @Binding var hosts: String
+    let statuses: [String: String]
+    /// What this agent's remote does, one line each.
+    let details: [String]
+    /// The list changed; the argument is a host just added, which may ask its questions.
+    let sync: (String?) -> Void
+    let reconnect: (String) -> Void
+
+    @State private var draft = ""
+
+    private var list: [String] { SSHHost.list(hosts) }
+
+    private func add(_ host: String) {
+        let host = host.trimmingCharacters(in: .whitespaces)
+        guard !host.isEmpty, !list.contains(host) else { return }
+        hosts = (list + [host]).joined(separator: ", ")
+        draft = ""
+        sync(host)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("원격 SSH 호스트", "Remote SSH hosts"))
+            ForEach(list, id: \.self) { host in
+                HStack(spacing: 8) {
+                    Text(host).font(.callout.monospaced())
+                    Spacer()
+                    Text(statuses[host] ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                    Button { reconnect(host) } label: { Image(systemName: "arrow.clockwise") }
+                        .help(L("다시 연결 (처음 보는 호스트 확인과 비밀번호를 물을 수 있음)", "Reconnect (may ask to confirm a new host, or for a password)"))
+                    Button {
+                        hosts = list.filter { $0 != host }.joined(separator: ", ")
+                        sync(nil)
+                    } label: { Image(systemName: "minus.circle") }
+                        .help(L("목록에서 빼기", "Remove from the list"))
+                }
+                .buttonStyle(.borderless)
+            }
+            // A bordered field under its own heading: borderless in the form, the placeholder
+            // read as one more line of grey text and nobody saw where to type.
+            Text(L("호스트 추가", "Add a host"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+            HStack {
+                TextField("", text: $draft, prompt: Text(L("사용자@주소  (예: me@192.168.0.10)", "user@address  (e.g. me@192.168.0.10)")))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { add(draft) }
+                let aliases = SSHHost.configAliases.filter { !list.contains($0) }
+                if !aliases.isEmpty {
+                    Menu(L("SSH 설정에서", "From SSH config")) {
+                        ForEach(aliases, id: \.self) { alias in Button(alias) { add(alias) } }
+                    }
+                    .fixedSize()
+                }
+                Button(L("추가", "Add")) { add(draft) }
+                    .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(details + [
+                    L("주소: 사용자@주소 (포트가 22가 아니면 사용자@주소:포트), 또는 ~/.ssh/config에 만들어 둔 별칭",
+                      "Address: user@address (user@address:port if the port isn't 22), or an alias from ~/.ssh/config"),
+                    L("처음 연결하는 컴퓨터면 신뢰할지 묻고, 키로 로그인이 안 되면 비밀번호를 물음 (키체인에 저장 가능) · 터미널에서 먼저 접속해 둘 필요 없음",
+                      "A computer seen for the first time is confirmed once, and the password is asked when key login doesn't work (can be saved in the Keychain) · no need to connect from a terminal first"),
+                ], id: \.self) { line in
+                    Text("· " + line)
+                }
+            }
+            .font(.caption2)
+            .foregroundColor(.secondary.opacity(0.8))
+        }
     }
 }
 

@@ -11,7 +11,8 @@ import Foundation
 /// the hook entries that call it into the host's `~/.claude`, then (2) holds an SSH reverse
 /// tunnel so the host's `~/.claude/clangnotch.sock` reaches this app's receiver. The receiver's
 /// `/claude-hook` route hands those events to `ClaudeCodeManager.handleRemoteHook`.
-/// Everything runs through `/usr/bin/ssh` with the user's own `~/.ssh/config` and keys.
+/// Everything runs through `/usr/bin/ssh` with the user's own `~/.ssh/config` and keys; what ssh
+/// has to ask goes through `SSHAskpass` (`SSHHost`). The host needs a POSIX shell: not Windows.
 @MainActor
 final class RemoteClaudeManager: ObservableObject {
     static let shared = RemoteClaudeManager()
@@ -25,87 +26,100 @@ final class RemoteClaudeManager: ObservableObject {
     private var tunnelInputs: [String: Pipe] = [:]
     private var retryTasks: [String: Task<Void, Never>] = [:]
     private var failures: [String: Int] = [:]
-    /// Bumped on every `apply()` so work started for an older host list gives up.
-    private var generation = 0
+    /// Bumped whenever a host is stopped, so an install still running for it gives up.
+    private var generations: [String: Int] = [:]
 
     private nonisolated static let remoteScriptPath = "~/.claude/clangnotch-hook.sh"
     private nonisolated static let hookCommand = "$HOME/.claude/clangnotch-hook.sh"
     private nonisolated static let hookEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"]
-    /// Never share (or tear down) the user's interactive ControlMaster connection; the alive
-    /// probes bound a stalled install and notice a dead tunnel within ~45s.
-    private nonisolated static let baseOptions = [
-        "-T", "-o", "BatchMode=yes", "-o", "ControlMaster=no", "-o", "ControlPath=none",
-        "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
-    ]
 
     private init() {}
 
-    /// Re-reads the host list from settings and reconnects every host.
+    /// Launch: every host from scratch, without asking anything.
     func apply() {
         stopAll()
-        generation += 1
-        var seen = Set<String>()
-        hosts = AppSettings.shared.remoteClaudeHosts
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && seen.insert($0).inserted }
-        statuses = [:]
-        for host in hosts {
-            // The alias is baked into a shell script and passed to ssh as an argument.
-            guard !host.hasPrefix("-"), host.allSatisfy({ $0.isLetter || $0.isNumber || "._@-".contains($0) }) else {
-                statuses[host] = L("잘못된 호스트 별칭", "Invalid host alias")
+        sync()
+    }
+
+    /// Follows the host list in settings: hosts that left it are dropped, new ones connected.
+    /// `asking` is the host the user just added: its questions (trust it? password?) may open a window.
+    func sync(asking: String? = nil) {
+        let wanted = SSHHost.list(AppSettings.shared.remoteClaudeHosts)
+        for host in hosts where !wanted.contains(host) { stop(host) }
+        for host in wanted where !hosts.contains(host) {
+            guard SSHHost.isValid(host) else {
+                statuses[host] = L("잘못된 주소", "Invalid address")
                 continue
             }
-            connect(host)
+            connect(host, interactive: host == asking)
         }
+        hosts = wanted
+        statuses = statuses.filter { wanted.contains($0.key) }
+    }
+
+    /// 다시 연결: this host again, and this time it may ask.
+    func reconnect(_ host: String) {
+        guard hosts.contains(host), SSHHost.isValid(host) else { return }
+        stop(host)
+        connect(host, interactive: true)
     }
 
     func stopAll() {
-        retryTasks.values.forEach { $0.cancel() }
-        retryTasks = [:]
-        // Cleared before terminating so `tunnelClosed` treats these exits as intentional.
-        let running = tunnels
-        tunnels = [:]
-        tunnelInputs = [:]
-        running.values.forEach { $0.terminate() }
-        hosts.forEach { ClaudeCodeManager.shared.removeRemoteSessions(host: $0) }
-        failures = [:]
+        hosts.forEach(stop)
+        hosts = []
+    }
+
+    private func stop(_ host: String) {
+        retryTasks.removeValue(forKey: host)?.cancel()
+        generations[host, default: 0] += 1
+        // Cleared before terminating so `tunnelClosed` treats this exit as intentional.
+        let process = tunnels.removeValue(forKey: host)
+        tunnelInputs[host] = nil
+        process?.terminate()
+        ClaudeCodeManager.shared.removeRemoteSessions(host: host)
+        failures[host] = nil
     }
 
     // MARK: - Connection
 
-    private func connect(_ host: String) {
-        let generation = generation
+    private func connect(_ host: String, interactive: Bool = false) {
+        let generation = generations[host, default: 0]
         statuses[host] = L("훅 설치 중…", "Installing hook…")
         Task {
             let remoteHome: String
             do {
-                remoteHome = try await Self.install(on: host)
+                remoteHome = try await Self.install(on: host, interactive: interactive)
             } catch {
-                guard self.generation == generation else { return }
-                scheduleRetry(host, reason: error.localizedDescription)
+                guard self.generations[host, default: 0] == generation else { return }
+                // Waiting on the user (a host to confirm, a password, no POSIX shell there).
+                if (error as? RemoteClaudeError)?.needsUser == true {
+                    statuses[host] = error.localizedDescription
+                } else {
+                    scheduleRetry(host, reason: error.localizedDescription)
+                }
                 return
             }
-            guard self.generation == generation else { return }
-            openTunnel(host, remoteHome: remoteHome)
+            guard self.generations[host, default: 0] == generation else { return }
+            openTunnel(host, remoteHome: remoteHome, interactive: interactive)
         }
     }
 
-    private func openTunnel(_ host: String, remoteHome: String) {
+    private func openTunnel(_ host: String, remoteHome: String, interactive: Bool) {
         let port = AppSettings.shared.hookPort
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = Self.baseOptions + [
+        process.arguments = SSHHost.options + [
             "-o", "ExitOnForwardFailure=yes",
             // A per-user socket rather than a TCP port: no clash with anything on the host, and
             // `install` deletes a stale one first. A TCP bind left by a half-dead session (after
             // sleep) would block reconnecting until the host's sshd noticed, possibly for hours.
             "-R", "\(remoteHome)/.claude/clangnotch.sock:127.0.0.1:\(port)",
-            host,
+        ] + SSHHost.destination(host) + [
             // Reads our stdin pipe: however this app exits (even SIGKILL) the pipe closes,
             // `cat` ends and the tunnel with it, instead of lingering on the host.
             "cat >/dev/null",
         ]
+        process.environment = SSHHost.environment(for: host, interactive: interactive)
         let input = Pipe()
         let errors = Pipe()
         process.standardInput = input
@@ -143,7 +157,12 @@ final class RemoteClaudeManager: ObservableObject {
         tunnelInputs[host] = nil
         // No more events (not even Stop) can arrive; don't leave rows reading as working.
         ClaudeCodeManager.shared.removeRemoteSessions(host: host)
-        scheduleRetry(host, reason: Self.lastLine(stderr) ?? L("연결 끊김", "Disconnected"))
+        let failure = SSHHost.failure(stderr, host: host)
+        if failure.needsUser {
+            statuses[host] = failure.message
+        } else {
+            scheduleRetry(host, reason: failure.message)
+        }
     }
 
     private func scheduleRetry(_ host: String, reason: String) {
@@ -163,15 +182,17 @@ final class RemoteClaudeManager: ObservableObject {
     /// Writes the hook script, checks its dependencies, clears a stale tunnel socket, and merges
     /// the hook entries into the host's `~/.claude/settings.json` (backed up first, written only
     /// when something is missing). Returns the host's home directory for the socket path.
-    private nonisolated static func install(on host: String) async throws -> String {
+    private nonisolated static func install(on host: String, interactive: Bool) async throws -> String {
         let script = hookScript.replacingOccurrences(of: "__HOST__", with: host)
+        // The first words stop a host without a POSIX shell before anything is written: cmd.exe
+        // runs the `exit`, and Windows PowerShell 5.1 refuses to parse `||` at all.
         let output = try await ssh(host, command: """
-            set -e; mkdir -p ~/.claude; cat > \(remoteScriptPath); chmod +x \(remoteScriptPath); \
+            uname >/dev/null 2>&1 || exit 9; set -e; mkdir -p ~/.claude; cat > \(remoteScriptPath); chmod +x \(remoteScriptPath); \
             command -v curl >/dev/null || { echo '\(L("호스트에 curl이 없습니다", "curl is missing on the host"))' >&2; exit 3; }; \
             command -v jq >/dev/null || command -v python3 >/dev/null || { echo '\(L("호스트에 jq나 python3가 없습니다", "jq or python3 is missing on the host"))' >&2; exit 3; }; \
             rm -f ~/.claude/clangnotch.sock; echo "$HOME"; \
             if [ -f ~/.claude/settings.json ]; then cat ~/.claude/settings.json; fi
-            """, input: Data(script.utf8))
+            """, input: Data(script.utf8), interactive: interactive)
         let (homeLine, current) = output.firstIndex(of: "\n").map {
             (String(output[..<$0]), String(output[output.index(after: $0)...]))
         } ?? (output, "")
@@ -208,16 +229,17 @@ final class RemoteClaudeManager: ObservableObject {
             f=~/.claude/settings.json; t="$f.clangnotch-tmp"; cat > "$t"; \
             [ "$(wc -c < "$t")" -eq \(data.count) ] || { rm -f "$t"; echo '\(L("업로드가 중간에 끊겨 settings.json을 건드리지 않았습니다", "Upload was cut short; settings.json left untouched"))' >&2; exit 4; }; \
             cp "$f" "$f.clangnotch-bak" 2>/dev/null || true; cat "$t" > "$f"; rm -f "$t"
-            """, input: data)
+            """, input: data, interactive: interactive)
         return remoteHome
     }
 
     /// Runs one command on `host`, feeding `input` to its stdin. Returns stdout.
-    private nonisolated static func ssh(_ host: String, command: String, input: Data) async throws -> String {
+    private nonisolated static func ssh(_ host: String, command: String, input: Data, interactive: Bool) async throws -> String {
         try await Task.detached {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-            process.arguments = baseOptions + ["-o", "ConnectTimeout=10", host, command]
+            process.arguments = SSHHost.options + SSHHost.destination(host) + [command]
+            process.environment = SSHHost.environment(for: host, interactive: interactive)
             let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
             process.standardInput = stdin
             process.standardOutput = stdout
@@ -231,8 +253,20 @@ final class RemoteClaudeManager: ObservableObject {
             let errors = stderr.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else {
-                throw RemoteClaudeError(lastLine(String(decoding: errors, as: UTF8.self))
-                    ?? L("ssh가 상태 \(process.terminationStatus)로 종료됨", "ssh exited with status \(process.terminationStatus)"))
+                let stderr = String(decoding: errors, as: UTF8.self)
+                // 255 is ssh itself (no connection, no login).
+                if process.terminationStatus == 255 {
+                    let failure = SSHHost.failure(stderr, host: host)
+                    throw RemoteClaudeError(failure.message, needsUser: failure.needsUser)
+                }
+                // The host ran the command and it failed. Our own complaints (no curl, a cut
+                // upload) come in plain text; a Windows host answers the sh syntax with an
+                // error in its own code page. Neither gets better by trying again.
+                let line = lastLine(stderr) ?? ""
+                let readable = !line.isEmpty && !line.unicodeScalars.contains("\u{FFFD}")
+                throw RemoteClaudeError(readable ? line
+                    : L("호스트가 명령을 실행하지 못했습니다 — Claude Code 원격은 리눅스·맥 호스트만 됩니다",
+                        "The host couldn't run the setup — Claude Code remote needs a Linux or macOS host"), needsUser: true)
             }
             return String(decoding: output, as: UTF8.self)
         }.value
@@ -278,6 +312,11 @@ final class RemoteClaudeManager: ObservableObject {
 
 struct RemoteClaudeError: LocalizedError {
     let message: String
-    init(_ message: String) { self.message = message }
+    /// Retrying by itself is pointless (`SSHHost.Failure`).
+    let needsUser: Bool
+    init(_ message: String, needsUser: Bool = false) {
+        self.message = message
+        self.needsUser = needsUser
+    }
     var errorDescription: String? { message }
 }

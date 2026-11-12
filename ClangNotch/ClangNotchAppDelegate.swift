@@ -9,6 +9,8 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        // ssh started this copy to ask the user something (`SSHHost`): it answers and exits.
+        if SSHAskpass.runIfRequested() { return }
         if TWorldCommand.runIfRequested() { return }
 
         // Recording mode: only the notch and the scripted sessions. No hook receiver
@@ -32,6 +34,14 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             RemoteClaudeManager.shared.apply()
             RemoteCodexManager.shared.apply()
+        }
+
+        // `--settings agents`: the settings window on that page at launch, to look at a page
+        // without clicking through to it.
+        let arguments = CommandLine.arguments
+        if let index = arguments.firstIndex(of: "--settings"), index + 1 < arguments.count,
+           let page = SettingsPage(rawValue: arguments[index + 1]) {
+            Task { @MainActor in self.showSettingsWindow(page: page) }
         }
 
         Task { @MainActor in
