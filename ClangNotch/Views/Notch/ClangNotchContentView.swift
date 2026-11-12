@@ -529,6 +529,10 @@ struct ClangNotchContentView: View {
 
     private var layoutChanges: some View {
         notchChangesA
+            // The mixer looks up audio processes often only while its tab is on screen.
+            .onChange(of: notchVM.notchState == .open && activeMode == .volume, initial: true) { _, visible in
+                audioMixer.setTabVisible(visible)
+            }
             .onChange(of: activeMode) { _, mode in
                 hoverExitNotBefore = Date().addingTimeInterval(0.55)
                 sessionDetail = nil

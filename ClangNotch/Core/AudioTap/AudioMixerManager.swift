@@ -131,16 +131,44 @@ final class AudioMixerManager: ObservableObject {
 
     private init() {}
 
+    /// The Volume tab is on screen (set by the notch view).
+    private var tabVisible = false
+    private var running = false
+
     func start() {
         guard !DemoMode.isActive else { return }
+        running = true
         refresh()
+        scheduleRefresh()
+    }
+
+    func setTabVisible(_ visible: Bool) {
+        guard visible != tabVisible else { return }
+        tabVisible = visible
+        guard running else { return }
+        if visible { refresh() }
+        scheduleRefresh()
+    }
+
+    /// Every 2 s while the Volume tab shows; every 10 s while a saved volume below 100% may
+    /// need a new tap (an app starting to play) or taps are running; not at all otherwise.
+    /// It looked up every audio process every 2 s for good, tab or not (2026-11-12).
+    private func scheduleRefresh() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        timer = nil
+        let interval: TimeInterval? = tabVisible ? 2 : (!savedGains.isEmpty || !sessions.isEmpty) ? 10 : nil
+        guard running, let interval else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.running else { return }
+                self.refresh()
+                self.scheduleRefresh()
+            }
         }
     }
 
     func stop() {
+        running = false
         timer?.invalidate(); timer = nil
         for s in sessions.values { s.stop() }
         sessions = [:]
@@ -177,6 +205,8 @@ final class AudioMixerManager: ObservableObject {
         var g = savedGains
         if gain >= 0.99 { g[app.bundleID] = nil } else { g[app.bundleID] = gain }
         savedGains = g
+        // A first saved volume needs the slow check while the tab is closed; the last one gone, none.
+        if !tabVisible { scheduleRefresh() }
         applyGain(gain, pid: app.pid, processObjectID: app.processObjectID)
         if let i = apps.firstIndex(where: { $0.pid == app.pid }) { apps[i].gain = gain }
     }
