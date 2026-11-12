@@ -31,6 +31,8 @@ static NSString *lastTrack;
 /// Times the line for a new track has been held back waiting for its artwork.
 static int artWaits;
 static pid_t parent;
+/// What the last line said: while playing, the state is read again every 5 s.
+static BOOL lastPlaying;
 
 /// The app behind what plays: Safari for its WebKit.GPU process. `MRNowPlayingRequest` is the
 /// newer class; macOS 14 may not have it, and then no app is sent.
@@ -89,6 +91,7 @@ static void emit(void) {
         getPlaying(dispatch_get_main_queue(), ^(BOOL playing) {
             NSMutableDictionary *o = [NSMutableDictionary dictionary];
             o[@"playing"] = @(playing);
+            lastPlaying = playing;
             put(o, @"title", info[@"kMRMediaRemoteNowPlayingInfoTitle"]);
             put(o, @"artist", info[@"kMRMediaRemoteNowPlayingInfoArtist"]);
             put(o, @"album", info[@"kMRMediaRemoteNowPlayingInfoAlbum"]);
@@ -198,9 +201,15 @@ void cn_stream(void) {
                                                       usingBlock:^(NSNotification *note) { schedule(); }];
     }
     // The app was killed: nothing would ever write to the closed pipe, so look for it.
+    // While something plays, read it again too: a stop whose notification never came left the
+    // pinned card playing on with its time running (user, 2026-11-12). The same state sends the
+    // same line (artwork goes only when it changes), which the app ignores.
     dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
     dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), 5 * NSEC_PER_SEC, NSEC_PER_SEC);
-    dispatch_source_set_event_handler(timer, ^{ if (getppid() != parent) exit(0); });
+    dispatch_source_set_event_handler(timer, ^{
+        if (getppid() != parent) exit(0);
+        if (lastPlaying) schedule();
+    });
     dispatch_resume(timer);
     emit();
     CFRunLoopRun();
