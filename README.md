@@ -64,7 +64,9 @@ Each one is a tab in the open notch, and each can be turned off in Settings.
 - Quick access to multi-display arrangement
 - Battery for your Mac, Bluetooth devices (third-party headsets and keyboards too), iPhone and iPad. Right-click a device to show it in the header or rank it for the closed notch
 - A ranked device below 20% (and not charging) shows in the closed notch's wing. Each one can be turned off
-- Speed test (Cloudflare's servers), network info, and tethering data usage for SKT (Korea) subscribers only
+- Speed test (Cloudflare's servers) and network info
+- Tethering: while the Mac is on your iPhone's Personal Hotspot at a saved place (home, office), the notch suggests switching to Wi-Fi. Any carrier
+- SKT (Korea) subscribers only, off by default: how much of the data your plan lets you share (통합공유 데이터) is left, read from your T world account and shown while you tether
 - Keyboard lock and key test
 
 <p align="center">

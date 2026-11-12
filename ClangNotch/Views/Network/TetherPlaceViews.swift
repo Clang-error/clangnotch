@@ -119,6 +119,9 @@ struct TetherPlacesSettingsView: View {
                     Button(L("위치 권한 허용…", "Allow location access…")) { network.requestAccess() }
                 }
             }
+            Text(L("저장한 장소(집, 회사…)에서 맥이 위의 아이폰 핫스팟으로 테더링하면 노치가 알려 줌 · Wi-Fi로 바꾸면 데이터를 아낄 수 있음 · SKT가 아니어도 됨",
+                   "When the Mac tethers to the iPhone hotspot above at a saved place (home, office…), the notch says so · switching to Wi-Fi saves data · works with any carrier"))
+                .font(.caption).foregroundColor(.secondary)
             if let error = monitor.lastError {
                 Text(error).font(.caption).foregroundColor(.secondary)
             }

@@ -507,7 +507,7 @@ private struct DiagonalHalf: Shape {
 }
 
 /// A switch with what it does in one line under it, so no setting needs a paragraph.
-private struct SettingToggle: View {
+struct SettingToggle: View {
     let title: String
     let caption: String
     @Binding var isOn: Bool
@@ -1115,8 +1115,8 @@ struct AgentsSettingsTab: View {
                               "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json · the original is kept as settings.json.clangnotch-bak · working, questions, approvals and Done all show, and a question with options can be answered from the notch"),
                             L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴 · 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음",
                               "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes · a question or an approval shows only as waiting, without its text"),
-                            L("어느 쪽인지는 연결할 때 알아서 고르고 상태에 표시함",
-                              "Which one applies is picked when connecting and shown in the state"),
+                            L("어느 환경인지는 연결할 때 확인해 상태에 표시함",
+                              "The kind of computer is checked when connecting and shown in the state"),
                             L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
                               "One SSH connection stays open while this Mac is on"),
                         ],
@@ -1152,6 +1152,8 @@ struct AgentsSettingsTab: View {
                               "Linux, macOS and Windows · installs and changes nothing there, only reads the session logs Codex writes"),
                             L("작업 중·질문·완료가 표시됨 · 권한 요청 알림과 노치에서 답하기는 안 됨",
                               "Working, questions and Done show · no approval requests or answering from the notch"),
+                            L("어느 환경인지는 연결할 때 확인함",
+                              "The kind of computer is checked when connecting"),
                             L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
                               "One SSH connection stays open while this Mac is on"),
                         ],

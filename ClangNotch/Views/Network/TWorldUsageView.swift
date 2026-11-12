@@ -122,10 +122,16 @@ struct TWorldSettingsView: View {
 
     var body: some View {
         Section {
-            Toggle(L("사용", "Enabled"), isOn: $settings.enableTWorld)
+            SettingToggle(L("사용", "Enabled"),
+                          L("한국 SKT 가입자용 · 요금제에서 공유해 줄 수 있는 데이터(통합공유 데이터) 남은 양을 T world에서 10분마다 읽어, 아래 핫스팟에 연결돼 있을 때 속도 탭과 메뉴바에 표시",
+                            "For SKT (Korea) subscribers · reads how much of the data your plan lets you share (통합공유 데이터) is left from T world every 10 min, shown in the Speed tab and the menu bar while connected to the hotspot below"),
+                          isOn: $settings.enableTWorld)
                 .onChange(of: settings.enableTWorld) { _, _ in Task { await session.syncWithSettings() } }
             // Tethering detection reads the same SSID, so it stays editable with the switch off.
             TextField(L("아이폰 핫스팟 SSID", "iPhone hotspot SSID"), text: $settings.tworldHotspotSSID)
+            Text(L("맥이 이 이름의 Wi-Fi(아이폰 개인용 핫스팟)에 연결되면 테더링 중으로 봄 · 잔량 표시와 아래 테더링 장소 알림이 함께 씀",
+                   "The Mac counts as tethering while it is on the Wi-Fi with this name (the iPhone's Personal Hotspot) · used by the balance and by the tethering place alerts below"))
+                .font(.caption).foregroundColor(.secondary)
             if settings.enableTWorld {
                 HStack {
                     TextField(L("T ID 아이디", "T ID username"), text: $loginID)
