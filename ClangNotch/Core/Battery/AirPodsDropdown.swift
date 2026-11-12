@@ -36,6 +36,8 @@ final class AirPodsDropdown: ObservableObject {
         var caseCharging = false
         /// This Mac (`AirPodsArt.thisMac`) instead of a headset.
         var isThisMac = false
+        /// The 미디어 드롭다운: what started playing, instead of a device.
+        var media: NowPlaying? = nil
 
         /// A low battery card: buds 10 points or more apart split too, so it shows which one is low.
         var splitsOnLevels = false
@@ -50,12 +52,21 @@ final class AirPodsDropdown: ObservableObject {
 
     enum Phase: Equatable { case hidden, dropping(Date), settled, rising }
 
-    @Published private(set) var card: Card?
-    @Published private(set) var phase: Phase = .hidden
+    @Published private(set) var card: Card? { didSet { tellMediaCard() } }
+    @Published private(set) var phase: Phase = .hidden { didSet { tellMediaCard() } }
+
+    /// The notch's media wings hide while the 미디어 드롭다운 is out, and spring back once it has
+    /// gone all the way back into the notch: coming back as it started to rise, they showed
+    /// beside the blob still going up (user's recording, 2026-11-12).
+    private func tellMediaCard() {
+        NowPlayingMonitor.shared.setCardIsDown(phase != .hidden && card?.media != nil)
+    }
     /// Name, renders and levels fade in just before the blob settles.
     @Published private(set) var contentVisible = false
 
     static let cardSize = CGSize(width: 340, height: 192)
+    static let mediaCardSize = CGSize(width: 340, height: 168)
+    private var cardSize: CGSize { card?.media != nil ? Self.mediaCardSize : Self.cardSize }
     /// Room around the card while it drops, for its overshoot.
     static let margin: CGFloat = 24
     static let gapBelowMenuBar: CGFloat = 10
@@ -74,7 +85,12 @@ final class AirPodsDropdown: ObservableObject {
     /// 10 s, or until closed.
     private var isMacCard: Bool { card?.isThisMac ?? false }
 
+    /// The 미디어 드롭다운 always folds, whatever 자동으로 접기 says: it isn't about a device.
+    private var isMediaCard: Bool { card?.media != nil }
+    private static let mediaDuration: TimeInterval = 5
+
     private var visibleTime: TimeInterval {
+        if isMediaCard { return Self.mediaDuration }
         if isMacCard { return Self.headphonesDuration }
         return foldsAnyway && !AppSettings.shared.airPodsDropdownAutoHide ? Self.headphonesDuration : Self.visibleDuration
     }
@@ -280,6 +296,33 @@ final class AirPodsDropdown: ObservableObject {
         show(card)
     }
 
+    /// Something started playing (`NowPlayingMonitor`). It never pushes out a device's card;
+    /// a device's card (connected, running low) does push it out. Returns whether it is shown.
+    @discardableResult
+    func showMedia(_ playing: NowPlaying) -> Bool {
+        guard !DemoMode.isActive, notchState != .open else { return false }
+        if phase != .hidden, card?.media == nil { return false }
+        show(Card(address: "media", productID: 0, name: playing.title, level: nil, caseLevel: nil, media: playing))
+        return true
+    }
+
+    /// A media card could drop now: the notch is closed and no device's card, nor a media card
+    /// already (that one changes in place), is up.
+    var canDropMedia: Bool { !DemoMode.isActive && notchState != .open && phase == .hidden }
+
+    /// What plays changed while its card is up (artwork, paused, the next track from its
+    /// buttons): the card follows. Its time doesn't start over.
+    func refreshMedia(_ playing: NowPlaying) {
+        guard card?.media != nil, phase == .settled || isDropping else { return }
+        card?.media = playing
+    }
+
+    /// The 미디어 드롭다운 was clicked: bring the app that plays to the front.
+    private func openMediaApp(_ playing: NowPlaying) {
+        dismiss()
+        NowPlayingMonitor.openApp(of: playing)
+    }
+
     /// Something is happening with the AirPods on the card (a bud leaving the case): start its
     /// time over, so taking the buds out and putting them in stays one card.
     func keepAlive(address: String) {
@@ -384,6 +427,7 @@ final class AirPodsDropdown: ObservableObject {
     }
 
     func openBatteryTab() {
+        if let media = card?.media { openMediaApp(media); return }
         dismiss()
         NotificationCenter.default.post(name: .notchOpenBattery, object: nil)
     }
@@ -409,8 +453,8 @@ final class AirPodsDropdown: ObservableObject {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             let settings = AppSettings.shared
-            let folds = self.isMacCard ? settings.macLowBatteryAutoHide
-                : settings.airPodsDropdownAutoHide || self.foldsAnyway
+            let folds = self.isMediaCard || (self.isMacCard ? settings.macLowBatteryAutoHide
+                : settings.airPodsDropdownAutoHide || self.foldsAnyway)
             guard folds || DemoMode.isActive else { return }
             self.dismiss()
         }
@@ -439,9 +483,9 @@ final class AirPodsDropdown: ObservableObject {
     private var hasHousing = true
 
     private var geometry: AirPodsBlobGeometry {
-        AirPodsBlobGeometry(size: CGSize(width: Self.cardSize.width + Self.margin * 2,
-                                         height: cardTop + Self.cardSize.height + Self.margin),
-                            menuBar: menuBar, cardTop: cardTop, card: Self.cardSize, notchWidth: notchWidth,
+        AirPodsBlobGeometry(size: CGSize(width: cardSize.width + Self.margin * 2,
+                                         height: cardTop + cardSize.height + Self.margin),
+                            menuBar: menuBar, cardTop: cardTop, card: cardSize, notchWidth: notchWidth,
                             hasHousing: hasHousing)
     }
 
@@ -452,14 +496,14 @@ final class AirPodsDropdown: ObservableObject {
 
     /// From the top of the screen to just under the card: the blob grows out of the notch.
     private func fullFrame(on screen: NSScreen) -> NSRect {
-        let width = Self.cardSize.width + Self.margin * 2
-        let height = cardTop + Self.cardSize.height + Self.margin
+        let width = cardSize.width + Self.margin * 2
+        let height = cardTop + cardSize.height + Self.margin
         return NSRect(x: screen.frame.midX - width / 2, y: screen.frame.maxY - height, width: width, height: height)
     }
 
     /// Exactly the card: anything larger would sit over the menu bar and eat its clicks.
     private func cardFrame(on screen: NSScreen) -> NSRect {
-        let size = Self.cardSize
+        let size = cardSize
         return NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - cardTop - size.height,
                       width: size.width, height: size.height)
     }

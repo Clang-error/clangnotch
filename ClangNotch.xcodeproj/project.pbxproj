@@ -55,6 +55,7 @@
 				4F49B1A52F0C2FB900FAB5C7 /* Sources */,
 				4F49B1A62F0C2FB900FAB5C7 /* Frameworks */,
 				4F49B1A72F0C2FB900FAB5C7 /* Resources */,
+				4F9C0E012F2A000000NP0001 /* Now Playing bridge */,
 			);
 			buildRules = (
 			);
@@ -111,6 +112,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4F9C0E012F2A000000NP0001 /* Now Playing bridge */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/NowPlayingBridge/ClangNotchNowPlaying.m",
+			);
+			name = "Now Playing bridge";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/libClangNotchNowPlaying.dylib",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nout=\"$SCRIPT_OUTPUT_FILE_0\"\nmkdir -p \"$(dirname \"$out\")\"\narchs=\"\"\nfor a in $ARCHS; do archs=\"$archs -arch $a\"; done\nxcrun clang -fobjc-arc -O2 -dynamiclib $archs -mmacosx-version-min=\"$MACOSX_DEPLOYMENT_TARGET\" -framework Foundation -framework ImageIO -framework CoreGraphics -install_name @rpath/libClangNotchNowPlaying.dylib \"$SCRIPT_INPUT_FILE_0\" -o \"$out\"\n# Signed here: the app's own signature covers it but does not sign it.\nif [ \"$CODE_SIGNING_ALLOWED\" = YES ] && [ -n \"$EXPANDED_CODE_SIGN_IDENTITY\" ]; then\n  stamp=--timestamp=none\n  [ \"$CONFIGURATION\" = Release ] && stamp=--timestamp\n  codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --options runtime $stamp \"$out\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4F49B1A52F0C2FB900FAB5C7 /* Sources */ = {
@@ -250,6 +274,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = ClangNotch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = TMWDQG6WXQ;
@@ -282,6 +307,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = ClangNotch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = TMWDQG6WXQ;

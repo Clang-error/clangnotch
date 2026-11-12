@@ -74,6 +74,17 @@ public final class AppSettings: ObservableObject {
     // a Max or another headset still folds after 10 s.
     @AppStorage("airPodsDropdownAutoHide") public var airPodsDropdownAutoHide: Bool = true
 
+    // 지금 재생 표시: what plays (macOS's Now Playing) in the closed notch's wings, read through
+    // /usr/bin/perl (NowPlayingMonitor). Under it: the 미디어 드롭다운 when something starts playing.
+    @AppStorage("enableNowPlaying") public var enableNowPlaying: Bool = true
+    @AppStorage("enableNowPlayingDropdown") public var enableNowPlayingDropdown: Bool = true
+    // Also under it: the 음파 막대 follow the sound, read from the playing app with an audio
+    // capture tap (NowPlayingLevels). Off: no tap, the bars bounce by themselves.
+    @AppStorage("enableNowPlayingLevels") public var enableNowPlayingLevels: Bool = true
+    // When playback stops, the closed notch's media wings go "now" or "later" (1.5 s, the bars
+    // resting meanwhile).
+    @AppStorage("nowPlayingHideAfterStop") public var nowPlayingHideAfterStop: String = "later"
+
     // Battery device ids shown in the open notch header, newline-separated.
     @AppStorage("headerBatteryDeviceIDs") public var headerBatteryDeviceIDs: String = ""
 

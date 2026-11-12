@@ -195,7 +195,11 @@ struct AirPodsDropdownContent: View {
     var body: some View {
         let visible = model.contentVisible
         Group {
-            if let card = model.card {
+            if let media = model.card?.media {
+                MediaDropdownCardContent(playing: media, visible: visible)
+                    .frame(width: AirPodsDropdown.mediaCardSize.width, height: AirPodsDropdown.mediaCardSize.height)
+                    .clipped()
+            } else if let card = model.card {
                 VStack(spacing: 0) {
                     ZStack {
                         Text(card.name)
@@ -273,6 +277,7 @@ struct AirPodsDropdownContent: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The panel takes clicks only once settled, when it is exactly the card.
         .contentShape(Rectangle())
+        // A device's card opens the Battery tab, the 미디어 드롭다운 the app that plays.
         .onTapGesture { model.openBatteryTab() }
         // Pressed and pushed up toward the notch: back in it goes.
         .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { drag in

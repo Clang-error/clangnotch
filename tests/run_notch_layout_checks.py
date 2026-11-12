@@ -86,11 +86,16 @@ questions += '''
     var batteryManager = State()
     var settings = State()
     var doneFlash: Int?
+    struct NowPlaying { var isShowing = false }
+    var nowPlayingMonitor = NowPlaying()
 '''
 questions += block("private var baseNotchActive:").replace("private var", "var", 1) + "\n}\n"
 questions += '''
 enum ClosedLowBatteryBadge {
     static func width(for device: Int) -> CGFloat { 0 }
+}
+enum MediaWaveform {
+    struct Style { let width: CGFloat; static let wing = Style(width: 17.8); static let mini = Style(width: 7.4) }
 }
 struct FixtureSession { let id: String }
 @MainActor final class ClosedWingFixture {
@@ -124,6 +129,7 @@ struct FixtureSession { let id: String }
     var keyboardLockManager = NotchChromeFixture.State()
     var batteryManager = NotchChromeFixture.State()
     var tetherMonitor = Tether()
+    var nowPlayingMonitor = NotchChromeFixture.NowPlaying()
     let notchVM = NotchViewModel()
     var closedDisplayedLabel = ""
     struct DoneFlash { enum Source { case claude, codex }; let id = UUID(); let source: Source }
@@ -134,6 +140,10 @@ struct FixtureSession { let id: String }
     func extractModelName(_ value: String) -> String? { nil }
     func layout() -> (leftVisible: Bool, claudeOnRight: Bool, leftWidth: CGFloat, rightWidth: CGFloat) {
 '''
+# The wing caps, as the view has them.
+questions = questions.replace("    func layout() -> (leftVisible", "".join(
+    line.replace("private static", "static") + "\n" for line in view.splitlines()
+    if "static let wingLabelCap" in line or "static let wingDetailCap" in line) + "    func layout() -> (leftVisible", 1)
 # Run the exact closed-header decisions and width calculations, without its view rendering.
 questions += block("private var closedHeader:").split("{", 1)[1].split("        if !hasAnyContent {")[0]
 questions += '''

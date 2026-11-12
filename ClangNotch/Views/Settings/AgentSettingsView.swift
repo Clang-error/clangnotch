@@ -65,7 +65,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .features: return ["클립보드", "볼륨", "믹서", "sidecar", "배터리", "속도", "키보드", "밝기",
                                 "노치 탭", "조절창", "에어팟", "드롭다운", "헤드셋", "맥 배터리",
                                 "clipboard", "volume", "mixer", "battery", "speed", "keyboard", "brightness",
-                                "notch tabs", "hud", "airpods", "headset"]
+                                "notch tabs", "hud", "airpods", "headset",
+                                "미디어", "음악", "재생", "영상", "media", "music", "now playing"]
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
@@ -887,6 +888,36 @@ struct FeaturesSettingsTab: View {
                 }
             } header: {
                 Text(L("에어팟 드롭다운", "AirPods card"))
+            }
+            Section {
+                SettingToggle(L("지금 재생 표시", "Show what's playing"),
+                              L("음악·영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파 · 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만 · macOS의 '지금 재생'을 읽음",
+                                "While music or a video plays, the closed notch shows its artwork on the left and bars on the right · while the agents work or you tether, just small bars at the right edge · reads macOS's Now Playing"),
+                              isOn: $settings.enableNowPlaying)
+                    .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
+                if settings.enableNowPlaying {
+                    SettingToggle(L("재생 시작 시 드롭다운", "Card when something starts playing"),
+                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 앨범 그림과 제목 · 5초 뒤 접힘 · 그 앱이 맨 앞이면, 같은 곡이면 10분 동안, 방금 뜬 지 20초 안이면 안 뜸",
+                                    "Artwork and title under the notch when something starts playing or the track changes · folds after 5 seconds · not while its app is in front, not again for the same track for 10 minutes, not within 20 seconds of the last one"),
+                                  isOn: $settings.enableNowPlayingDropdown)
+                        .padding(.leading, 20)
+                    SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),
+                                  L("재생 중인 앱의 소리를 읽어 음파를 움직임(오디오 캡처 권한 필요) · 소리를 녹음하거나 저장하지 않음 · 끄면 음파가 혼자 튐",
+                                    "Reads the sound of the app that plays to move the bars (needs audio capture permission) · nothing is recorded or saved · off, the bars bounce by themselves"),
+                                  isOn: $settings.enableNowPlayingLevels)
+                        .padding(.leading, 20)
+                        .onChange(of: settings.enableNowPlayingLevels) {
+                            NowPlayingLevels.shared.follow(NowPlayingMonitor.shared.nowPlaying)
+                        }
+                    Picker(L("멈추면 날개 숨기기", "When it stops, hide the wings"), selection: $settings.nowPlayingHideAfterStop) {
+                        Text(L("바로", "At once")).tag("now")
+                        Text(L("잠시 뒤 (1.5초)", "After a moment (1.5 s)")).tag("later")
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.leading, 20)
+                }
+            } header: {
+                Text(L("미디어", "Media"))
             }
         }
         .formStyle(.grouped)

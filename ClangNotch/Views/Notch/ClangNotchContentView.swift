@@ -43,6 +43,7 @@ struct ClangNotchContentView: View {
     @StateObject private var keyboardLockManager = KeyboardLockManager.shared
     @StateObject private var batteryManager = BatteryManager.shared
     @StateObject private var tetherMonitor = TetherPlaceMonitor.shared
+    @StateObject private var nowPlayingMonitor = NowPlayingMonitor.shared
     @StateObject private var speedTest = SpeedTestManager.shared
     @State private var expandedMode: NotchMode = .ai
     @State private var isHovering = false
@@ -249,6 +250,7 @@ struct ClangNotchContentView: View {
             || (settings.showSourceCodex && !codexManager.pendingInputRequests.isEmpty)
             || batteryManager.closedNotchLowBattery != nil
             || doneFlash != nil
+            || nowPlayingMonitor.isShowing
     }
 
     private var notchActive: Bool {
@@ -308,7 +310,11 @@ struct ClangNotchContentView: View {
                 ClosedNotchJellyRipple(
                     topCornerRadius: topCornerRadius,
                     bottomCornerRadius: bottomCornerRadius,
-                    glowColor: currentBrightColor
+                    // Music springing the wings out on a quiet notch ripples in the artwork's
+                    // colour, not the agents' (it came out Claude orange, user 2026-11-12).
+                    glowColor: !hasLiveAgentActivity && nowPlayingMonitor.isShowing
+                        ? Color(nsColor: nowPlayingMonitor.nowPlaying?.accent ?? .white)
+                        : currentBrightColor
                 )
             }
 
@@ -561,6 +567,13 @@ struct ClangNotchContentView: View {
                         resetClosedJellyReveal()
                     }
                 }
+                // Music starting on a quiet notch springs out like the agents' wings do,
+                // instead of the surface popping up at full size.
+                .onChange(of: nowPlayingMonitor.isShowing) { wasShowing, isShowing in
+                    guard !wasShowing, isShowing, !hasLiveAgentActivity, tetherMonitor.activePlaceName == nil else { return }
+                    cancelClosedJellyDismiss()
+                    triggerClosedJellyReveal()
+                }
                 .onChange(of: claudeCodeManager.lastCompletedTurn) { _, turn in
                     guard let turn, settings.showSourceClaudeCode else { return }
                     handleCompletedTurn(turn, .claude)
@@ -732,6 +745,7 @@ struct ClangNotchContentView: View {
             if settings.enableClaudeUsage {
                 ClaudeUsageManager.shared.startRefreshing()
             }
+            NowPlayingMonitor.shared.sync()
             // Restores the T world session and starts its keep-alive without waiting for a card.
             Task { await TWorldSession.shared.prepare() }
             if settings.enableAudioMixer { audioMixer.start() }
@@ -784,6 +798,12 @@ struct ClangNotchContentView: View {
             openHeader
         }
     }
+
+    /// Widest a wing's tool name and its detail may get. Both wings take the wider one's width,
+    /// so a long name comes back twice: 124 and 96 made a bar across the menu bar with a long
+    /// command running (user, 2026-11-12). Longer text ends in "…".
+    private static let wingLabelCap: CGFloat = 96
+    private static let wingDetailCap: CGFloat = 72
 
     @ViewBuilder
     private var closedHeader: some View {
@@ -890,7 +910,7 @@ struct ClangNotchContentView: View {
             ? (currentCodexTool?.toolName ?? "Thinking")
             : (currentToolName ?? "Thinking")
         let closedLabel = closedDisplayedLabel.isEmpty ? sourceLabel : closedDisplayedLabel
-        let labelCapsuleWidth = min(124, measuredTextWidth(closedLabel, 10, .medium) + 12)
+        let labelCapsuleWidth = min(Self.wingLabelCap, measuredTextWidth(closedLabel, 10, .medium) + 12)
         let showsClaudeIcon = (hasCurrentTool || isThinking) && isClaudeActive && !isCodexActive
         let showsCodexIcon = (hasCurrentTool || isThinking) && isCodexActive
         // Working sessions per agent, counted like the 요약 줄's "작업 중 N"; the wing icon
@@ -927,21 +947,21 @@ struct ClangNotchContentView: View {
             }
             if showsDone { return DoneCheckmarkView.size }
             if showsSimultaneousClaudeWing {
-                return min(124, measuredTextWidth(simultaneousClaudeLabel, 10, .medium) + 12) + 6
+                return min(Self.wingLabelCap, measuredTextWidth(simultaneousClaudeLabel, 10, .medium) + 12) + 6
                     + ClosedAgentIconStack.width(for: claudeWorkingCount)
             }
             if showsQuestionOnRight || hasPermissionNeeded { return 58 }
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
                 if codexTool.isRunning {
                     guard let argument = codexTool.argument else { return 8 }
-                    return 12 + min(96, measuredTextWidth(String(argument.prefix(20)), 9, .regular))
+                    return 12 + min(Self.wingDetailCap, measuredTextWidth(String(argument.prefix(20)), 9, .regular))
                 }
                 return measuredMonoTextWidth(codexTool.formattedDuration, 9)
             }
             if let claudeTool = currentClaudeTool {
                 if claudeTool.isRunning {
                     guard let description = claudeTool.description else { return 8 }
-                    return 12 + min(96, measuredTextWidth(String(description.prefix(20)), 9, .regular))
+                    return 12 + min(Self.wingDetailCap, measuredTextWidth(String(description.prefix(20)), 9, .regular))
                 }
                 return measuredMonoTextWidth(claudeTool.formattedDuration, 9)
             }
@@ -960,19 +980,31 @@ struct ClangNotchContentView: View {
         let showsTetherIcon = tetherPlace != nil && !showsTetherWings
         let tetherIconWidth: CGFloat = showsTetherIcon ? 14 + (baseRightWingWidth > 0 ? 6 : 0) : 0
 
+        // 지금 재생 표시: with the agents quiet and no tethering it takes both wings (the artwork
+        // on the left, bars on the right, as in the Dynamic Island); otherwise it shrinks to a
+        // few bars at the right edge, like the tethering icon.
+        let showsMediaWings = nowPlayingMonitor.isShowing && !showLeftWing && agentRightWingWidth == 0
+            && tetherPlace == nil
+        let showsMediaMini = nowPlayingMonitor.isShowing && !showsMediaWings
+        let mediaArtSize: CGFloat = 20
+        let mediaWingWidth: CGFloat = showsMediaWings ? MediaWaveform.Style.wing.width : 0
+        let mediaMiniWidth: CGFloat = showsMediaMini
+            ? MediaWaveform.Style.mini.width + (baseRightWingWidth > 0 || showsTetherIcon ? 6 : 0) : 0
+
         // A low priority battery rides at the outer edge of the right wing and stays there
         // whatever else the wing is showing, until it recovers or is switched off.
         let lowBattery = batteryManager.closedNotchLowBattery
         let batteryBadgeWidth: CGFloat = lowBattery.map {
-            ClosedLowBatteryBadge.width(for: $0) + (baseRightWingWidth > 0 || showsTetherIcon ? 6 : 0)
+            ClosedLowBatteryBadge.width(for: $0)
+                + (baseRightWingWidth > 0 || showsTetherIcon || showsMediaMini || showsMediaWings ? 6 : 0)
         } ?? 0
-        let rightWingWidth = baseRightWingWidth + tetherIconWidth + batteryBadgeWidth
+        let rightWingWidth = baseRightWingWidth + mediaWingWidth + tetherIconWidth + mediaMiniWidth + batteryBadgeWidth
 
         // Both wings have to claim the same width, otherwise this centred row slides
         // sideways by half the difference and the shorter side's content ends up under
         // the physical notch. The slots include each wing's 8pt edge padding.
-        let hasLeftWing = showLeftWing || showsTetherWings
-        let leftContentWidth = showsTetherWings ? tetherLeftWidth : leftWingWidth
+        let hasLeftWing = showLeftWing || showsTetherWings || showsMediaWings
+        let leftContentWidth = showsTetherWings ? tetherLeftWidth : showsMediaWings ? mediaArtSize : leftWingWidth
         let leftSlot: CGFloat = hasLeftWing ? leftContentWidth + 8 : 0
         let rightSlot: CGFloat = rightWingWidth > 0 ? rightWingWidth + 8 : 0
         let wingWidth = max(leftSlot, rightSlot)
@@ -1002,7 +1034,10 @@ struct ClangNotchContentView: View {
                 // Left wing
                 if hasLeftWing {
                     HStack(spacing: 6) {
-                        if showsTetherWings {
+                        if showsMediaWings, let playing = nowPlayingMonitor.nowPlaying {
+                            MediaArtwork(playing: playing, size: mediaArtSize)
+                                .transition(.scale(scale: 0.5).combined(with: .opacity))
+                        } else if showsTetherWings {
                             Image(systemName: "personalhotspot")
                                 .font(.system(size: 10, weight: .semibold))
                                 .frame(width: 14)
@@ -1209,14 +1244,28 @@ struct ClangNotchContentView: View {
                         }
                     }
                     .frame(width: baseRightWingWidth, alignment: .trailing)
-                    .padding(.trailing, lowBattery == nil && !showsTetherIcon ? 8 : 6)
+                    .padding(.trailing, lowBattery == nil && !showsTetherIcon && !showsMediaMini ? 8 : 6)
+                }
+                if showsMediaWings {
+                    MediaWaveform(style: .wing, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
+                                  color: nowPlayingMonitor.nowPlaying?.accent)
+                        .frame(width: mediaWingWidth, height: MediaWaveform.Style.wing.height)
+                        .padding(.trailing, lowBattery == nil ? 8 : 6)
+                        .transition(.opacity)
                 }
                 if showsTetherIcon {
                     Image(systemName: "personalhotspot")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(errorBrightColor)
                         .frame(width: 14)
+                        .padding(.trailing, lowBattery == nil && !showsMediaMini ? 8 : 6)
+                }
+                if showsMediaMini {
+                    MediaWaveform(style: .mini, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
+                                  color: nowPlayingMonitor.nowPlaying?.accent)
+                        .frame(width: MediaWaveform.Style.mini.width, height: MediaWaveform.Style.mini.height)
                         .padding(.trailing, lowBattery == nil ? 8 : 6)
+                        .transition(.opacity)
                 }
                 if let lowBattery {
                     ClosedLowBatteryBadge(device: lowBattery)
@@ -1313,8 +1362,15 @@ struct ClangNotchContentView: View {
 
     private var openHeader: some View {
         VStack(spacing: 0) {
-            // Keep all controls below the physical camera housing.
-            Color.clear.frame(height: notchVM.closedNotchSize.height)
+            // Keep all controls below the physical camera housing. Beside it, the 노치 띠 shows
+            // what plays.
+            ZStack {
+                Color.clear
+                if settings.enableNowPlaying {
+                    NotchBandNowPlaying(housingWidth: notchVM.closedNotchSize.width)
+                }
+            }
+            .frame(height: notchVM.closedNotchSize.height)
             HStack(spacing: 10) {
                 agentOverview
                 // Takes the width left between the 요약 줄 and the buttons, and shrinks to fit it.

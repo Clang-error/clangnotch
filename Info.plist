@@ -31,7 +31,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>ClangNotch asks Terminal to show the tab your coding session runs in when you go to that session.</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>ClangNotch taps app audio to let you control each app's volume from the notch.</string>
+	<string>ClangNotch taps app audio to let you control each app&apos;s volume from the notch, and to move the notch&apos;s sound bars with what is playing.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>ClangNotch reads the battery level of your AirPods and other Bluetooth accessories.</string>
 	<key>NSLocationUsageDescription</key>
