@@ -118,6 +118,7 @@ struct FixtureSession { let id: String }
         var showSourceCodex = true
         var showSourceClaudeCode = true
         var showPermissionIndicator = true
+        var nowPlayingMiniWhileWorking = true
     }
     struct Tether {
         var activePlaceName: String?

@@ -84,6 +84,8 @@ public final class AppSettings: ObservableObject {
     // When playback stops, the closed notch's media wings go "now" or "later" (1.5 s, the bars
     // resting meanwhile).
     @AppStorage("nowPlayingHideAfterStop") public var nowPlayingHideAfterStop: String = "later"
+    // The few bars at the right wing's edge while the agents (or tethering) hold the wings.
+    @AppStorage("nowPlayingMiniWhileWorking") public var nowPlayingMiniWhileWorking: Bool = true
 
     // 드롭다운 머무는 시간 (설정 › 노치), in seconds, counted from when the dropdown is all the way
     // down. The AirPods and Mac cards use theirs only while their 자동으로 접기 is on, except

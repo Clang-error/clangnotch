@@ -949,6 +949,11 @@ struct FeaturesSettingsTab: View {
                         .onChange(of: settings.enableNowPlayingLevels) {
                             NowPlayingLevels.shared.follow(NowPlayingMonitor.shared.nowPlaying)
                         }
+                    SettingToggle(L("에이전트가 일할 때도 작은 음파 표시", "Small bars while the agents work"),
+                                  L("에이전트가 일하거나 테더링 중이면 날개 오른쪽 끝에 작은 음파\n끄면 그동안은 음악을 표시하지 않음",
+                                    "While the agents work or you tether, small bars at the right wing's edge\nOff, the music isn't shown meanwhile"),
+                                  isOn: $settings.nowPlayingMiniWhileWorking)
+                        .padding(.leading, 20)
                     Picker(L("멈추면 날개 숨기기", "When it stops, hide the wings"), selection: $settings.nowPlayingHideAfterStop) {
                         Text(L("바로", "At once")).tag("now")
                         Text(L("잠시 뒤 (1.5초)", "After a moment (1.5 s)")).tag("later")

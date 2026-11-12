@@ -985,7 +985,7 @@ struct ClangNotchContentView: View {
         // few bars at the right edge, like the tethering icon.
         let showsMediaWings = nowPlayingMonitor.isShowing && !showLeftWing && agentRightWingWidth == 0
             && tetherPlace == nil
-        let showsMediaMini = nowPlayingMonitor.isShowing && !showsMediaWings
+        let showsMediaMini = nowPlayingMonitor.isShowing && !showsMediaWings && settings.nowPlayingMiniWhileWorking
         let mediaArtSize: CGFloat = 20
         let mediaWingWidth: CGFloat = showsMediaWings ? MediaWaveform.Style.wing.width : 0
         let mediaMiniWidth: CGFloat = showsMediaMini
