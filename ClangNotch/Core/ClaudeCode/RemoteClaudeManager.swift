@@ -133,8 +133,10 @@ final class RemoteClaudeManager: ObservableObject {
             case .status(let text):
                 self.statuses[host] = text
             case .connected:
-                self.statuses[host] = L("연결됨 · 대화 기록 읽기 (훅 없이: 권한 대기는 표시 안 됨)",
-                                        "Connected · reading transcripts (no hooks: approvals don't show)")
+                self.statuses[host] = L("연결됨 · 대화 기록 읽기 (훅 없이: 질문·권한 대기는 내용 없이 표시)",
+                                        "Connected · reading transcripts (no hooks: questions and approvals show without their text)")
+            case .stateFile(let name, let content):
+                ClaudeCodeManager.shared.handleRemoteRegistry(host: host, file: name, content: content)
             case .dropped:
                 ClaudeCodeManager.shared.removeRemoteSessions(host: host)
             case .agentRunning, .sessionFile:

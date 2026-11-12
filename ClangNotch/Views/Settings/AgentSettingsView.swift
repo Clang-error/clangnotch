@@ -1113,8 +1113,8 @@ struct AgentsSettingsTab: View {
                         details: [
                             L("리눅스·맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함 · 원래 파일은 settings.json.clangnotch-bak으로 남음 · 작업 중·질문·권한 대기·완료가 모두 표시됨",
                               "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json · the original is kept as settings.json.clangnotch-bak · working, questions, approvals and Done all show"),
-                            L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록만 읽어 옴 · 작업 중·질문·완료는 표시되고 권한 대기는 표시 안 됨",
-                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts Claude Code writes · working, questions and Done show, approvals don't"),
+                            L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴 · 작업 중·완료가 표시되고, 질문과 권한 대기는 기다린다는 것만 표시됨 (내용은 그 컴퓨터에서 확인)",
+                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes · working and Done show; a question or an approval shows only as waiting (its text is on that computer)"),
                             L("어느 쪽인지는 연결할 때 알아서 고르고 상태에 표시함 · 이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
                               "Which one applies is picked when connecting and shown in the state · one SSH connection stays open while this Mac is on"),
                         ],

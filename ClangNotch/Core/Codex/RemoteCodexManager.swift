@@ -100,6 +100,8 @@ final class RemoteCodexManager: ObservableObject {
         case .sessionFile:
             // Don't wait out the 10 s scan for a session that just started.
             CodexManager.shared.scanForSessions()
+        case .stateFile:
+            break
         case .dropped:
             // No more lines can arrive; don't leave rows reading as working. The folder stays
             // for the next attempt.

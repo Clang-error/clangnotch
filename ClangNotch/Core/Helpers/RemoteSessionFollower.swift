@@ -27,18 +27,22 @@ final class RemoteSessionFollower {
         let homeFolder: String
         let subfolder: String
         let fileFilter: String
+        /// A folder of small `*.json` files the agent rewrites in place, sent whole whenever one
+        /// changes (`Event.stateFile`); empty for none.
+        let stateSubfolder: String
         /// A word in the command line of the agent's processes, for `Event.agentRunning`.
         let processWord: String
         let accepts: @Sendable (String) -> Bool
 
         /// `~/.codex/sessions/**/rollout-*.jsonl`
         static let codex = Source(environmentVariable: "CODEX_HOME", homeFolder: ".codex", subfolder: "sessions",
-                                  fileFilter: "rollout-*.jsonl", processWord: "codex",
+                                  fileFilter: "rollout-*.jsonl", stateSubfolder: "", processWord: "codex",
                                   accepts: { $0.hasPrefix("rollout-") })
         /// `~/.claude/projects/<project>/<conversation id>.jsonl`. Subagent transcripts
-        /// (`subagents/`, `agent-*`) stay behind.
+        /// (`subagents/`, `agent-*`) stay behind. `~/.claude/sessions/<pid>.json` is each
+        /// running process's registry record, which says when it waits on the user.
         static let claude = Source(environmentVariable: "CLAUDE_CONFIG_DIR", homeFolder: ".claude", subfolder: "projects",
-                                   fileFilter: "*.jsonl", processWord: "claude",
+                                   fileFilter: "*.jsonl", stateSubfolder: "sessions", processWord: "claude",
                                    accepts: { !$0.hasPrefix("agent-") })
     }
 
@@ -61,6 +65,8 @@ final class RemoteSessionFollower {
         case agentRunning(Bool)
         /// A session file has its recent lines.
         case sessionFile
+        /// A state file's whole content, as it is now; nil when the file is gone.
+        case stateFile(name: String, content: Data?)
         /// The connection is gone (a retry may follow): nothing more comes from this host.
         case dropped
     }
@@ -187,6 +193,8 @@ final class RemoteSessionFollower {
             onEvent(.agentRunning(agentRunning))
         case .sessionFile:
             onEvent(.sessionFile)
+        case .stateFile(let name, let content):
+            onEvent(.stateFile(name: name, content: content))
         case .failed:
             process.terminate()
         }
@@ -245,6 +253,8 @@ final class RemoteSessionFollower {
     //   @C <shell> <unix time>          once, at the start
     //   @F <file name> <kind> <bytes>   followed by that many bytes of the file
     //   @H <0|1>                        every 3 s: whether a process of the agent runs on the host
+    //   @S <file name> <bytes>          a state file's whole content, whenever it changes
+    //   @X <file name>                  a state file is gone
     // The files are looked at every second, and every 3 s once nothing has changed for a minute:
     // at one second the Linux follower took 1.4% of a core and the Windows one 0.6% (2026-11-12).
     // A file modified in the last 5 minutes, or later, is sent as `meta` (its first line), then
@@ -259,12 +269,14 @@ final class RemoteSessionFollower {
             .replacingOccurrences(of: "__HOME__", with: source.homeFolder)
             .replacingOccurrences(of: "__SUB__", with: source.subfolder)
             .replacingOccurrences(of: "__FILTER__", with: source.fileFilter)
+            .replacingOccurrences(of: "__STATE__", with: source.stateSubfolder)
             .replacingOccurrences(of: "__WORD__", with: source.processWord)
     }
 
     /// Ends by itself when the connection goes: the next write fails (SIGPIPE).
     private static let shTemplate = #"""
         d="${__ENV__:-$HOME/__HOME__}/__SUB__"
+        sd="${__ENV__:-$HOME/__HOME__}/__STATE__"
         umask 077
         t=$(mktemp -d) || exit 1
         trap 'rm -rf "$t"' EXIT
@@ -301,6 +313,25 @@ final class RemoteSessionFollower {
           done
           mv -f "$t/next" "$t/mark"
           first=0
+          if [ -n "__STATE__" ]; then
+            for f in "$sd"/*.json; do
+              [ -f "$f" ] || continue
+              k=${f##*/}
+              c=$(cksum < "$f" 2>/dev/null) || continue
+              [ "$c" = "$(cat "$t/s-$k" 2>/dev/null)" ] && continue
+              cat "$f" > "$t/buf" 2>/dev/null || continue
+              b=$(wc -c < "$t/buf"); b=$((b))
+              printf '@S %s %s\n' "$k" "$b"
+              cat "$t/buf"
+              echo "$c" > "$t/s-$k"
+              : > "$t/hit"
+            done
+            for g in "$t"/s-*; do
+              [ -f "$g" ] || continue
+              k=${g##*/s-}
+              [ -f "$sd/$k" ] || { printf '@X %s\n' "$k"; rm -f "$g"; }
+            done
+          fi
           q=$((q + 1))
           if [ -f "$t/hit" ]; then rm -f "$t/hit"; q=0; fi
           if [ "$e" -ge 3 ]; then
@@ -339,7 +370,7 @@ final class RemoteSessionFollower {
         try{$f=F $p;[void]$f.Seek($a,'Begin');while($r -lt $n){$c=$f.Read($b,$r,$n-$r);if($c -le 0){break};$r+=$c};$f.Close()}catch{}
         W "@F $k $y $r";try{$o.Write($b,0,$r);$o.Flush()}catch{exit}}
         W("@C ps "+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
-        $t=@{};$g=@{};$m=(Get-Date).AddMinutes(-5);$n=0;$i=0;$e=3
+        $t=@{};$g=@{};$m=(Get-Date).AddMinutes(-5);$n=0;$i=0;$e=3;$sd=Join-Path $h '__STATE__';$st=@{}
         while($true){
         $w=Get-Date;$x=($n%20 -eq 19)
         Get-ChildItem $d -Recurse -Filter '__FILTER__' -ErrorAction SilentlyContinue|ForEach-Object{$p=$_.FullName;if($p -like '*\subagents\*' -or $_.Name -like 'agent-*'){return}
@@ -353,6 +384,10 @@ final class RemoteSessionFollower {
         if($a -lt 0){$c=0;$e=0;try{$f=F $p;while(($c=$f.ReadByte()) -ge 0){$e++;if($c -eq 10){break}};$f.Close()}catch{}
         S $k meta $p 0 $e;$a=$s-262144;if($a -gt $e){S $k part $p $a $s}else{S $k tail $p $e $s};$t[$p]=$s;$g[$p]=$w;$i=0}
         elseif($s -gt $a){S $k data $p $a $s;$t[$p]=$s;$g[$p]=$w;$i=0}}
+        if('__STATE__'){$sn=@{};Get-ChildItem $sd -Filter '*.json' -ErrorAction SilentlyContinue|ForEach-Object{$k=$_.Name;if($_.Extension -ne '.json'){return};$sn[$k]=1
+        try{$b=[IO.File]::ReadAllBytes($_.FullName)}catch{return};$q=[Convert]::ToBase64String($b)
+        if($st[$k] -ne $q){$st[$k]=$q;W "@S $k $($b.Length)";try{$o.Write($b,0,$b.Length);$o.Flush()}catch{exit};$i=0}}
+        foreach($k in @($st.Keys)){if(!$sn[$k]){$st.Remove($k);W "@X $k"}}}
         $m=$w.AddSeconds(-5);$n++;$i++
         if($e -ge 3){$e=0;$v=0;if(Get-Process -ErrorAction SilentlyContinue|Where-Object{$_.ProcessName -like '*__WORD__*'}){$v=1};if($z -and !(Get-Process -Id $z -ErrorAction SilentlyContinue)){exit};W "@H $v"}
         $j=1;if($i -ge 60){$j=3};$e+=$j
@@ -373,6 +408,8 @@ final class RemoteFollowerStream: @unchecked Sendable {
         case heartbeat(agentRunning: Bool)
         /// A session file has its recent lines: worth a scan now.
         case sessionFile
+        /// A state file's whole content; nil when it is gone.
+        case stateFile(name: String, content: Data?)
         /// Output that isn't the follower's; the connection is no use.
         case failed
     }
@@ -390,6 +427,8 @@ final class RemoteFollowerStream: @unchecked Sendable {
     private let accepts: @Sendable (String) -> Bool
     private let onEvent: @Sendable (Event) -> Void
     private var buffer = Data()
+    /// The state file being received.
+    private var stateBody = Data()
     private var frame: Frame?
     private var files: [String: FileHandle] = [:]
     /// Files this connection has had the first line of.
@@ -405,6 +444,7 @@ final class RemoteFollowerStream: @unchecked Sendable {
     private var stopped = false
 
     private static let maxFrame = 64 * 1024 * 1024
+    private static let maxState = 256 * 1024
     private static let timestampPrefix = Data(#"{"timestamp":""#.utf8)
     private let formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -443,7 +483,11 @@ final class RemoteFollowerStream: @unchecked Sendable {
                 guard !buffer.isEmpty else { return }
                 let count = min(current.remaining, buffer.count)
                 let range = buffer.startIndex..<buffer.index(buffer.startIndex, offsetBy: count)
-                if !current.discard { append(buffer.subdata(in: range), to: current.name, history: current.kind != "data") }
+                if current.kind == "state" {
+                    stateBody.append(buffer.subdata(in: range))
+                } else if !current.discard {
+                    append(buffer.subdata(in: range), to: current.name, history: current.kind != "data")
+                }
                 buffer.removeSubrange(range)
                 current.remaining -= count
                 frame = current.remaining == 0 ? nil : current
@@ -477,6 +521,15 @@ final class RemoteFollowerStream: @unchecked Sendable {
                 agentRunning = running
                 onEvent(.heartbeat(agentRunning: running))
             }
+        case "@S":
+            guard parts.count == 3, let length = Int(parts[2]), (0...Self.maxState).contains(length),
+                  Self.isStateName(parts[1]) else { return fail() }
+            stateBody = Data()
+            let next = Frame(name: parts[1], kind: "state", remaining: length, discard: false)
+            if length == 0 { finished(next) } else { frame = next }
+        case "@X":
+            guard parts.count == 2, Self.isStateName(parts[1]) else { return fail() }
+            onEvent(.stateFile(name: parts[1], content: nil))
         case "@F":
             guard parts.count == 4, let length = Int(parts[3]), (0...Self.maxFrame).contains(length),
                   Self.isFileName(parts[1]) else { return fail() }
@@ -504,9 +557,19 @@ final class RemoteFollowerStream: @unchecked Sendable {
     }
 
     private func finished(_ frame: Frame) {
+        if frame.kind == "state" {
+            onEvent(.stateFile(name: frame.name, content: stateBody))
+            stateBody = Data()
+            return
+        }
         guard !frame.discard, frame.kind == "tail" || frame.kind == "part" else { return }
         fresh.remove(frame.name)
         onEvent(.sessionFile)
+    }
+
+    private static func isStateName(_ name: String) -> Bool {
+        name.count <= 80 && name.hasSuffix(".json")
+            && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || "-_.".contains($0)) }
     }
 
     /// The name can become a path: nothing but a plain `.jsonl` file name passes.

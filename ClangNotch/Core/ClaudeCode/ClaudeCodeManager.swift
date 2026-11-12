@@ -1756,6 +1756,10 @@ final class ClaudeCodeManager: ObservableObject {
             }
             // A background tool can finish after Stop; that isn't the turn resuming.
             if sessionState.turnStartTime != nil { sessionState.isThinking = true }
+        case "Resumed":
+            // The host's registry record no longer says `waiting` (`handleRemoteRegistry`): the
+            // question or approval it had no text for was answered there.
+            sessionState.pendingInputRequests.removeAll { $0.questions.isEmpty }
         case "Interrupted":
             // Esc, read from the host's transcript (`handleRemoteTranscript`); hooks have no
             // event for it.
@@ -1878,9 +1882,53 @@ final class ClaudeCodeManager: ObservableObject {
         }
     }
 
+    /// What each registry record of a read host last said: its conversation, and what it waited
+    /// on (nil when it didn't). Keyed by host and file name.
+    private var remoteRegistry: [String: (conversation: String, waiting: String?)] = [:]
+
+    /// A registry record (`~/.claude/sessions/<pid>.json`) of a host that is read instead of
+    /// hooked, sent whole whenever it changes; nil content means the record is gone, and its
+    /// process with it. Claude Code writes a question (AskUserQuestion) or a tool waiting for
+    /// approval into the transcript only once it is answered (seen on Windows, 2026-11-12: a
+    /// question sat open for minutes with nothing after the prompt in the file), so the record's
+    /// `status: waiting` is the only sign of it: `waitingFor` is "input needed", "dialog open",
+    /// or names an approval. The question's own text is nowhere to read.
+    func handleRemoteRegistry(host: String, file: String, content: Data?) {
+        let key = host + "/" + file
+        guard let content, let json = try? JSONSerialization.jsonObject(with: content) as? [String: Any],
+              let conversation = json["sessionId"] as? String else {
+            if content == nil, let last = remoteRegistry.removeValue(forKey: key) {
+                handleRemoteHook(host: host, json: ["session_id": last.conversation, "hook_event_name": "SessionEnd"])
+            }
+            return
+        }
+        let waiting = json["status"] as? String == "waiting" ? json["waitingFor"] as? String ?? "" : nil
+        let last = remoteRegistry[key]
+        debugLog("[ClaudeCode] Remote registry \(key): \(json["status"] as? String ?? "?") waiting=\(waiting ?? "-") was=\(last?.waiting ?? "-")")
+        remoteRegistry[key] = (conversation, waiting)
+        guard last?.conversation != conversation || last?.waiting != waiting else { return }
+        var hook: [String: Any] = [
+            "session_id": conversation,
+            "cwd": (json["cwd"] as? String ?? "").replacingOccurrences(of: "\\", with: "/"),
+        ]
+        if let waiting {
+            let words = waiting.lowercased()
+            let approval = words.contains("approv") || words.contains("permission") || words.contains("sandbox")
+            hook["hook_event_name"] = "Notification"
+            hook["notification_type"] = approval ? "permission_prompt" : "agent_needs_input"
+        } else if last?.waiting != nil {
+            hook["hook_event_name"] = "Resumed"
+        } else {
+            return
+        }
+        handleRemoteHook(host: host, json: hook)
+    }
+
     /// Drops every session of `host` — called when its tunnel closes, since no further
     /// events (not even Stop) can arrive and the rows would otherwise read as working forever.
     func removeRemoteSessions(host: String) {
+        // A reconnect sends every registry record again: what they said starts over.
+        remoteRegistry = remoteRegistry.filter { !$0.key.hasPrefix(host + "/") }
         let dropped = remoteSessions.filter { $0.value.remoteHost == host }
         guard !dropped.isEmpty else { return }
         for (conversationId, session) in dropped {
