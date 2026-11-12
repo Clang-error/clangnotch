@@ -81,7 +81,8 @@ struct MediaWaveform: NSViewRepresentable {
             needsLayout = true
         }
 
-        private func rest(_ style: Style) -> CGFloat { max(style.barWidth / style.height, 0.22) }
+        /// How low a bar goes: down to about a dot, so a beat has room to jump.
+        private func rest(_ style: Style) -> CGFloat { max(style.barWidth / style.height, 0.12) }
 
         /// A bar's level: bars spread evenly from the lowest band to the highest, between two
         /// bands when they don't line up (five or three bars over six bands).
@@ -103,9 +104,10 @@ struct MediaWaveform: NSViewRepresentable {
             }
             if !wasMetered { bars.forEach { $0.removeAnimation(forKey: "bounce") } }
             CATransaction.begin()
-            // A little longer than the 50 ms between levels, so each step glides into the next.
-            CATransaction.setAnimationDuration(0.12)
-            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
+            // About the 50 ms between levels, eased out: a beat snaps up, then the next level
+            // takes over before it settles.
+            CATransaction.setAnimationDuration(0.08)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
             let floor = rest(current.style)
             for (index, bar) in bars.enumerated() {
                 let level = self.level(for: index, of: bars.count, in: new)

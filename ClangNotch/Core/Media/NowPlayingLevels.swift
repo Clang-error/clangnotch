@@ -175,8 +175,8 @@ final class LevelTap {
     }
 }
 
-/// Six bands from a 1024-point FFT of the mono mix, each against its own recent peak so quiet
-/// and loud songs both move the bars, quick to rise and slower to fall.
+/// Six bands from a 1024-point FFT of the mono mix, each against its own recent average so
+/// quiet and loud songs both move the bars with their beat, quick to rise and quick to fall.
 final class LevelAnalyzer {
     private static let log2n: vDSP_Length = 10
     private static let size = 1 << 10
@@ -197,6 +197,7 @@ final class LevelAnalyzer {
     private var mono = [Float](repeating: 0, count: 4096)
     private var peaks = [Float](repeating: 1e-6, count: bandCount)
     private var shown = [Float](repeating: 0, count: bandCount)
+    private var overallAverage: Float = 0
 
     init(sampleRate: Double) {
         setup = vDSP_create_fftsetup(Self.log2n, FFTRadix(kFFTRadix2))!
@@ -269,14 +270,25 @@ final class LevelAnalyzer {
             }
         }
         var levels = [Float](repeating: 0, count: Self.bandCount)
+        // The whole sound's beat too, so every bar lifts with a kick, not only the low ones.
+        var overall: Float = 0
+        power.withUnsafeBufferPointer { vDSP_meanv($0.baseAddress! + 1, 1, &overall, vDSP_Length(Self.size / 2 - 1)) }
+        overallAverage = overallAverage <= 1e-9 ? overall : overallAverage + (overall - overallAverage) * 0.08
+        let beat: Float = overall < 1e-8 ? 0 : min(1, max(0, 0.5 + log2(max(overall / max(overallAverage, 1e-9), 1e-3)) / 2.4))
         for band in 0..<Self.bandCount {
             let range = bins[band]
             var mean: Float = 0
             power.withUnsafeBufferPointer { vDSP_meanv($0.baseAddress! + range.lowerBound, 1, &mean, vDSP_Length(range.count)) }
-            // Each band against its own recent loudest, which fades over a few seconds.
-            peaks[band] = max(mean, peaks[band] * 0.985, 1e-6)
-            let target = mean < 1e-7 ? 0 : min(1, sqrt(mean / peaks[band]))
-            let speed: Float = target > shown[band] ? 0.6 : 0.18
+            // Each band against its own average of the last second or so, on a log scale, a
+            // third of it the whole sound's beat: a beat springs the bars up, the gap after it
+            // drops them, a held sound sits halfway. Against the recent loudest (before) a song
+            // that stayed loud kept the bars near the top, moving a little (user, 2026-11-12).
+            // On a synthetic drum loop the held-pad band now moves 0.32 of its height, was 0.07.
+            peaks[band] = peaks[band] <= 1e-6 ? mean : peaks[band] + (mean - peaks[band]) * 0.08
+            let ratio = mean / max(peaks[band], 1e-9)
+            let own: Float = mean < 1e-8 ? 0 : min(1, max(0, 0.5 + log2(max(ratio, 1e-3)) / 2.4))
+            let target = own * 0.65 + beat * 0.35
+            let speed: Float = target > shown[band] ? 0.85 : 0.4
             shown[band] += (target - shown[band]) * speed
             levels[band] = shown[band]
         }
