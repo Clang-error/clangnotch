@@ -12,6 +12,8 @@ struct SystemControlReading: Equatable {
     var badge: String
     /// Battery of the Bluetooth headphones the sound goes to, if BatteryManager knows it.
     var battery: Int? = nil
+    /// Picture of the Bluetooth output (AirPods, Max, other headphones), top left.
+    var device: String? = nil
 }
 
 /// ClangNotch's own volume/brightness HUD ("조절창"), drawn at the top center just below
@@ -103,7 +105,7 @@ final class SystemControlOSD: ObservableObject {
     /// The `osd` demo scene: made-up values, so no output name from this Mac is shown.
     func demoVolume(_ fraction: Double) {
         show(SystemControlReading(kind: .volume, title: "AirPods Max", fraction: fraction,
-                                  badge: "\(Int((fraction * 100).rounded()))%", battery: 80),
+                                  badge: "\(Int((fraction * 100).rounded()))%", battery: 80, device: "airpodsmax"),
              on: NotchDetector.notchScreen)
     }
 
@@ -319,7 +321,8 @@ final class SystemControlOSD: ObservableObject {
         let title = device.flatMap { AudioMixerManager.strProp($0, kAudioObjectPropertyName) } ?? L("사운드", "Sound")
         return SystemControlReading(kind: muted ? .mute : .volume, title: title, fraction: fraction,
                                     badge: muted ? L("음소거", "Muted") : "\(Int((fraction * 100).rounded()))%",
-                                    battery: device.flatMap(bluetoothBattery))
+                                    battery: device.flatMap(bluetoothBattery),
+                                    device: device.flatMap(AudioOutputWatcher.bluetoothSymbol))
     }
 
     /// CoreAudio's UID for Bluetooth output starts with the device address

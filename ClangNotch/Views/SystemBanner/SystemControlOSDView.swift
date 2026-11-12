@@ -51,6 +51,15 @@ struct SystemControlOSDView: View {
             }
             .frame(height: 16)
             .frame(maxWidth: .infinity)
+            .overlay(alignment: .leading) {
+                // 출력 기기 아이콘, over the bar's small icon.
+                if let symbol = reading.device {
+                    Image(systemName: symbol)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(width: 24)
+                }
+            }
             .overlay(alignment: .trailing) {
                 if let level = reading.battery { battery(level) }
             }

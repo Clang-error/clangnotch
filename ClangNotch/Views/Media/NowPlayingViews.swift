@@ -495,10 +495,15 @@ final class AudioOutputWatcher: ObservableObject {
     }
 
     private static func currentSymbol() -> String {
-        guard let id = AudioOutputs.defaultOutput() else { return "airplayaudio" }
+        AudioOutputs.defaultOutput().flatMap(bluetoothSymbol) ?? "airplayaudio"
+    }
+
+    /// The picture of a Bluetooth output (AirPods by their product id, else headphones); nil
+    /// for anything else. The 조절창 shows it too.
+    static func bluetoothSymbol(_ id: AudioObjectID) -> String? {
         let transport = AudioMixerManager.transportType(id)
         guard transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE else {
-            return "airplayaudio"
+            return nil
         }
         // A Bluetooth output's UID is its address and a suffix: "30-D8-75-21-10-F1:output".
         if let uid = AudioMixerManager.strProp(id, kAudioDevicePropertyDeviceUID),
