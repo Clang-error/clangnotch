@@ -62,10 +62,17 @@ public final class UICoordinator: ObservableObject {
         // that's exactly when the cursor is racing to the top. `&&` short-circuits, so the
         // window-list check only runs while the cursor is actually over the notch.
         let mouse = NSEvent.mouseLocation
-        let localPoint = CGPoint(x: mouse.x - region.minX, y: max(0.001, f.maxY - mouse.y))
-        let insideShape = panel.notchInteractiveShape?.path(in: CGRect(origin: .zero, size: panel.notchInteractiveSize))
-            .contains(localPoint) ?? true
-        let over = region.contains(mouse) && insideShape && !MissionControlDetector.isActive()
+        // Every mouse move anywhere on screen comes here: outside the notch's box, done
+        // without building its shape (that path was most of this function's cost).
+        let over: Bool
+        if region.contains(mouse) {
+            let localPoint = CGPoint(x: mouse.x - region.minX, y: max(0.001, f.maxY - mouse.y))
+            let insideShape = panel.notchInteractiveShape?.path(in: CGRect(origin: .zero, size: panel.notchInteractiveSize))
+                .contains(localPoint) ?? true
+            over = insideShape && !MissionControlDetector.isActive()
+        } else {
+            over = false
+        }
 
         panel.ignoresMouseEvents = !over
         if over != cursorOverNotch {
@@ -104,7 +111,18 @@ public final class UICoordinator: ObservableObject {
     /// Mission Control always hides the notch; a full-screen app does unless the user keeps it.
     private var shouldHideNotch: Bool {
         (FullScreenDetector.isFullScreenActive() && !AppSettings.shared.keepNotchInFullScreen)
-            || MissionControlDetector.isActive()
+            || missionControlMatters && MissionControlDetector.isActive()
+    }
+
+    private var hiddenForMissionControl = false
+
+    /// Reading the window list for Mission Control every second was the steadiest cost of an
+    /// idle notch (2026-11-12). It matters when the cursor is near the top, reaching for the
+    /// Spaces strip the notch would cover, or to bring the notch back after Mission Control.
+    private var missionControlMatters: Bool {
+        guard !hiddenForMissionControl else { return true }
+        guard let screen = NotchDetector.notchScreen else { return true }
+        return NSEvent.mouseLocation.y > screen.frame.maxY - 220
     }
 
     private func repositionNotchPanel() {
@@ -138,7 +156,9 @@ public final class UICoordinator: ObservableObject {
         // Mission Control puts its Spaces strip right where the notch lives, so hide there
         // too — otherwise reaching for a Space opens the notch and it eats the clicks.
         // The setting is read on each poll, so turning it on or off applies within a second.
+        let fullScreen = FullScreenDetector.isFullScreenActive() && !AppSettings.shared.keepNotchInFullScreen
         let shouldHide = shouldHideNotch
+        hiddenForMissionControl = shouldHide && !fullScreen
         guard shouldHide != lastFullScreen else { return }  // only act on change
         lastFullScreen = shouldHide
         if shouldHide { hide() } else { show() }
