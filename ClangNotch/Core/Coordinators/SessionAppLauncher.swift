@@ -62,9 +62,15 @@ enum SessionAppDestination: Equatable, Sendable {
     var isTerminal: Bool { self == .terminal || self == .ssh }
 
     /// The notch's go-to-session button: a terminal, or a GUI app (desktop app or editor).
+    /// A session on an SSH host has nowhere to go: which terminal on this Mac holds that
+    /// connection, if any, isn't known. Its button says 확인 and only clears the notice
+    /// (`acknowledgesOnly`).
     var openTitle: String {
-        isTerminal ? L("터미널 열기", "Open terminal") : L("GUI 열기", "Open app")
+        if acknowledgesOnly { return L("확인", "OK") }
+        return isTerminal ? L("터미널 열기", "Open terminal") : L("GUI 열기", "Open app")
     }
+
+    var acknowledgesOnly: Bool { self == .ssh }
 
     static func editor(named name: String) -> Self? {
         let name = name.lowercased()

@@ -27,8 +27,6 @@ final class RemoteClaudeManager: ObservableObject {
 
     private var hosts: [String] = []
     private var tunnels: [String: Process] = [:]
-    /// Write end of each tunnel's stdin. Held open for the tunnel's lifetime — see `openTunnel`.
-    private var tunnelInputs: [String: Pipe] = [:]
     /// Followers of the hosts that are read instead of hooked.
     private var readers: [String: RemoteSessionFollower] = [:]
     private var retryTasks: [String: Task<Void, Never>] = [:]
@@ -38,7 +36,9 @@ final class RemoteClaudeManager: ObservableObject {
 
     private nonisolated static let remoteScriptPath = "~/.claude/clangnotch-hook.sh"
     private nonisolated static let hookCommand = "$HOME/.claude/clangnotch-hook.sh"
-    private nonisolated static let hookEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"]
+    /// PostToolUseFailure: a tool that was cancelled or denied sends no PostToolUse. Without
+    /// it a question dismissed with Esc stayed in the notch for good (2026-11-12).
+    private nonisolated static let hookEvents = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Notification", "Stop", "SessionEnd"]
 
     private init() {}
 
@@ -82,7 +82,6 @@ final class RemoteClaudeManager: ObservableObject {
         generations[host, default: 0] += 1
         // Cleared before terminating so `tunnelClosed` treats this exit as intentional.
         let process = tunnels.removeValue(forKey: host)
-        tunnelInputs[host] = nil
         process?.terminate()
         readers.removeValue(forKey: host)?.stop()
         ClaudeCodeManager.shared.removeRemoteSessions(host: host)
@@ -158,16 +157,31 @@ final class RemoteClaudeManager: ObservableObject {
             // sleep) would block reconnecting until the host's sshd noticed, possibly for hours.
             "-R", "\(remoteHome)/.claude/clangnotch.sock:127.0.0.1:\(port)",
         ] + SSHHost.destination(host) + [
-            // Reads our stdin pipe: however this app exits (even SIGKILL) the pipe closes,
-            // `cat` ends and the tunnel with it, instead of lingering on the host.
-            "cat >/dev/null",
+            // What keeps the tunnel up is a follower of the host's registry records
+            // (`~/.claude/sessions/*.json`), fed in on stdin. The hooks say nothing when a
+            // question or an approval is cancelled with Esc, so the question stayed in the
+            // notch for good; the record going from `waiting` to `idle` does
+            // (`handleRemoteRegistry`). However this app exits (even SIGKILL) the follower's
+            // next heartbeat finds nobody reading and it ends, and the tunnel with it.
+            "sh",
         ]
         process.environment = SSHHost.environment(for: host, interactive: interactive)
         let input = Pipe()
+        let output = Pipe()
         let errors = Pipe()
         process.standardInput = input
-        process.standardOutput = FileHandle.nullDevice
+        process.standardOutput = output
         process.standardError = errors
+        let stream = RemoteFollowerStream(sink: .lines { _, _, _, _ in }, accepts: { _ in false }) { event in
+            guard case .stateFile(let name, let content) = event else { return }
+            Task { @MainActor in
+                ClaudeCodeManager.shared.handleRemoteRegistry(host: host, file: name, content: content)
+            }
+        }
+        output.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil } else { stream.receive(data) }
+        }
         process.terminationHandler = { [weak self] process in
             let message = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             Task { @MainActor in self?.tunnelClosed(host, process: process, stderr: message) }
@@ -178,8 +192,11 @@ final class RemoteClaudeManager: ObservableObject {
             scheduleRetry(host, reason: error.localizedDescription)
             return
         }
+        // A failed login closes ssh's stdin early; get an error instead of a fatal SIGPIPE.
+        _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+        try? input.fileHandleForWriting.write(contentsOf: Data(RemoteSessionFollower.shScript(for: .claudeRegistry).utf8))
+        try? input.fileHandleForWriting.close()
         tunnels[host] = process
-        tunnelInputs[host] = input
         statuses[host] = L("연결 중…", "Connecting…")
 
         // ssh reports a refused forward only after logging in, so call it up once it survives that.
@@ -197,7 +214,6 @@ final class RemoteClaudeManager: ObservableObject {
     private func tunnelClosed(_ host: String, process: Process, stderr: String) {
         guard tunnels[host] === process else { return }
         tunnels[host] = nil
-        tunnelInputs[host] = nil
         // No more events (not even Stop) can arrive; don't leave rows reading as working.
         ClaudeCodeManager.shared.removeRemoteSessions(host: host)
         let failure = SSHHost.failure(stderr, host: host)
@@ -332,7 +348,7 @@ final class RemoteClaudeManager: ObservableObject {
         host='__HOST__'
         payload=$(cat)
         if command -v jq >/dev/null 2>&1; then
-          body=$(printf '%s' "$payload" | jq -c --arg host "$host" '{session_id, hook_event_name, cwd, tool_name, tool_use_id, notification_type,
+          body=$(printf '%s' "$payload" | jq -c --arg host "$host" '{session_id, hook_event_name, cwd, tool_name, tool_use_id, notification_type, is_interrupt,
             prompt: ((.prompt // "") | .[0:300]),
             tool_input: (if .tool_name == "AskUserQuestion" then .tool_input elif (.tool_input | type) == "object" then (.tool_input | with_entries(select(.value | type == "string") | .value |= .[0:200])) else null end),
             clangnotch_host: $host}') || exit 0
@@ -340,7 +356,7 @@ final class RemoteClaudeManager: ObservableObject {
           body=$(printf '%s' "$payload" | python3 -c '
         import json, sys
         d = json.load(sys.stdin)
-        o = {k: d.get(k) for k in ("session_id", "hook_event_name", "cwd", "tool_name", "tool_use_id", "notification_type")}
+        o = {k: d.get(k) for k in ("session_id", "hook_event_name", "cwd", "tool_name", "tool_use_id", "notification_type", "is_interrupt")}
         o["prompt"] = (d.get("prompt") or "")[:300]
         t = d.get("tool_input")
         o["tool_input"] = t if d.get("tool_name") == "AskUserQuestion" else ({k: v[:200] for k, v in t.items() if isinstance(v, str)} if isinstance(t, dict) else None)

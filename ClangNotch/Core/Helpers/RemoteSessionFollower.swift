@@ -41,9 +41,20 @@ final class RemoteSessionFollower {
         /// `~/.claude/projects/<project>/<conversation id>.jsonl`. Subagent transcripts
         /// (`subagents/`, `agent-*`) stay behind. `~/.claude/sessions/<pid>.json` is each
         /// running process's registry record, which says when it waits on the user.
+        /// Only the registry records: for a host whose hooks already report the rest.
+        static let claudeRegistry = Source(environmentVariable: "CLAUDE_CONFIG_DIR", homeFolder: ".claude", subfolder: "sessions",
+                                           fileFilter: "*.no-such-file", stateSubfolder: "sessions", processWord: "claude",
+                                           accepts: { _ in false })
         static let claude = Source(environmentVariable: "CLAUDE_CONFIG_DIR", homeFolder: ".claude", subfolder: "projects",
                                    fileFilter: "*.jsonl", stateSubfolder: "sessions", processWord: "claude",
                                    accepts: { !$0.hasPrefix("agent-") })
+    }
+
+    /// The sh follower for `source`, to run as another connection's remote command
+    /// (`RemoteClaudeManager`'s tunnel), fed to `sh` on its stdin and read with a
+    /// `RemoteFollowerStream`.
+    nonisolated static func shScript(for source: Source) -> String {
+        fill(shTemplate, with: source)
     }
 
     enum Sink: Sendable {
@@ -264,6 +275,10 @@ final class RemoteSessionFollower {
 
     /// A follower template with this source's folder, file filter and process word filled in.
     private func script(_ template: String) -> String {
+        Self.fill(template, with: source)
+    }
+
+    private nonisolated static func fill(_ template: String, with source: Source) -> String {
         template
             .replacingOccurrences(of: "__ENV__", with: source.environmentVariable)
             .replacingOccurrences(of: "__HOME__", with: source.homeFolder)
@@ -274,7 +289,7 @@ final class RemoteSessionFollower {
     }
 
     /// Ends by itself when the connection goes: the next write fails (SIGPIPE).
-    private static let shTemplate = #"""
+    private nonisolated static let shTemplate = #"""
         d="${__ENV__:-$HOME/__HOME__}/__SUB__"
         sd="${__ENV__:-$HOME/__HOME__}/__STATE__"
         umask 077

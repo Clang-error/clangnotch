@@ -30,6 +30,7 @@ struct DismissPill: View {
     var showQuestionNotice = false
     var questionExpanded = false
     var questionDismissOpen = false
+    var askingSessionOrigin: (label: String, host: String?)? { nil }
     func clearQuestionNotice() {}
     var questionScale: CGFloat { questionExpanded ? 1.4 : 1 }
     var showPermissionNotice = false

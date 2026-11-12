@@ -1366,8 +1366,13 @@ struct ClangNotchContentView: View {
                 onBack: { showSessionDetail(nil) },
                 openTitle: openTitle(sessionDetail.agent == .codex ? .codex : .claude, sessionDetail.sessionId),
                 onOpenTerminal: {
-                    focusSession(sessionDetail.agent == .codex ? .codex : .claude, sessionDetail.sessionId)
-                    notchVM.close()
+                    // 확인 on an SSH host's session: back to the list.
+                    if acknowledgesOnly(sessionDetail.agent == .codex ? .codex : .claude, sessionDetail.sessionId) {
+                        showSessionDetail(nil)
+                    } else {
+                        focusSession(sessionDetail.agent == .codex ? .codex : .claude, sessionDetail.sessionId)
+                        notchVM.close()
+                    }
                 }
             )
             .transition(modeContentTransition)
@@ -1568,7 +1573,14 @@ struct ClangNotchContentView: View {
                     NotchSection(title: "NEEDS YOU · Codex", rail: codexGlowColor, onDismiss: { codexManager.dismissInputRequest(id: request.id) }) {
                         QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue,
                                             openTitle: sessionId.map { openTitle(.codex, $0) },
-                                            onOpen: sessionId.map { id in { focusSession(.codex, id); notchVM.close() } })
+                                            onOpen: sessionId.map { id in {
+                                                if acknowledgesOnly(.codex, id) {
+                                                    codexManager.dismissInputRequest(id: request.id)
+                                                } else {
+                                                    focusSession(.codex, id)
+                                                    notchVM.close()
+                                                }
+                                            } })
                     }
                 }
                 if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsConfirmedNeedingPermission.isEmpty {
@@ -1580,12 +1592,16 @@ struct ClangNotchContentView: View {
                         let permissionSession = claudeCodeManager.sessionsConfirmedNeedingPermission.first
                         Button {
                             if let permissionSession {
-                                focusSession(.claude, permissionSession.id)
-                                notchVM.close()
+                                if acknowledgesOnly(.claude, permissionSession.id) {
+                                    claudeCodeManager.dismissPermission(sessionId: permissionSession.id)
+                                } else {
+                                    focusSession(.claude, permissionSession.id)
+                                    notchVM.close()
+                                }
                             }
                         } label: {
                             Label(permissionSession.map { openTitle(.claude, $0.id) } ?? L("에디터에서 권한 확인", "Review permission in your editor"),
-                                  systemImage: "arrow.up.forward.app")
+                                  systemImage: permissionSession.map { acknowledgesOnly(.claude, $0.id) } == true ? "checkmark" : "arrow.up.forward.app")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.orange)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1602,7 +1618,14 @@ struct ClangNotchContentView: View {
                                             // A next-step box the notch can answer: its options are buttons here too.
                                             onSubmit: request.isWrapUp ? nextStepSubmit(for: request, sessionId: sessionId) : nil,
                                             openTitle: sessionId.map { openTitle(.claude, $0) },
-                                            onOpen: sessionId.map { id in { focusSession(.claude, id); notchVM.close() } })
+                                            onOpen: sessionId.map { id in {
+                                                if acknowledgesOnly(.claude, id) {
+                                                    acknowledgeClaude(request.id, sessionId: id)
+                                                } else {
+                                                    focusSession(.claude, id)
+                                                    notchVM.close()
+                                                }
+                                            } })
                             .id(request.id)
                     }
                 }
@@ -1715,9 +1738,28 @@ struct ClangNotchContentView: View {
                     .font(.system(size: 13 * questionScale, weight: .semibold))
                     .foregroundColor(NotchPalette.ink)
 
-                Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
-                    .font(.system(size: 11 * questionScale))
-                    .foregroundColor(NotchPalette.ink.opacity(0.7))
+                // Who asked and where from, as the 다음 단계 드롭다운 and 완료 드롭다운 say it:
+                // the session's name and folder, behind the SSH mark and host for a remote one.
+                HStack(spacing: 4) {
+                    Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
+                    if let origin = askingSessionOrigin {
+                        if let host = origin.host {
+                            Text("·")
+                            // `SessionAppDestination.ssh`'s mark.
+                            Image(systemName: "network")
+                                .font(.system(size: 10 * questionScale, weight: .semibold))
+                            Text(host)
+                        }
+                        if !origin.label.isEmpty {
+                            Text("·")
+                            Text(origin.label)
+                                .truncationMode(.middle)
+                        }
+                    }
+                }
+                .font(.system(size: 11 * questionScale))
+                .foregroundColor(NotchPalette.ink.opacity(0.7))
+                .lineLimit(1)
             }
 
             Spacer()
@@ -1726,6 +1768,22 @@ struct ClangNotchContentView: View {
             DismissPill(expanded: $questionDismissOpen, scale: questionScale,
                         onCollapse: { dismissQuestionNotice() }, onClear: { clearQuestionNotice() })
         }
+    }
+
+    /// Where the question in the 질문 드롭다운 comes from: the asking session's name and folder,
+    /// and its SSH host when it runs on one.
+    private var askingSessionOrigin: (label: String, host: String?)? {
+        if let request = codexInputRequest,
+           let session = codexManager.availableSessions.first(where: {
+               codexManager.sessionStates[$0.id]?.pendingInputRequest?.id == request.id
+           }) {
+            return (sessionLabel(.codex, session.id), session.remoteHost)
+        }
+        if let request = claudeInputRequest, let sessionId = claudeSessionId(asking: request) {
+            return (sessionLabel(.claude, sessionId),
+                    claudeCodeManager.availableSessions.first { $0.id == sessionId }?.remoteHost)
+        }
+        return nil
     }
 
     /// The session that holds a Claude question, by its request.
@@ -2466,13 +2524,21 @@ struct ClangNotchContentView: View {
            let session = codexManager.availableSessions.first(where: {
                codexManager.sessionStates[$0.id]?.pendingInputRequest?.id == request.id
            }) {
-            codexManager.focusApp(for: session)
+            if acknowledgesOnly(.codex, session.id) {
+                codexManager.dismissInputRequest(id: request.id)
+            } else {
+                codexManager.focusApp(for: session)
+            }
             dismissQuestionNotice()
         } else if let request = claudeInputRequest,
                   let session = claudeCodeManager.sessionsAwaitingInput.first(where: {
                       claudeCodeManager.sessionStates[$0.id]?.pendingInputRequests.contains { $0.id == request.id } == true
                   }) {
-            claudeCodeManager.focusIDE(for: session)
+            if acknowledgesOnly(.claude, session.id) {
+                acknowledgeClaude(request.id, sessionId: session.id)
+            } else {
+                claudeCodeManager.focusIDE(for: session)
+            }
             dismissQuestionNotice()
         } else {
             expandedMode = .ai
@@ -2619,6 +2685,8 @@ struct ClangNotchContentView: View {
         ) {
             // Fold first, then switch apps: doing both at once cut the fold off mid-way.
             dismissDoneNotice()
+            // 확인 on an SSH host's session: folding is all there is.
+            guard !acknowledgesOnly(notice.source, notice.turn.sessionId) else { return }
             Task {
                 try? await Task.sleep(for: .seconds(dropdownFoldDuration))
                 await MainActor.run { focusSession(notice.source, notice.turn.sessionId) }
@@ -2799,9 +2867,22 @@ struct ClangNotchContentView: View {
         }
     }
 
-    /// "터미널 열기" or "GUI 열기", by where the session runs.
+    /// "터미널 열기" or "GUI 열기", by where the session runs; "확인" for one on an SSH host.
     private func openTitle(_ source: DoneFlash.Source, _ sessionId: String) -> String {
         (sessionDestination(source, sessionId) ?? .terminal).openTitle
+    }
+
+    /// 확인 on an SSH host's question: the question goes, and so does the approval mark Claude
+    /// Code raises alongside it (a `permission_prompt` notification), which otherwise stayed in
+    /// the wing as Needs OK.
+    private func acknowledgeClaude(_ requestId: String, sessionId: String) {
+        claudeCodeManager.dismissInputRequest(id: requestId)
+        claudeCodeManager.dismissPermission(sessionId: sessionId)
+    }
+
+    /// The session runs on an SSH host: its button has nowhere to go and only clears the notice.
+    private func acknowledgesOnly(_ source: DoneFlash.Source, _ sessionId: String) -> Bool {
+        sessionDestination(source, sessionId)?.acknowledgesOnly == true
     }
 
     /// App-level: the session's terminal or editor is the frontmost app.

@@ -1686,6 +1686,7 @@ final class ClaudeCodeManager: ObservableObject {
         guard sessionScanTimer != nil,
               let conversationId = json["session_id"] as? String,
               let event = json["hook_event_name"] as? String else { return }
+        debugLog("[ClaudeCode] Remote \(host) \(event) \(json["tool_name"] as? String ?? "") \(json["notification_type"] as? String ?? "") interrupt=\(json["is_interrupt"] as? Bool == true)")
 
         if event == "SessionEnd" {
             if let session = remoteSessions.removeValue(forKey: conversationId) {
@@ -1744,7 +1745,7 @@ final class ClaudeCodeManager: ObservableObject {
             if toolName == questionToolName, !dismissedInputRequestIDs.contains(tool.id) {
                 sessionState.pendingInputRequests.append(ClaudeInputRequest(id: tool.id, input: json["tool_input"]))
             }
-        case "PostToolUse":
+        case "PostToolUse", "PostToolUseFailure":
             let toolId = json["tool_use_id"] as? String
             let toolName = json["tool_name"] as? String
             if let index = sessionState.activeTools.firstIndex(where: { toolId != nil ? $0.id == toolId : $0.toolName == toolName }) {
@@ -1756,10 +1757,25 @@ final class ClaudeCodeManager: ObservableObject {
             }
             // A background tool can finish after Stop; that isn't the turn resuming.
             if sessionState.turnStartTime != nil { sessionState.isThinking = true }
+            // Esc: the tool fails as interrupted and the turn ends there, with no Stop to say so.
+            if event == "PostToolUseFailure", json["is_interrupt"] as? Bool == true {
+                sessionState.activeTools.removeAll()
+                sessionState.pendingInputRequests.removeAll()
+                sessionState.isThinking = false
+                sessionState.turnStartTime = nil
+                sessionState.lastStopReason = "interrupted"
+            }
         case "Resumed":
             // The host's registry record no longer says `waiting` (`handleRemoteRegistry`): the
-            // question or approval it had no text for was answered there.
-            sessionState.pendingInputRequests.removeAll { $0.questions.isEmpty }
+            // question or approval was answered there, or cancelled with Esc, which no hook
+            // reports. Straight to idle is the cancel: the turn is over too.
+            sessionState.pendingInputRequests.removeAll { !$0.isWrapUp }
+            if json["idle"] as? Bool == true {
+                sessionState.activeTools.removeAll()
+                sessionState.isThinking = false
+                sessionState.turnStartTime = nil
+                sessionState.lastStopReason = "interrupted"
+            }
         case "Interrupted":
             // Esc, read from the host's transcript (`handleRemoteTranscript`); hooks have no
             // event for it.
@@ -1886,8 +1902,8 @@ final class ClaudeCodeManager: ObservableObject {
     /// on (nil when it didn't). Keyed by host and file name.
     private var remoteRegistry: [String: (conversation: String, waiting: String?)] = [:]
 
-    /// A registry record (`~/.claude/sessions/<pid>.json`) of a host that is read instead of
-    /// hooked, sent whole whenever it changes; nil content means the record is gone, and its
+    /// A registry record (`~/.claude/sessions/<pid>.json`) of an SSH host, sent whole whenever
+    /// it changes, by the follower of a host that is read and by the tunnel of a hooked one; nil content means the record is gone, and its
     /// process with it. Claude Code writes a question (AskUserQuestion) or a tool waiting for
     /// approval into the transcript only once it is answered (seen on Windows, 2026-11-12: a
     /// question sat open for minutes with nothing after the prompt in the file), so the record's
@@ -1918,6 +1934,8 @@ final class ClaudeCodeManager: ObservableObject {
             hook["notification_type"] = approval ? "permission_prompt" : "agent_needs_input"
         } else if last?.waiting != nil {
             hook["hook_event_name"] = "Resumed"
+            // Waiting, then idle with no answer in between: the prompt was cancelled (Esc).
+            hook["idle"] = json["status"] as? String == "idle"
         } else {
             return
         }
