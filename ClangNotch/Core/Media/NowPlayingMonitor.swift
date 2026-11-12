@@ -20,6 +20,7 @@ final class NowPlayingMonitor: ObservableObject {
                 updateLinger(from: oldValue, to: nowPlaying)
                 updatePausedLong()
             }
+            if nowPlaying == nil, oldValue != nil { AirPodsDropdown.media.mediaGone() }
         }
     }
 

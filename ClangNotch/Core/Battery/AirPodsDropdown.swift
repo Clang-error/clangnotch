@@ -413,6 +413,18 @@ final class AirPodsDropdown: ObservableObject {
         card?.media = playing
     }
 
+    /// Nothing is left to play (the app quit, the tab closed, gone quiet for good). A pinned card
+    /// stays and waits: the last track, stopped where it was, until something plays again and
+    /// takes its place (user, 2026-11-12). It kept the track running on before.
+    func mediaGone() {
+        guard var media = card?.media, phase == .settled || isDropping else { return }
+        media.elapsed = media.position(at: Date())
+        media.elapsedAt = Date()
+        media.isPlaying = false
+        media.rate = 0
+        card?.media = media
+    }
+
     /// The 미디어 드롭다운 was clicked: bring the app that plays to the front.
     private func openMediaApp(_ playing: NowPlaying) {
         dismiss()
