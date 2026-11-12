@@ -251,7 +251,7 @@
 				CODE_SIGN_ENTITLEMENTS = ClangNotch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = TMWDQG6WXQ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_DEBUG_DYLIB = NO;
@@ -265,7 +265,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = "1.4.1-beta.1";
 				PRODUCT_BUNDLE_IDENTIFIER = com.clangerror.ClangNotch;
 				PRODUCT_NAME = ClangNotch;
 				REGISTER_APP_GROUPS = YES;
@@ -283,7 +283,7 @@
 				CODE_SIGN_ENTITLEMENTS = ClangNotch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = TMWDQG6WXQ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -296,7 +296,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = "1.4.1-beta.1";
 				PRODUCT_BUNDLE_IDENTIFIER = com.clangerror.ClangNotch;
 				PRODUCT_NAME = ClangNotch;
 				REGISTER_APP_GROUPS = YES;
