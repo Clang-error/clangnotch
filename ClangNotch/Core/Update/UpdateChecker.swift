@@ -11,6 +11,12 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
 
     /// The newer version on GitHub, if any.
     @Published private(set) var availableVersion: String?
+    /// Its release notes, for 설정 › 정보 › 변경 사항 (and 새로운 점 after the restart).
+    @Published private(set) var availableNotes: String?
+
+    static var currentVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    }
     /// The newer version, downloaded and checked, waiting for a restart.
     @Published private(set) var readyVersion: String?
     @Published private(set) var isDownloading = false
@@ -32,6 +38,14 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
     private var timer: Timer?
 
     private override init() {}
+
+    #if DEBUG
+    /// `--update-preview`: a made-up newer version with these notes, to look at 변경 사항.
+    func preview(notes: String) {
+        availableVersion = "9.9.9"
+        availableNotes = notes
+    }
+    #endif
 
     func syncWithSettings() {
         timer?.invalidate()
@@ -80,16 +94,19 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
         guard automatic || manual else { return }
 
         let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-        let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let current = Self.currentVersion
         if let page = (json["html_url"] as? String).flatMap(URL.init(string:)) { releaseURL = page }
         guard Self.isNewer(latest, than: current) else {
             availableVersion = nil
+            availableNotes = nil
             readyVersion = nil
             upToDate = true
             return
         }
         upToDate = false
         availableVersion = latest
+        availableNotes = (json["body"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        if let notes = availableNotes { WhatsNew.save(notes, for: latest) }
         // Asked for by hand with 자동으로 받기 off: shown, not fetched.
         guard automatic else { return }
         guard readyVersion != latest, !isDownloading else { return }

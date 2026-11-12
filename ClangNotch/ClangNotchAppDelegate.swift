@@ -52,7 +52,19 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             // Starts following the Accessibility setting, which the key taps above wait on.
             KeyboardLockManager.shared.refreshPermissionStatus()
             UpdateChecker.shared.syncWithSettings()
+            // The first launch after an update: its release notes, once.
+            WhatsNew.shared.showIfUpdated()
         }
+        #if DEBUG
+        if arguments.contains("--update-preview") {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(4))   // after the real check has settled
+                if let notes = await WhatsNew.notes(for: UpdateChecker.currentVersion) {
+                    UpdateChecker.shared.preview(notes: notes)
+                }
+            }
+        }
+        #endif
     }
 
     func applicationWillTerminate(_ notification: Notification) {

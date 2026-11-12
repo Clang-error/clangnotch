@@ -646,7 +646,16 @@ struct AboutSettingsTab: View {
                         // Also the way when this copy can't replace itself (run from a disk image).
                         Button(L("받기", "Download")) { NSWorkspace.shared.open(updates.releaseURL) }
                     }
-                } else {
+                }
+                // What the newer version brings, folded until opened.
+                if updates.availableVersion != nil || updates.readyVersion != nil, let notes = updates.availableNotes {
+                    DisclosureGroup(L("변경 사항", "What's new")) {
+                        ReleaseNotesText(notes: notes)
+                            .font(.callout)
+                            .padding(.vertical, 6)
+                    }
+                }
+                if updates.availableVersion == nil && updates.readyVersion == nil {
                     HStack {
                         Text(updates.isChecking ? L("확인 중…", "Checking…")
                              : updates.checkFailed ? L("확인하지 못함 · 인터넷 연결을 확인하세요", "Couldn't check · check your connection")
