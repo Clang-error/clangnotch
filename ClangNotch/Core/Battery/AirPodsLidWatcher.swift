@@ -326,6 +326,13 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         return last.lidShut && last.out == 0
     }
 
+    /// Buds out of a case last known shut, as when they lay on the desk and went into the ears:
+    /// nothing will close the lid on the card, so it folds by itself (`AirPodsDropdown`).
+    func wornWithLidShut(_ address: String) -> Bool {
+        guard let last = said(address), Date().timeIntervalSince(last.at) <= 30 else { return false }
+        return last.lidShut && last.out > 0
+    }
+
     /// What is charging, by the pair's own peripheral's last word: a bud in the case, a Max on
     /// its cable (both sides alike). Bluetooth's battery levels don't tell. nil without a word in
     /// the last 30 s, so silence is never taken for "not charging" or "charging": a worn Max

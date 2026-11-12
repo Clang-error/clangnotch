@@ -77,8 +77,11 @@ final class AirPodsDropdown: ObservableObject {
     /// the head by then (user, 2026-11-10). Other cards then stay until closed.
     private static let headphonesDuration: TimeInterval = 10
 
+    /// Buds put in the ears with the lid shut fold the same way: no lid will close on their card
+    /// (user, 2026-11-12: with 자동으로 접기 off it stayed up for good).
     private var foldsAnyway: Bool {
-        card.map { $0.symbol != nil || AirPodsArt.kind(for: $0.productID) == .headphones } ?? false
+        card.map { $0.symbol != nil || AirPodsArt.kind(for: $0.productID) == .headphones
+            || AirPodsLidWatcher.shared.wornWithLidShut($0.address) } ?? false
     }
 
     /// This Mac's low battery card has its own switch (맥 배터리 부족 시 드롭다운 › 자동으로 접기):
