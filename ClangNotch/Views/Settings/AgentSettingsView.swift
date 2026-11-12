@@ -1102,8 +1102,8 @@ struct AgentsSettingsTab: View {
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showClaudePlan)
                     .disabled(!claudeEnabled.wrappedValue || !settings.enableClaudeUsage)
                 SettingToggle(L("SSH 원격 세션", "Remote sessions over SSH"),
-                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Claude Code 세션도 이 노치에 표시 · 켜면 호스트 목록과 설명이 펼쳐짐",
-                                "Also shows Claude Code sessions running on other computers you reach over SSH · turning it on unfolds the host list and what it does"),
+                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Claude Code 세션도 이 노치에 표시",
+                                "Also shows Claude Code sessions running on other computers you reach over SSH"),
                               isOn: $settings.remoteClaudeEnabled)
                     .disabled(!claudeEnabled.wrappedValue)
                     .onChange(of: settings.remoteClaudeEnabled) { remote.sync() }
@@ -1111,12 +1111,14 @@ struct AgentsSettingsTab: View {
                     RemoteHostsEditor(
                         hosts: $settings.remoteClaudeHosts, statuses: remote.statuses,
                         details: [
-                            L("리눅스·맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함 · 원래 파일은 settings.json.clangnotch-bak으로 남음 · 작업 중·질문·권한 대기·완료가 모두 표시되고, 선택지가 있는 질문은 노치에서 바로 답할 수 있음",
+                            L("리눅스, 맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함 · 원래 파일은 settings.json.clangnotch-bak으로 남음 · 작업 중·질문·권한 대기·완료를 모두 표시함 · 선택지가 있는 질문은 노치에서 바로 답할 수 있음",
                               "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json · the original is kept as settings.json.clangnotch-bak · working, questions, approvals and Done all show, and a question with options can be answered from the notch"),
-                            L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴 · 작업 중·완료가 표시되고, 질문과 권한 대기는 기다린다는 것만 표시됨 (내용은 그 컴퓨터에서 확인)",
-                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes · working and Done show; a question or an approval shows only as waiting (its text is on that computer)"),
-                            L("어느 쪽인지는 연결할 때 알아서 고르고 상태에 표시함 · 이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
-                              "Which one applies is picked when connecting and shown in the state · one SSH connection stays open while this Mac is on"),
+                            L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴 · 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음",
+                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes · a question or an approval shows only as waiting, without its text"),
+                            L("어느 쪽인지는 연결할 때 알아서 고르고 상태에 표시함",
+                              "Which one applies is picked when connecting and shown in the state"),
+                            L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
+                              "One SSH connection stays open while this Mac is on"),
                         ],
                         sync: { remote.sync(asking: $0) }, reconnect: remote.reconnect)
                         .disabled(!claudeEnabled.wrappedValue)
@@ -1136,8 +1138,8 @@ struct AgentsSettingsTab: View {
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
                     .disabled(!codexEnabled.wrappedValue || !settings.showCodexUsage)
                 SettingToggle(L("SSH 원격 세션", "Remote sessions over SSH"),
-                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Codex 세션도 이 노치에 표시 · 켜면 호스트 목록과 설명이 펼쳐짐",
-                                "Also shows Codex sessions running on other computers you reach over SSH · turning it on unfolds the host list and what it does"),
+                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Codex 세션도 이 노치에 표시",
+                                "Also shows Codex sessions running on other computers you reach over SSH"),
                               isOn: $settings.remoteCodexEnabled)
                     .disabled(!codexEnabled.wrappedValue)
                     .onChange(of: settings.remoteCodexEnabled) { remoteCodex.sync() }
@@ -1146,10 +1148,12 @@ struct AgentsSettingsTab: View {
                     RemoteHostsEditor(
                         hosts: $settings.remoteCodexHosts, statuses: remoteCodex.statuses,
                         details: [
-                            L("리눅스·맥·윈도우 컴퓨터 모두 됨 · 그 컴퓨터에는 아무것도 설치하거나 바꾸지 않고 Codex가 남기는 세션 기록만 읽어 옴",
-                              "Linux, macOS and Windows all work · installs and changes nothing there, only reads the session logs Codex writes"),
-                            L("작업 중·질문·완료가 표시됨 · 권한 요청 알림과 노치에서 답하기는 안 됨 · 이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
-                              "Working, questions and Done show · no approval requests or answering from the notch · one SSH connection stays open while this Mac is on"),
+                            L("리눅스, 맥, 윈도우 컴퓨터 · 그 컴퓨터에는 아무것도 설치하거나 바꾸지 않고 Codex가 남기는 세션 기록만 읽어 옴",
+                              "Linux, macOS and Windows · installs and changes nothing there, only reads the session logs Codex writes"),
+                            L("작업 중·질문·완료가 표시됨 · 권한 요청 알림과 노치에서 답하기는 안 됨",
+                              "Working, questions and Done show · no approval requests or answering from the notch"),
+                            L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
+                              "One SSH connection stays open while this Mac is on"),
                         ],
                         sync: { remoteCodex.sync(asking: $0) }, reconnect: remoteCodex.reconnect)
                         .disabled(!codexEnabled.wrappedValue)
@@ -1275,8 +1279,8 @@ private struct RemoteHostsEditor: View {
                 ForEach(details + [
                     L("주소: 사용자@주소 (포트가 22가 아니면 사용자@주소:포트), 또는 ~/.ssh/config에 만들어 둔 별칭",
                       "Address: user@address (user@address:port if the port isn't 22), or an alias from ~/.ssh/config"),
-                    L("처음 연결하는 컴퓨터면 신뢰할지 묻고, 키로 로그인이 안 되면 비밀번호를 물음 (키체인에 저장 가능) · 터미널에서 먼저 접속해 둘 필요 없음",
-                      "A computer seen for the first time is confirmed once, and the password is asked when key login doesn't work (can be saved in the Keychain) · no need to connect from a terminal first"),
+                    L("처음 연결하는 컴퓨터면 신뢰할지 묻고, 키로 로그인이 안 되면 비밀번호를 물음",
+                      "A computer seen for the first time is confirmed once, and the password is asked when key login doesn't work"),
                 ], id: \.self) { line in
                     Text("· " + line)
                 }

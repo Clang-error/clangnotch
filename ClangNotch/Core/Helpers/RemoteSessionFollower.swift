@@ -230,7 +230,7 @@ final class RemoteSessionFollower {
         }
         if !hadGreeted, process.terminationStatus != 255 {
             self.shell = nil
-            retry(reason: L("호스트에서 sh도 PowerShell도 실행하지 못했습니다", "Neither sh nor PowerShell ran on the host"))
+            retry(reason: L("호스트에서 sh 또는 PowerShell을 실행하지 못했습니다", "Neither sh nor PowerShell ran on the host"))
             return
         }
         let failure = SSHHost.failure(stderr, host: host)
