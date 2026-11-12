@@ -431,12 +431,17 @@ final class ClaudeUsageManager: ObservableObject {
     }
 
     /// Effective poll interval: never below 5 min, and the rest of the backoff after a 429.
-    /// A spent weekly window can't change until it resets, so polling pauses until then;
-    /// the 5-hour window keeps its normal cadence, and a manual tap still fetches.
+    /// A spent 5-hour or weekly window turns every request away until it resets, so nothing
+    /// can move before then and polling pauses until the later of the spent windows' resets;
+    /// a manual tap still fetches.
     private func nextInterval() -> TimeInterval {
-        if let week = usageData.sevenDay, week.percentage >= 100,
-           let resetsAt = week.resetsAt, resetsAt > Date() {
-            return resetsAt.timeIntervalSinceNow + 60
+        let spentUntil = [usageData.fiveHour, usageData.sevenDay]
+            .compactMap { $0 }
+            .filter { $0.percentage >= 100 }
+            .compactMap(\.resetsAt)
+            .max()
+        if let spentUntil, spentUntil > Date() {
+            return spentUntil.timeIntervalSinceNow + 60
         }
         // +1s so the timer lands past the deadline; on the deadline itself the guard in
         // fetchUsage still saw "limited" and pushed the retry out another minute.
