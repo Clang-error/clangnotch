@@ -1277,6 +1277,10 @@ private struct RemoteHostsEditor: View {
                 Button(L("추가", "Add")) { add(draft) }
                     .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+            Text(L("동작 방식", "How it works"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(details + [
                     L("주소: 사용자@주소 (포트가 22가 아니면 사용자@주소:포트), 또는 ~/.ssh/config에 만들어 둔 별칭",
