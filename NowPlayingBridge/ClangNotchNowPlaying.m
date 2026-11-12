@@ -28,6 +28,8 @@ static SetElapsedFn setElapsed;
 static unsigned long generation;
 static NSData *lastArtSource;
 static NSString *lastTrack;
+/// Times the line for a new track has been held back waiting for its artwork.
+static int artWaits;
 static pid_t parent;
 
 /// The app behind what plays: Safari for its WebKit.GPU process. `MRNowPlayingRequest` is the
@@ -93,7 +95,23 @@ static void emit(void) {
             NSDictionary *c = client();
             NSString *track = [NSString stringWithFormat:@"%@\x1f%@\x1f%@", c[@"parentApplicationBundleIdentifier"] ?: c[@"bundleIdentifier"],
                                info[@"kMRMediaRemoteNowPlayingInfoTitle"], info[@"kMRMediaRemoteNowPlayingInfoArtist"]];
-            if (![track isEqualToString:lastTrack]) { lastTrack = track; lastArtSource = nil; }
+            BOOL newTrack = ![track isEqualToString:lastTrack];
+            // A new track's title comes a notification before its artwork, and the app showed the
+            // playing app's icon in between (user's recording, 2026-11-12). When macOS says there
+            // is artwork, wait for it a little (up to 0.6 s) and send both at once; a notification
+            // in the meantime takes over from this wait.
+            NSData *artData = info[@"kMRMediaRemoteNowPlayingInfoArtworkData"];
+            BOOL artComing = info[@"kMRMediaRemoteNowPlayingInfoArtworkMIMEType"] || info[@"kMRMediaRemoteNowPlayingInfoArtworkIdentifier"];
+            if (newTrack && !artData.length && artComing && artWaits < 5) {
+                artWaits++;
+                unsigned long mine = generation;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 120 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+                    if (mine == generation) emit();
+                });
+                return;
+            }
+            artWaits = 0;
+            if (newTrack) { lastTrack = track; lastArtSource = nil; }
             put(o, @"bundle", c[@"bundleIdentifier"]);
             put(o, @"parent", c[@"parentApplicationBundleIdentifier"]);
             put(o, @"app", c[@"displayName"]);
