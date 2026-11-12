@@ -112,6 +112,15 @@ final class ClaudeCodeManager: ObservableObject {
 
     /// Watcher on the top-level projects dir (detects new project folders)
     private var projectsDirWatcher: DispatchSourceFileSystemObject?
+    /// `~/.claude/sessions`: a Claude Code process starting (a resumed session too) or ending
+    /// shows here first, so a scan follows at once instead of waiting for the next tick.
+    private var registryDirWatcher: DispatchSourceFileSystemObject?
+    private var lastWatcherScan = Date.distantPast
+    private var watcherScanPending = false
+    /// The scan's tick: 3 s while something works, 15 s when all is quiet (2026-11-12: the 3 s
+    /// scan of every project folder was the largest steady cost when nothing ran).
+    private static let busyScanInterval: TimeInterval = 3
+    private static let quietScanInterval: TimeInterval = 15
     /// Watchers on each project subdir (detects new session JSONL files instantly)
     private var projectDirWatchers: [String: DispatchSourceFileSystemObject] = [:]
 
@@ -551,13 +560,53 @@ final class ClaudeCodeManager: ObservableObject {
         syncNextStepHook()
         scanForSessions()
         startWatchingProjectsDirectory()
+        startWatchingRegistryDirectory()
         // Folder-watcher catches NEW session files instantly, but appends to a pre-existing
-        // (resumed) session file don't fire a directory vnode — so this poll is what picks up
-        // resumed/dormant sessions. Kept short (3s) so that lag stays small.
-        sessionScanTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+        // (resumed) session file don't fire a directory vnode. The registry watcher catches the
+        // process of a resumed session; this tick catches the rest, often while work goes on.
+        scheduleNextScan()
+    }
+
+    private func scheduleNextScan() {
+        sessionScanTimer?.invalidate()
+        let interval = hasAnySessionActivity ? Self.busyScanInterval : Self.quietScanInterval
+        sessionScanTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                self?.scanForSessions()
+                guard let self, self.sessionScanTimer != nil else { return }
+                self.scanForSessions()
+                self.scheduleNextScan()
             }
+        }
+    }
+
+    private func startWatchingRegistryDirectory() {
+        guard registryDirWatcher == nil else { return }
+        let dir = claudeDir.appendingPathComponent("sessions")
+        let fd = open(dir.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete],
+                                                               queue: .main)
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated { self?.registryChanged() }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        registryDirWatcher = source
+    }
+
+    /// At most one scan every 2 s from here: records are rewritten often while a session works.
+    private func registryChanged() {
+        guard sessionScanTimer != nil, !watcherScanPending else { return }
+        let wait = max(0.3, 2 - Date().timeIntervalSince(lastWatcherScan))
+        watcherScanPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self else { return }
+            self.watcherScanPending = false
+            guard self.sessionScanTimer != nil else { return }
+            self.lastWatcherScan = Date()
+            self.scanForSessions()
+            // Something started: back to the short tick at once.
+            self.scheduleNextScan()
         }
     }
 
@@ -643,6 +692,8 @@ final class ClaudeCodeManager: ObservableObject {
     private func stopWatching() {
         sessionScanTimer?.invalidate()
         sessionScanTimer = nil
+        registryDirWatcher?.cancel()
+        registryDirWatcher = nil
         idleCheckTimer?.invalidate()
         idleCheckTimer = nil
         toolIdleTimer?.invalidate()
