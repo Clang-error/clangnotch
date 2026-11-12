@@ -841,8 +841,8 @@ struct FeaturesSettingsTab: View {
             // 조절창: the volume and brightness HUD and what goes with it.
             Section {
                 SettingToggle(L("볼륨·밝기 표시 바꾸기", "Replace volume and brightness HUD"),
-                              L("macOS 볼륨·밝기 표시 대신 메뉴 막대 아래 조절창 사용. 손쉬운 사용 권한 필요",
-                                "A HUD under the menu bar instead of macOS's volume and brightness display. Needs Accessibility"),
+                              L("macOS 볼륨·밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운·제스처로 바꾼 소리는 macOS 표시도 함께 뜸. 손쉬운 사용 권한 필요",
+                                "A HUD under the menu bar instead of macOS's volume and brightness display. Volume changed on AirPods or AirPods Max (crown, gestures) still shows macOS's display too. Needs Accessibility"),
                               isOn: $settings.centerSystemBanners)
                     .onChange(of: settings.centerSystemBanners) { _, on in
                         SystemBannerCenterer.shared.syncWithSettings()
