@@ -1641,7 +1641,9 @@ struct ClangNotchContentView: View {
                     }
                 }
             }
-            if settings.showSourceCodex && settings.showCodexUsage {
+            // The demo's Claude-only scenes have no Codex card at all (it read "no usage data yet").
+            if settings.showSourceCodex && settings.showCodexUsage,
+               !(DemoMode.isActive && (DemoMode.scene == .claude || DemoMode.scene == .ssh)) {
                 NotchSection {
                     if codexManager.rateLimits.hasData {
                         CodexUsageNotchSection(rateLimits: codexManager.rateLimits)

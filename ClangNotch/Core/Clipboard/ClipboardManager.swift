@@ -172,4 +172,10 @@ extension ClipboardManager {
     func demoApply(_ items: [ClipboardItem]) {
         self.items = items
     }
+
+    /// `--demo --demo-scene tools`: a made-up copy, added as a real one is (the list shows it under
+    /// the pinned ones).
+    func demoAdd(_ item: ClipboardItem) {
+        items.insert(item, at: 0)
+    }
 }

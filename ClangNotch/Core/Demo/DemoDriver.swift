@@ -1,13 +1,13 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|many|airpods|airpodslow|osd|lowbattery|tether|macbattery]`:
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|ssh|tools|many|airpods|airpodslid|airpodslow|media|osd|lowbattery|tether|macbattery]`:
 /// the notch runs on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard,
 /// volume, battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device, copied text or account balance from this Mac can end up in a video.
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, tools, many, airpods, airpodslow, osd, lowbattery, tether, macbattery }
+    enum Scene: String { case claude, codex, both, ssh, tools, many, airpods, airpodslid, airpodslow, media, osd, lowbattery, tether, macbattery }
 
     /// Every scene's clock starts this long after launch, once the startup glow (3 s and a 0.3 s
     /// fade) is gone: started at launch, the first dropdown came down inside the glow and the two
@@ -64,6 +64,12 @@ final class DemoDriver {
     private func play() async {
         if DemoMode.scene == .tools {
             applyTools()
+            // A copy in another app at 0.6 s, before the recording's cursor opens the notch: the
+            // 복사 방울 drops, and the Clipboard tab then has the copy at the top (under the pin).
+            // ClipboardManager doesn't run in a demo, so the item and the drop are sent here.
+            try? await Task.sleep(for: .milliseconds(600))
+            ClipboardManager.shared.demoAdd(ClipboardItem(text: "git push origin feat/billing-tax", copiedAt: Date()))
+            ClipboardManager.shared.copied.send()
             return
         }
         // lowbattery: an idle notch; the iPhone, ranked for the closed notch, is down to 12%, so
@@ -115,6 +121,65 @@ final class DemoDriver {
                 AirPodsDropdown.shared.demoShow(max: max)
                 max.toggle()
                 try? await Task.sleep(for: .seconds(10))
+            }
+            return
+        }
+        // airpodslid: an idle notch, 26 s a round. The case opens and AirPods Pro drop (2 s), the
+        // left bud comes out and the card splits (5 s), the lid shuts on it and the card folds
+        // (8.5 s); AirPods Max drop at 12 s and fold at 17 s. Every fold is scripted here, so
+        // this Mac's fold times don't change the recording.
+        if DemoMode.scene == .airpodslid {
+            let card = AirPodsDropdown.shared
+            card.demoKeeps = true
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                card.demoShow(max: false)
+                try? await Task.sleep(for: .seconds(3))
+                card.demoTakeBudOut()
+                try? await Task.sleep(for: .milliseconds(3500))
+                card.demoFold()
+                try? await Task.sleep(for: .milliseconds(3500))
+                card.demoShow(max: true)
+                try? await Task.sleep(for: .seconds(5))
+                card.demoFold()
+                try? await Task.sleep(for: .seconds(9))
+            }
+            return
+        }
+        // media: an idle notch, 36 s a round. A track starts (2 s): the 미디어 드롭다운 drops and
+        // folds at 7 s, leaving the 앨범 그림 and 음파 막대 in the wings. The next track starts
+        // at 13 s and its card stays down until 26 s, long enough to pin it and drag it about
+        // (the recording's cursor does that); then the wings again until the round ends.
+        if DemoMode.scene == .media {
+            let card = AirPodsDropdown.media, monitor = NowPlayingMonitor.shared
+            card.demoKeeps = true
+            func track(_ title: String, _ artist: String, hue: CGFloat, length: TimeInterval, at elapsed: TimeInterval) -> NowPlaying {
+                let art = Self.demoArtwork(hue: hue)
+                var playing = NowPlaying(title: title, artist: artist, bundleID: "com.apple.Music", appName: "Music",
+                                         isPlaying: true, artwork: art)
+                playing.accent = NowPlaying.accent(of: art)
+                playing.duration = length
+                playing.elapsed = elapsed
+                playing.elapsedAt = Date()
+                playing.rate = 1
+                return playing
+            }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                let first = track("Low Tide", "Marlow Keys", hue: 0.57, length: 214, at: 41)
+                monitor.demoApply(first)
+                card.demoShowMedia(first)
+                try? await Task.sleep(for: .seconds(5))
+                card.demoFold()
+                try? await Task.sleep(for: .seconds(6))
+                let second = track("Paper Lanterns", "June Okada", hue: 0.07, length: 187, at: 0)
+                monitor.demoApply(second)
+                card.demoShowMedia(second)
+                try? await Task.sleep(for: .seconds(13))
+                card.demoFold()
+                try? await Task.sleep(for: .seconds(8))
+                monitor.demoApply(nil)
+                try? await Task.sleep(for: .seconds(2))
             }
             return
         }
@@ -185,7 +250,7 @@ final class DemoDriver {
 
     private struct Script {
         let name: String
-        let agent: Agent
+        var agent: Agent
         let prompt: String
         let answer: String
         var start: TimeInterval
@@ -194,6 +259,12 @@ final class DemoDriver {
         var question: Question? = nil
         /// When the question is up, unless an option is picked in the notch first.
         var asks: ClosedRange<TimeInterval> = 17...25
+        /// The SSH host it runs on (an SSH 원격 세션), nil for a session on this Mac.
+        var host: String? = nil
+        /// Claude only: the cached context it starts the turn with, so a session can sit close to
+        /// its automatic compaction ("곧 압축될 수 있음"). It then grows slowly, staying in the
+        /// 87–89% of a 1M window where the note shows and the bar is still orange.
+        var nearCompaction = false
         /// The Claude app's next-step box after the turn, answerable from the notch (실험 기능).
         var nextStep: NextStep? = nil
         /// When the box is up, unless a button is picked in the notch first.
@@ -264,6 +335,7 @@ final class DemoDriver {
         case .claude:
             // The desktop session ends on the app's next-step box, picked from the notch.
             var desktop = orbit
+            desktop.nearCompaction = true
             desktop.nextStep = NextStep(
                 recap: "Invoice totals now include regional tax. All 48 billing tests pass.",
                 ask: "Open a pull request for the tax change?",
@@ -271,7 +343,20 @@ final class DemoDriver {
                           ("Not yet", "Leave it on the branch for now")])
             return [desktop, lumen]
         case .codex: return [atlas, prism]
-        case .tools, .airpods, .airpodslow, .osd, .lowbattery, .tether, .macbattery: return []
+        case .tools, .airpods, .airpodslid, .airpodslow, .media, .osd, .lowbattery, .tether, .macbattery: return []
+
+        case .ssh:
+            // One session on this Mac and one on an SSH host: the remote one shows "SSH · host"
+            // in its row, asks from 17 s (answerable in the notch), and both end on a Done card
+            // (the remote one's button is 확인).
+            var local = orbit
+            local.end = 37
+            var remote = lumen
+            remote.agent = .claude(.ssh)
+            remote.host = "build-box"
+            remote.start = 6
+            remote.end = 30
+            return [local, remote]
         case .many:
             let claudeNames = ["orbit-api", "lumen-web", "nova-docs", "pulse-ios", "relay-bot"]
             let codexNames = ["atlas-cli", "prism-app", "quill-sdk"]
@@ -291,6 +376,7 @@ final class DemoDriver {
             return claude + codex
         case .both:
             var claude = orbit
+            claude.nearCompaction = true
             claude.end = 31
             claude.question = lumen.question
             claude.asks = 17...23
@@ -336,14 +422,15 @@ final class DemoDriver {
             switch script.agent {
             case .claude(let entrypoint):
                 let session = ClaudeSession(pid: 0, workspaceFolders: [script.path], ideName: "Claude",
-                                            cwd: script.path)
+                                            cwd: script.path, remoteHost: script.host)
                 var state = ClaudeCodeState()
                 state.model = "claude-opus-5-5"
                 state.cwd = script.path
                 state.entrypoint = entrypoint
                 state.lastUpdateTime = now
                 state.tokenUsage = ClaudeTokenUsage(inputTokens: 2_400 + Int(progress * 180),
-                                                    cacheReadInputTokens: 30_000 + Int(progress * 2_600),
+                                                    cacheReadInputTokens: script.nearCompaction
+                                                        ? 868_000 + Int(progress * 150) : 30_000 + Int(progress * 2_600),
                                                     cacheCreationInputTokens: 3_100 + Int(progress * 420))
                 state.recentMessages = [ClaudeMessage(role: .user, text: script.prompt)]
                 func tool(_ index: Int, _ step: Step, _ begin: TimeInterval) -> ClaudeToolExecution {
@@ -443,6 +530,24 @@ final class DemoDriver {
             opus: nil, sonnet: nil, fable: nil))
     }
 
+    // MARK: - Artwork
+
+    /// A made-up album cover (a soft two-tone square with a sun and a horizon), so no real
+    /// artwork is in a recording. `hue` 0…1 sets its colour.
+    static func demoArtwork(hue: CGFloat) -> NSImage {
+        let side: CGFloat = 240
+        return NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            let top = NSColor(hue: hue, saturation: 0.75, brightness: 0.95, alpha: 1)
+            let bottom = NSColor(hue: (hue + 0.08).truncatingRemainder(dividingBy: 1), saturation: 0.85, brightness: 0.45, alpha: 1)
+            NSGradient(starting: bottom, ending: top)?.draw(in: rect, angle: 90)
+            NSColor(hue: (hue + 0.52).truncatingRemainder(dividingBy: 1), saturation: 0.35, brightness: 1, alpha: 0.9).setFill()
+            NSBezierPath(ovalIn: NSRect(x: side * 0.3, y: side * 0.36, width: side * 0.4, height: side * 0.4)).fill()
+            NSColor(hue: hue, saturation: 0.9, brightness: 0.3, alpha: 0.85).setFill()
+            NSBezierPath(rect: NSRect(x: 0, y: 0, width: side, height: side * 0.42)).fill()
+            return true
+        }
+    }
+
     // MARK: - Tools
 
     private func applyTools(iPhonePercent: Int = 64) {
@@ -459,6 +564,11 @@ final class DemoDriver {
         ClipboardManager.shared.demoApply([
             ClipboardItem(text: "npm run build && npm run preview", copiedAt: now.addingTimeInterval(-3 * 3600), isPinned: true),
             ClipboardItem(text: "git checkout -b feat/billing-tax", copiedAt: now.addingTimeInterval(-40)),
+            // An image and a file, under the two rows the recordings click (their place is fixed).
+            ClipboardItem(text: L("이미지 1200×800", "Image 1200×800"), copiedAt: now.addingTimeInterval(-3 * 60),
+                          kind: .image(file: URL(fileURLWithPath: "/dev/null"), type: .png, thumbnail: Self.demoArtwork(hue: 0.57))),
+            ClipboardItem(text: "invoice-2026-11.pdf", copiedAt: now.addingTimeInterval(-5 * 60),
+                          kind: .files([URL(fileURLWithPath: "/Users/demo/Documents/invoice-2026-11.pdf")])),
             ClipboardItem(text: "Invoice totals now include regional tax.", copiedAt: now.addingTimeInterval(-6 * 60)),
             ClipboardItem(text: "https://github.com/Clang-error/clangnotch", copiedAt: now.addingTimeInterval(-18 * 60)),
             ClipboardItem(text: "#FF9F0A", copiedAt: now.addingTimeInterval(-52 * 60)),

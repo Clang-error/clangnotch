@@ -381,6 +381,27 @@ final class AirPodsDropdown: ObservableObject {
         show(card)
     }
 
+    /// A scripted demo scene folds its cards itself (`demoFold`), whatever this Mac's fold times
+    /// are set to, so a recording comes out the same everywhere.
+    var demoKeeps = false
+
+    /// `--demo --demo-scene airpodslid`: the left bud leaves the open case. The card that is up
+    /// splits into that bud and the one still charging, as `caseOpened(…, drops: false)` does.
+    func demoTakeBudOut() {
+        guard var card, card.address == "demo" else { return }
+        card.leftCharging = false
+        show(card)
+    }
+
+    /// The lid shut, or the script is done with the card.
+    func demoFold() { dismiss() }
+
+    /// `--demo --demo-scene media`: the 미디어 드롭다운 for a made-up track (`showMedia` is for
+    /// the real thing and stays off in a demo).
+    func demoShowMedia(_ playing: NowPlaying) {
+        show(Card(address: "media", productID: 0, name: playing.title, level: nil, caseLevel: nil, media: playing))
+    }
+
     /// `--demo --demo-scene airpods`: a made-up card, no real device behind it.
     func demoShow(max: Bool) {
         var card = Card(address: "demo", productID: max ? 0x202D : 0x2024, name: max ? "AirPods Max" : "AirPods Pro",
@@ -563,7 +584,7 @@ final class AirPodsDropdown: ObservableObject {
     }
 
     private func scheduleHide(after seconds: TimeInterval) {
-        guard !pinned else { return }
+        guard !pinned, !demoKeeps else { return }
         hideWork?.cancel()
         hovering = false
         hideDeadline = Date().addingTimeInterval(seconds)

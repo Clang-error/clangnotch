@@ -107,6 +107,11 @@ final class NowPlayingMonitor: ObservableObject {
 
     private init() {}
 
+    /// `--demo --demo-scene media`: a made-up track for the wings; nothing real is read.
+    func demoApply(_ playing: NowPlaying?) {
+        nowPlaying = playing
+    }
+
     /// 설정 › 기능 › 지금 재생 표시.
     func sync() {
         if AppSettings.shared.enableNowPlaying { start() } else { stop() }
