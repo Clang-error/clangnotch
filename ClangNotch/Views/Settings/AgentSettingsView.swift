@@ -541,6 +541,7 @@ struct AppGeneralSettingsTab: View {
         Form {
             Section {
                 Picker(L("표시 언어", "Display language"), selection: $settings.settingsLanguage) {
+                    Text(L("시스템 언어 따름", "Follow system")).tag("system")
                     Text("한국어").tag("ko")
                     Text("English").tag("en")
                 }

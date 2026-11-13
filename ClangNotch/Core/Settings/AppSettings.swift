@@ -188,11 +188,12 @@ public final class AppSettings: ObservableObject {
     @AppStorage("claudeUsageRefreshMode") public var claudeUsageRefreshMode: String = "smart"  // "smart" or "fixed"
     @AppStorage("claudeUsageRefreshInterval") public var claudeUsageRefreshInterval: Int = 300  // seconds
 
-    /// App copy language — settings window, notch and menu bar popover: "ko" (default) or "en".
+    /// App copy language — settings window, notch and menu bar popover: "system" (default since
+    /// 2026-11-13: Korean on a Korean system, English on any other), "ko" or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.
     /// Daily check of GitHub Releases for a newer version (`UpdateChecker`).
     @AppStorage("checkForUpdates") public var checkForUpdates: Bool = true
-    @AppStorage("settingsLanguage") public var settingsLanguage: String = "ko"
+    @AppStorage("settingsLanguage") public var settingsLanguage: String = "system"
 
     public init() {}
 
@@ -208,5 +209,13 @@ public final class AppSettings: ObservableObject {
 /// App copy in the language picked under General. Reads UserDefaults directly so it also
 /// works off the main actor (status and error text built in background tasks).
 func L(_ korean: String, _ english: String) -> String {
-    UserDefaults.standard.string(forKey: "settingsLanguage") == "en" ? english : korean
+    switch UserDefaults.standard.string(forKey: "settingsLanguage") {
+    case "en": return english
+    case "ko": return korean
+    default: return systemLanguageIsKorean ? korean : english
+    }
 }
+
+/// The system's (or, under 언어 및 지역 › 응용 프로그램, this app's) first language is Korean.
+/// Read once: macOS hands an app a changed language on its next launch anyway.
+private let systemLanguageIsKorean = Locale.preferredLanguages.first?.hasPrefix("ko") ?? false

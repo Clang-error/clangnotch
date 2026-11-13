@@ -106,7 +106,7 @@ When your Mac runs low, the same card drops at 20% and again at 10%, drawn as yo
 - Menu bar icon (session count, keyboard lock, settings)
 - Settings search, and Check Now in Settings → About
 
-The app's interface is in Korean by default. Switch it to English in **Settings → General → Display language**.
+The app's interface follows your system language: Korean on a Korean system, English on any other. To pick one yourself, use **Settings → General → Display language**.
 
 ## Permissions
 
