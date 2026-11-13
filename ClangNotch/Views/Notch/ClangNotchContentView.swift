@@ -96,8 +96,6 @@ struct ClangNotchContentView: View {
     @State private var glowSettleTask: Task<Void, Never>?
     /// Whether the current resize started from the closed notch.
     @State private var glowExpandsFromClosed = false
-    /// Fades the surface out as a collapse lands on an idle notch.
-    @State private var idleLandingOpacity: Double = 1
 
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
     private var sizeAnimation: Animation {
@@ -484,7 +482,9 @@ struct ClangNotchContentView: View {
                     // final size, ahead of the still-resizing surface; fade it in after.
                     .opacity(isGlowSettled || tetherGlowGrowsWithSurface ? 1 : 0)
             }
-            .opacity(idleLandingOpacity)
+            .modifier(IdleLandingFade(height: notchSurfaceSize.height,
+                                      closedHeight: notchVM.closedNotchSize.height,
+                                      isLanding: notchVM.isSettlingClosed && !baseNotchActive))
             .onChange(of: notchVM.notchState) { oldState, newState in
                 // Dropdown <-> open panel keeps the same outline-tracing glow, which resizes
                 // with the surface; hiding it there only blinked it out for half a second.
@@ -598,18 +598,8 @@ struct ClangNotchContentView: View {
                     // A collapse from the panel lands on the notch and clears there instead.
                     if wasActive && !isActive && !notchVM.isSettlingClosed {
                         triggerClosedJellyDismiss()
-                    } else if wasActive && !isActive {
-                        // The closed surface is a little larger than the camera housing, so
-                        // a collapse that lands on an idle notch left a black rim there until
-                        // the surface cleared. Fade it out with the collapse, done before it lands.
-                        withAnimation(.easeOut(duration: notchVM.closeDuration * 0.7)) {
-                            idleLandingOpacity = 0
-                        }
                     } else if isActive {
                         cancelClosedJellyDismiss()
-                        var transaction = Transaction(animation: nil)
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { idleLandingOpacity = 1 }
                     }
                 }
                 .onChange(of: notchVM.isSettlingClosed) { _, settling in
@@ -620,7 +610,6 @@ struct ClangNotchContentView: View {
                     var transaction = Transaction(animation: nil)
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
-                        idleLandingOpacity = 1
                         if !baseNotchActive, notchVM.notchState == .closed {
                             notchVM.resetClosedPresentationAfterDismiss()
                         }
