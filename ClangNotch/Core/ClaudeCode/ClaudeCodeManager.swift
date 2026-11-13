@@ -117,6 +117,11 @@ final class ClaudeCodeManager: ObservableObject {
     private var registryDirWatcher: DispatchSourceFileSystemObject?
     private var lastWatcherScan = Date.distantPast
     private var watcherScanPending = false
+    /// A process started or a transcript appeared: scan on the short tick until then. A new
+    /// session's file is created empty and gets its prompt a moment later, and the quiet 15 s
+    /// tick let a short first turn end before it was seen (user, 2026-11-13).
+    private var fastScanUntil = Date.distantPast
+    private static let fastScanWindow: TimeInterval = 60
     /// The scan's tick: 3 s while something works, 15 s when all is quiet (2026-11-12: the 3 s
     /// scan of every project folder was the largest steady cost when nothing ran).
     private static let busyScanInterval: TimeInterval = 3
@@ -301,7 +306,11 @@ final class ClaudeCodeManager: ObservableObject {
                             if modified <= ended { continue }
                             continuedTranscripts[jsonlFile.path] = nil
                         }
+                        // A file created moments ago may have no dated line yet: watch it from the
+                        // start, so the first prompt is read live.
+                        let born = (try? jsonlFile.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
                         guard (modified > recentThreshold && lastEntryDate(of: jsonlFile, modified: modified) > recentThreshold)
+                                || born > Date().addingTimeInterval(-60)
                                 || sessionStates[session.id].map({ $0.isActive || $0.needsPermission || $0.isAwaitingInput }) == true
                         else { continue }
 
@@ -569,7 +578,7 @@ final class ClaudeCodeManager: ObservableObject {
 
     private func scheduleNextScan() {
         sessionScanTimer?.invalidate()
-        let interval = hasAnySessionActivity ? Self.busyScanInterval : Self.quietScanInterval
+        let interval = hasAnySessionActivity || Date() < fastScanUntil ? Self.busyScanInterval : Self.quietScanInterval
         sessionScanTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.sessionScanTimer != nil else { return }
@@ -604,6 +613,7 @@ final class ClaudeCodeManager: ObservableObject {
             self.watcherScanPending = false
             guard self.sessionScanTimer != nil else { return }
             self.lastWatcherScan = Date()
+            self.fastScanUntil = Date().addingTimeInterval(Self.fastScanWindow)
             self.scanForSessions()
             // Something started: back to the short tick at once.
             self.scheduleNextScan()
@@ -628,8 +638,11 @@ final class ClaudeCodeManager: ObservableObject {
         )
         source.setEventHandler { [weak self] in
             guard let self else { return }
+            // A new project folder: its first transcript is on the way.
+            self.fastScanUntil = Date().addingTimeInterval(Self.fastScanWindow)
             self.scanForSessions()
             self.refreshProjectDirWatchers()
+            if self.sessionScanTimer != nil { self.scheduleNextScan() }
         }
         source.setCancelHandler { close(fd) }
         source.resume()
@@ -659,7 +672,11 @@ final class ClaudeCodeManager: ObservableObject {
                 queue: .main
             )
             source.setEventHandler { [weak self] in
-                self?.scanForSessions()
+                guard let self else { return }
+                // A file appeared (maybe still empty): keep looking closely for a while.
+                self.fastScanUntil = Date().addingTimeInterval(Self.fastScanWindow)
+                self.scanForSessions()
+                if self.sessionScanTimer != nil { self.scheduleNextScan() }
             }
             source.setCancelHandler { close(fd) }
             source.resume()
@@ -2065,9 +2082,13 @@ final class ClaudeCodeManager: ObservableObject {
         let dir = projectsDir.appendingPathComponent(key)
         guard let file = session.terminalSessionId.map({ dir.appendingPathComponent("\($0).jsonl") })
                 ?? findActiveSessionFiles(in: dir).first,
-              let mod = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+              let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey]),
+              let mod = values.contentModificationDate
         else { return .distantPast }
-        return lastEntryDate(of: file, modified: mod)
+        let entry = lastEntryDate(of: file, modified: mod)
+        // Created a moment ago and not dated yet: as new as its creation.
+        if entry == .distantPast, let born = values.creationDate, born > Date().addingTimeInterval(-60) { return born }
+        return entry
     }
 
     /// When the transcript last had a real event: the newest line with a `timestamp`.
