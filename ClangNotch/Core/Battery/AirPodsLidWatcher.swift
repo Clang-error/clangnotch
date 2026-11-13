@@ -67,6 +67,8 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         var rightIn = false
         /// The last frame that said the lid is open.
         var openSeenAt: Date?
+        /// Most buds in the ears since the lid last moved or a bud left or went back into the case.
+        var wornPeak = 0
     }
     private var sightings: [UUID: Sighting] = [:]
 
@@ -241,10 +243,16 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // in an ear, else taken to be in the case.
         let thisOut = caseOutOfReach ? true : flags & 0x2 == 0
         let otherOut = caseOutOfReach ? b[7] & 0x08 != 0 : flags & 0x1 == 0
-        let leftOut = leftSpeaking ? thisOut : otherOut
-        let rightOut = leftSpeaking ? otherOut : thisOut
         let leftTenths = leftSpeaking ? Int(b[8] >> 4) : Int(b[8] & 0x0F)
         let rightTenths = leftSpeaking ? Int(b[8] & 0x0F) : Int(b[8] >> 4)
+        // With the case out of reach a bud left in it can't be heard: its level reads F. 0x20 still
+        // orders the levels then, but doesn't say which bud sends: the worn left bud sent 22 F8
+        // with the right bud in the shut case, its 8 matching the left's 82 % (2026-11-14; the
+        // 2026-11-12 trace read the same way), and the card showed the right bud with no level.
+        // So a lone F names the bud in the case.
+        let unheard = caseOutOfReach && (leftTenths == 0xF) != (rightTenths == 0xF)
+        let leftOut = unheard ? leftTenths != 0xF : leftSpeaking ? thisOut : otherOut
+        let rightOut = unheard ? rightTenths != 0xF : leftSpeaking ? otherOut : thisOut
         let now = Date()
         let before = sightings[id]
         // A frame after 10 s of silence is a fresh opening even if the closing frames were missed.
@@ -277,8 +285,14 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // they're worn now; only later frames can show a bud going in.
         let wasInEar = silent ? inEarCount : before?.inEar ?? 0
         let moved = !silent && before?.out != outNow
+        // Only more buds in the ears than at any time since the lid last moved, or since a bud left
+        // or went back into the case, count as one going in. A bud taken out of an ear and put back
+        // is the bud that was worn: with the lid shut it dropped the card each time (user,
+        // 2026-11-14). Out of the case and into an ear with the lid shut still drops it (acbf41c).
+        let wornBefore = silent || moved || lidShut != wasShut ? wasInEar : before?.wornPeak ?? wasInEar
         remember(id, Sighting(address: address, at: now, lidShut: lidShut, inEar: inEarCount, out: outNow,
-                              leftIn: !leftOut, rightIn: !rightOut, openSeenAt: openSeenAt))
+                              leftIn: !leftOut, rightIn: !rightOut, openSeenAt: openSeenAt,
+                              wornPeak: max(wornBefore, inEarCount)))
 
         trace(b, id: id, leftSpeaking: leftSpeaking, out: outNow, inEar: inEarCount, lidShut: lidShut)
         let closing = lidShut && !wasShut
@@ -287,7 +301,7 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // silence only a frame that carries the lid says it is open: worn, the scan had stopped,
         // and a lid opened minutes later on one bud in an ear dropped nothing (2026-11-12).
         let lidOpened = !lidShut && wasShut && (inEarCount == 0 || !silent || carriesLid)
-        let signal = !closing && (inEarCount > wasInEar || lidOpened)
+        let signal = !closing && (inEarCount > wornBefore || lidOpened)
         if signal { opened(id, address, at: now) }
         // The second bud going in drops nothing: the card that's up folds soon (`setBothWorn`).
         let opening = signal && inEarCount < 2
@@ -303,11 +317,11 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
             AirPodsDropdown.shared.caseClosed(address: address)
             return
         }
-        // A bud back in the case, or the last one out of an ear: the card that's up follows,
-        // and nothing drops for it.
-        let fewer = !silent && inEarCount < wasInEar
+        // A bud back in the case, or the last one out of an ear, or a worn bud put back: the card
+        // that's up follows, and nothing drops for it.
+        let earsChanged = !silent && inEarCount != wasInEar
         // A bud leaving or going back into the case changes what's charging: the card follows.
-        guard opening || fewer || moved else { return }
+        guard opening || earsChanged || moved else { return }
         // One bud in shows that bud; both, or neither, the pair.
         let side = inEarCount == 1 ? (leftOut ? "L" : "R") : nil
         let level = side == nil ? min(left, right) : side == "L" ? leftTenths : rightTenths
