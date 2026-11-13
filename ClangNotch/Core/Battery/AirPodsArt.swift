@@ -84,7 +84,7 @@ enum AirPodsArt {
         switch productID {
         case 0x2024:         ids = [0x2024, 0x2014]   // Pro 2 USB-C → Lightning's
         case 0x201B:         ids = [0x201B, 0x2019]   // AirPods 4 ANC → AirPods 4's
-        case 0x202D, 0x200D: ids = [Int(productID), 0x201F, 0x200A]   // Max USB-C → Max's
+        case 0x202D, 0x200D: ids = [Int(productID), 0x201F, 0x200A]   // Max (2026) → the USB-C and first Max's
         default:             ids = [Int(productID)]
         }
         let suffix = isCase ? "-Case" : ""
