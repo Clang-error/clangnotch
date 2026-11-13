@@ -1271,7 +1271,7 @@ struct ClangNotchContentView: View {
                                   color: nowPlayingMonitor.nowPlaying?.accent)
                         .frame(width: MediaWaveform.Style.mini.width, height: MediaWaveform.Style.mini.height)
                         .padding(.trailing, lowBattery == nil ? 8 : 6)
-                        .transition(.opacity)
+                        .transition(.opacity.combined(with: .scale(scale: 0.5, anchor: .trailing)))
                 }
                 if let lowBattery {
                     ClosedLowBatteryBadge(device: lowBattery)
@@ -1303,6 +1303,11 @@ struct ClangNotchContentView: View {
             // the wings keep their width.
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.72),
                        value: isSimultaneousClaudeCodex)
+            // The bars coming and going often leave the width as it is (the wings match the
+            // wider side, the tool name while an agent works), and only a width change was
+            // animated: music stopping dropped them in one frame (user, 2026-11-13).
+            .animation(.easeOut(duration: 0.28), value: showsMediaMini)
+            .animation(.easeOut(duration: 0.28), value: showsMediaWings)
         }
     }
 
