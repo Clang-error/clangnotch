@@ -87,6 +87,25 @@ struct NowPlayingChecks {
                      "another track doesn't inherit the picture")
         var fresh = track("Next song"); fresh.artwork = NSImage(size: NSSize(width: 2, height: 2))
         precondition(fresh.keepingArtwork(of: withArt).artwork === fresh.artwork, "its own artwork wins")
-        print("PASS: now playing card policy (seed, once per track, 20 s gap, app in front, alternating sources, artwork per track)")
+
+        // A track that comes back after another one arrives without its artwork: the picture it
+        // had last time, the same image, with its colour.
+        var store = NowPlayingArtworkStore()
+        withArt.accent = .systemPurple
+        precondition(store.filling(withArt).artwork === picture, "a reading with artwork passes through")
+        precondition(store.filling(track("Next song")).artwork == nil, "a track never seen with a picture has none")
+        let back = store.filling(track("Song", playing: false))
+        precondition(back.artwork === picture && back.accent == NSColor.systemPurple, "the track comes back with its picture")
+        precondition(store.filling(track("Song", app: "com.apple.Safari")).artwork == nil, "the same title in another app is another track")
+        var newer = track("Song"); newer.artwork = NSImage(size: NSSize(width: 3, height: 3))
+        _ = store.filling(newer)
+        precondition(store.filling(track("Song")).artwork === newer.artwork, "the newest picture replaces the one kept")
+        for index in 0..<NowPlayingArtworkStore.limit {
+            var other = track("Track \(index)"); other.artwork = NSImage(size: NSSize(width: 1, height: 1))
+            _ = store.filling(other)
+        }
+        precondition(store.filling(track("Song")).artwork == nil, "only the last \(NowPlayingArtworkStore.limit) tracks are kept")
+        precondition(store.filling(track("Track 0")).artwork != nil, "the oldest of those is still there")
+        print("PASS: now playing card policy (seed, once per track, 20 s gap, app in front, alternating sources, artwork per track and for a track that comes back)")
     }
 }

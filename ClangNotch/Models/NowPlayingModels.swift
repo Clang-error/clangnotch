@@ -83,6 +83,35 @@ extension NowPlaying {
     }
 }
 
+/// The artwork of the tracks that played lately. A track that takes Now Playing back from
+/// another one can be read with its title and no artwork at all, and none follows while it
+/// plays: it showed Safari's icon (user, 2026-11-14; read that day from a Safari tab, 7 s of
+/// playing without one, the picture back only with the next track change).
+struct NowPlayingArtworkStore {
+    static let limit = 20
+    /// Newest first.
+    private var kept: [(key: String, artwork: NSImage, accent: NSColor?)] = []
+
+    /// Remembers the picture `playing` has; without one, `playing` with the picture this track
+    /// had last time (the same image: a reading that only repeats is no change).
+    mutating func filling(_ playing: NowPlaying) -> NowPlaying {
+        let key = playing.key
+        if let artwork = playing.artwork {
+            if kept.first?.key != key || kept.first?.artwork !== artwork {
+                kept.removeAll { $0.key == key }
+                kept.insert((key, artwork, playing.accent), at: 0)
+                if kept.count > Self.limit { kept.removeLast() }
+            }
+            return playing
+        }
+        guard let known = kept.first(where: { $0.key == key }) else { return playing }
+        var copy = playing
+        copy.artwork = known.artwork
+        copy.accent = known.accent
+        return copy
+    }
+}
+
 /// When the 미디어 드롭다운 comes down. The first try at showing what plays was dropped because
 /// its card kept coming down: with sound from several places the Now Playing app keeps changing
 /// hands, and every change dropped a card. So when what plays moves to another app, the card

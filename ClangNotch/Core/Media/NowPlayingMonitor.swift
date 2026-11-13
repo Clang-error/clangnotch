@@ -89,6 +89,7 @@ final class NowPlayingMonitor: ObservableObject {
     private var quickExits = 0
     private var retryWork: DispatchWorkItem?
     private var policy = NowPlayingCardPolicy()
+    private var artworkStore = NowPlayingArtworkStore()
     private var dropWork: DispatchWorkItem?
 
     private var commands: FileHandle?
@@ -221,7 +222,7 @@ final class NowPlayingMonitor: ObservableObject {
             new.artwork = image
             new.accent = NowPlaying.accent(of: image)
         }
-        new = new.keepingArtwork(of: old)
+        new = artworkStore.filling(new.keepingArtwork(of: old))
         guard new != old else { return }
         let change = policy.change(from: old, to: new)
         if case .started(let key) = change, AppSettings.shared.enableNowPlayingDropdown,
