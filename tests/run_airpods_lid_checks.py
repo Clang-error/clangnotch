@@ -37,6 +37,9 @@ final class AirPodsDropdown {
     var told: [Told] = []
     var folds = 0
     var at = 0.0
+    /// A card dropped by the connection alone is up, still drawn as the pair.
+    var awaits = false
+    func awaitsFrame(address: String) -> Bool { awaits }
     func keepAlive(address: String) {}
     func setBothWorn(_ worn: Bool, address: String) {}
     func caseClosed(address: String) { folds += 1 }
@@ -115,7 +118,18 @@ let drops = designed.filter(\\.drops)
 precondition(drops.count == 2 && drops[0].at == 0, "Drops for the lid opening and the bud going in: \\(designed)")
 precondition(drops[1].side == "L" && drops[1].level == 80, "The bud that went in is the left one at 80 %: \\(drops[1])")
 
-print("PASS: a worn bud put back with the lid shut drops nothing; a bud from the case into an ear with the lid shut drops, as the left bud")
+// Worn with the iPhone and walked up to the Mac (2026-11-14 05:57): the Mac connected, which
+// dropped the card as the pair. The worn right bud's first frame after the silence (its 20 %
+// was system_profiler's right 23 %, the left bud in the shut case unheard) names it for that card.
+let walkedUp = frame("02 F2 8F 11")
+AirPodsDropdown.shared.awaits = true
+let named = replay([(walkedUp, 1)])
+precondition(named.count == 1 && !named[0].drops && named[0].side == "R" && named[0].level == 20,
+             "The card the connection dropped hears which bud is worn: \\(named)")
+AirPodsDropdown.shared.awaits = false
+precondition(replay([(walkedUp, 2)]).isEmpty, "With no such card up the same frames say nothing")
+
+print("PASS: a worn bud put back with the lid shut drops nothing; a bud from the case into an ear with the lid shut drops, as the left bud; a card dropped by the connection hears which bud is worn")
 """
 
 with tempfile.TemporaryDirectory(prefix="clangnotch-airpods-lid-checks-") as folder:

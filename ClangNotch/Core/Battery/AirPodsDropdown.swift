@@ -49,6 +49,9 @@ final class AirPodsDropdown: ObservableObject {
 
         /// A low battery card: buds 10 points or more apart split too, so it shows which one is low.
         var splitsOnLevels = false
+        /// Dropped by the connection alone (`deviceConnected`), drawn as the pair from the Mac's
+        /// levels: no frame has said yet how it is worn.
+        var awaitsFrame = false
 
         /// One bud charging in the case and the other out: the card shows each bud with its own
         /// battery instead of the pair.
@@ -252,8 +255,13 @@ final class AirPodsDropdown: ObservableObject {
         // Missed by the scan: drop it now with the levels last known, and fill in fresh ones below.
         _ = AirPodsArt.device(for: productID, color: knownColors[address])
         _ = AirPodsArt.chargingCase
-        show(Self.card(address: address, productID: productID,
-                       device: BatteryManager.shared.devices.first { $0.id == address }))
+        frameSaid = nil
+        func card(_ device: BatteryDevice?) -> Card {
+            var card = Self.card(address: address, productID: productID, device: device)
+            card.awaitsFrame = true
+            return card
+        }
+        show(card(BatteryManager.shared.devices.first { $0.id == address }))
         waitTask?.cancel()
         waitTask = Task { @MainActor in
             var device: BatteryDevice?
@@ -264,9 +272,21 @@ final class AirPodsDropdown: ObservableObject {
                 if device != nil { break }
             }
             guard let device else { return }
-            refresh(Self.card(address: address, productID: productID, device: device))
+            // What a frame said meanwhile (which bud is worn, what charges) stays, drawn again
+            // with the fresh levels.
+            if let said = frameSaid, said.address == address { said.again() } else { refresh(card(device)) }
         }
     }
+
+    /// The card that is up for these AirPods came from the connection alone and no frame has
+    /// spoken for it: `AirPodsLidWatcher` hands the pair's next frame over, whatever it says.
+    func awaitsFrame(address: String) -> Bool {
+        card?.address == address && card?.awaitsFrame == true && (phase == .settled || isDropping)
+    }
+
+    /// The last frame handed over since a connection dropped a card, for drawing it again when
+    /// the Mac's fresh levels come.
+    private var frameSaid: (address: String, again: () -> Void)?
 
     /// Another Bluetooth headset connected (B&W Px8 …): the same card with a headphones symbol and
     /// the one level macOS has for it, under its address from IOBluetooth or under its name from
@@ -332,6 +352,10 @@ final class AirPodsDropdown: ObservableObject {
             // unseen: a fresh opening starts with the buds in the case.
             if bothWorn == address { bothWorn = nil }
         }
+        frameSaid = (address, { [weak self] in
+            self?.caseOpened(address: address, productID: productID, level: level, caseLevel: caseLevel, side: side,
+                             sides: sides, charging: charging, drops: false)
+        })
         _ = AirPodsArt.device(for: productID, color: knownColors[address])
         _ = AirPodsArt.chargingCase
         let device = BatteryManager.shared.devices.first { $0.id == address }

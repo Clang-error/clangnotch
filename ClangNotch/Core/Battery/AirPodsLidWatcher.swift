@@ -321,7 +321,12 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // that's up follows, and nothing drops for it.
         let earsChanged = !silent && inEarCount != wasInEar
         // A bud leaving or going back into the case changes what's charging: the card follows.
-        guard opening || earsChanged || moved else { return }
+        // A card the connection alone dropped (worn with the iPhone and walked up to the Mac: no
+        // opening to see) was drawn as the pair; this frame says how it is worn (user,
+        // 2026-11-14: one bud in an ear, and the card showed the pair turning).
+        let awaited = AirPodsDropdown.shared.awaitsFrame(address: address)
+        guard opening || earsChanged || moved || awaited else { return }
+        if awaited { traceNote("→ the connection's card follows") }
         // One bud in shows that bud; both, or neither, the pair.
         let side = inEarCount == 1 ? (leftOut ? "L" : "R") : nil
         let level = side == nil ? min(left, right) : side == "L" ? leftTenths : rightTenths
