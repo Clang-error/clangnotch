@@ -2478,11 +2478,10 @@ struct ClangNotchContentView: View {
             return
         }
 
+        snapClosedJellyScale(x: 0.55, y: 0.78)
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            closedJellyScaleX = 0.55
-            closedJellyScaleY = 0.78
             closedJellyContentOpacity = 0
         }
 
@@ -2511,10 +2510,20 @@ struct ClangNotchContentView: View {
         }
     }
 
+    /// Puts the jelly scale somewhere at once. A write without an animation leaves the rest of a
+    /// running one on top of the new value: the dismiss's 1 → 0.04, cut short by a Done, drew the
+    /// closed notch at 1.93× and eased it down over the dismiss's remaining third of a second
+    /// (seen in a screen recording, 2026-11-14). A zero-length animation replaces the running one.
+    private func snapClosedJellyScale(x: CGFloat, y: CGFloat) {
+        withAnimation(.linear(duration: 0)) {
+            closedJellyScaleX = x
+            closedJellyScaleY = y
+        }
+    }
+
     private func resetClosedJellyReveal() {
         closedJellyTask?.cancel()
-        closedJellyScaleX = 1
-        closedJellyScaleY = 1
+        snapClosedJellyScale(x: 1, y: 1)
         closedJellyContentOpacity = 1
         showClosedJellyRipple = false
     }
@@ -2560,12 +2569,11 @@ struct ClangNotchContentView: View {
 
         closedJellyDismissTask?.cancel()
         closedJellyDismissTask = nil
+        snapClosedJellyScale(x: 1, y: 1)
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             showClosedJellyDismiss = false
-            closedJellyScaleX = 1
-            closedJellyScaleY = 1
             closedJellyContentOpacity = 1
         }
     }
