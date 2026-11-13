@@ -7,6 +7,8 @@ public final class UICoordinator: ObservableObject {
     public static let shared = UICoordinator()
 
     @Published private(set) var isVisible: Bool = true
+    /// The closed wing under the cursor, which steps aside (`WingFade`) and lets clicks through.
+    @Published private(set) var hoveredWing: NotchWing?
 
     private var notchPanel: NotchPanel?
     private var menuBarController: MenuBarController?
@@ -22,6 +24,9 @@ public final class UICoordinator: ObservableObject {
     private var mouseTimer: Timer?
     private var mouseMonitors: [Any] = []
     private(set) var cursorOverNotch = false
+    /// The physical notch's width while the closed notch shows wings, or nil. Only that middle
+    /// part opens the notch; the wings beyond it step aside for the menu bar underneath.
+    private var wingsBeyond: CGFloat?
 
     /// The notch window covers a large transparent area. A window only lets clicks fall
     /// through to apps below when `ignoresMouseEvents == true` (returning nil from
@@ -64,15 +69,20 @@ public final class UICoordinator: ObservableObject {
         let mouse = NSEvent.mouseLocation
         // Every mouse move anywhere on screen comes here: outside the notch's box, done
         // without building its shape (that path was most of this function's cost).
-        let over: Bool
+        var over = false
+        var wing: NotchWing?
         if region.contains(mouse) {
             let localPoint = CGPoint(x: mouse.x - region.minX, y: max(0.001, f.maxY - mouse.y))
             let insideShape = panel.notchInteractiveShape?.path(in: CGRect(origin: .zero, size: panel.notchInteractiveSize))
                 .contains(localPoint) ?? true
-            over = insideShape && !MissionControlDetector.isActive()
-        } else {
-            over = false
+            if insideShape, let notchWidth = wingsBeyond, abs(mouse.x - region.midX) > notchWidth / 2 {
+                // On a closed wing: it steps aside, and clicks go to the menu bar under it.
+                wing = mouse.x < region.midX ? .left : .right
+            } else {
+                over = insideShape && !MissionControlDetector.isActive()
+            }
         }
+        if wing != hoveredWing { hoveredWing = wing }
 
         panel.ignoresMouseEvents = !over
         if over != cursorOverNotch {
@@ -210,9 +220,12 @@ public final class UICoordinator: ObservableObject {
 
     /// Update the click-through region: only the visible notch accepts clicks,
     /// the rest of the (large, transparent) window passes through.
-    func setInteractiveSize(_ size: CGSize, shape: NotchShape? = nil) {
+    /// `wingsBeyond`: the physical notch's width when the closed notch shows wings.
+    func setInteractiveSize(_ size: CGSize, shape: NotchShape? = nil, wingsBeyond: CGFloat? = nil) {
         notchPanel?.notchInteractiveSize = size
         notchPanel?.notchInteractiveShape = shape
+        self.wingsBeyond = wingsBeyond
+        if wingsBeyond == nil, hoveredWing != nil { hoveredWing = nil }
     }
 
     public func show() {
@@ -224,10 +237,13 @@ public final class UICoordinator: ObservableObject {
 
     public func hide() {
         isVisible = false
+        hoveredWing = nil
         notchPanel?.alphaValue = 0
         notchPanel?.ignoresMouseEvents = true
     }
 }
+
+enum NotchWing { case left, right }
 
 extension Notification.Name {
     static let notchCursorEntered = Notification.Name("notchCursorEntered")

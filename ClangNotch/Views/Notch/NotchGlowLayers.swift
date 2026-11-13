@@ -17,6 +17,8 @@ struct NotchGlowLayers: NSViewRepresentable, Animatable {
     let paused: Bool
     /// 0 lets the display decide; battery saver caps it at 30.
     let maxFrameRate: Float
+    /// A closed wing stepping aside fades the glow on its side with it.
+    let wingFade: WingFade?
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
         get { AnimatablePair(topCornerRadius, bottomCornerRadius) }
@@ -30,7 +32,7 @@ struct NotchGlowLayers: NSViewRepresentable, Animatable {
             topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
             glow: glowColor.srgb, bright: brightColor.srgb,
             secondaryGlow: secondaryGlowColor?.srgb, secondaryBright: secondaryBrightColor?.srgb,
-            tracesOutline: tracesOutline, paused: paused, maxFrameRate: maxFrameRate))
+            tracesOutline: tracesOutline, paused: paused, maxFrameRate: maxFrameRate, wingFade: wingFade))
     }
 }
 
@@ -45,6 +47,7 @@ final class NotchGlowLayerView: NSView {
         var tracesOutline: Bool
         var paused: Bool
         var maxFrameRate: Float
+        var wingFade: WingFade?
     }
 
     /// Seconds for the closed band to cross the notch once.
@@ -73,6 +76,12 @@ final class NotchGlowLayerView: NSView {
     private let band = CAGradientLayer()
     private let bandMask = CAShapeLayer()
     private var traceLayers: [CAShapeLayer] = []
+    /// Holds the halos so a wing stepping aside can fade them, their spread included. The mask
+    /// is on only while a wing is faded: on the always-moving glow it costs a pass per frame.
+    private let fadeContainer = CALayer()
+    private let wingMask = CAGradientLayer()
+    /// Wider than the view so the halos' spread past its edges fades too, not cut off.
+    private static let wingMaskMargin: CGFloat = 40
 
     init() {
         super.init(frame: .zero)
@@ -86,7 +95,10 @@ final class NotchGlowLayerView: NSView {
             halo.shadowOpacity = 1
             inner = halo
         }
-        layer?.addSublayer(inner)
+        fadeContainer.addSublayer(inner)
+        layer?.addSublayer(fadeContainer)
+        wingMask.startPoint = CGPoint(x: 0, y: 0.5)
+        wingMask.endPoint = CGPoint(x: 1, y: 0.5)
         band.startPoint = CGPoint(x: 0, y: 0.5)
         band.endPoint = CGPoint(x: 1, y: 0.5)
         band.locations = [0, 0.2, 0.4, 0.5, 0.6, 0.8, 1]
@@ -109,6 +121,14 @@ final class NotchGlowLayerView: NSView {
 
     func configure(_ new: Config) {
         guard new != config else { return }
+        var sameButFade = new
+        sameButFade.wingFade = config?.wingFade
+        if sameButFade == config {
+            // Only a wing stepping aside or back: fade, without restarting the glow.
+            config = new
+            applyWingFade(animated: true)
+            return
+        }
         let rebuild = new.tracesOutline != config?.tracesOutline
         config = new
         update(rebuild: rebuild)
@@ -142,6 +162,7 @@ final class NotchGlowLayerView: NSView {
         }
 
         let bounds = self.bounds
+        fadeContainer.frame = bounds
         for halo in haloLayers { halo.frame = bounds }
         content.frame = bounds
         let path = NotchShape(topCornerRadius: config.topCornerRadius,
@@ -159,6 +180,44 @@ final class NotchGlowLayerView: NSView {
             band.bounds = CGRect(x: 0, y: 0, width: bounds.width * Self.bandWidth, height: bounds.height + 6)
         }
         startAnimations(config)
+        applyWingFade(animated: false)
+    }
+
+    private func applyWingFade(animated: Bool) {
+        let fade = config?.wingFade
+        let solid = fade?.isSolid ?? true
+        guard !solid || fadeContainer.mask != nil else { return }
+        let frame = bounds.insetBy(dx: -Self.wingMaskMargin, dy: -Self.wingMaskMargin)
+        let stops = (fade ?? WingFade(notchWidth: 0)).stops(width: frame.width)
+        let locations = stops.map { NSNumber(value: Double($0.location)) }
+        if fadeContainer.mask == nil {
+            // Put it on solid, so stepping aside animates from there.
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            wingMask.frame = frame
+            wingMask.locations = locations
+            wingMask.colors = stops.map { _ in NSColor.white.cgColor }
+            fadeContainer.mask = wingMask
+            CATransaction.commit()
+        }
+        CATransaction.begin()
+        if animated {
+            CATransaction.setAnimationDuration(0.2)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        } else {
+            CATransaction.setDisableActions(true)
+        }
+        if solid {
+            // Back to solid: take the mask off once the fade back has finished.
+            CATransaction.setCompletionBlock { [weak self] in
+                guard let self, self.config?.wingFade?.isSolid ?? true else { return }
+                self.fadeContainer.mask = nil
+            }
+        }
+        wingMask.frame = frame
+        wingMask.locations = locations
+        wingMask.colors = stops.map { NSColor(white: 1, alpha: $0.opacity).cgColor }
+        CATransaction.commit()
     }
 
     // MARK: - Animation

@@ -47,6 +47,8 @@ struct ClangNotchContentView: View {
     @StateObject private var tetherMonitor = TetherPlaceMonitor.shared
     @StateObject private var nowPlayingMonitor = NowPlayingMonitor.shared
     @StateObject private var speedTest = SpeedTestManager.shared
+    /// Which closed wing the cursor rests on (`wingFade`).
+    @ObservedObject private var ui = UICoordinator.shared
     @State private var expandedMode: NotchMode = .ai
     @State private var hoverTask: Task<Void, Never>?
     @State private var hoverExitNotBefore = Date.distantPast
@@ -288,14 +290,15 @@ struct ClangNotchContentView: View {
         ZStack {
             if showStartupGlow && notchVM.notchState == .closed {
                 NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
-                                glowColor: startupGlowColor, brightColor: startupBrightColor)
+                                glowColor: startupGlowColor, brightColor: startupBrightColor, wingFade: wingFade)
             } else if tetherMonitor.activePlaceName != nil {
                 // Tethering at a saved place: the glow sweeps red, agents working or not.
                 // Opening from closed, it keeps the closed sweep until the surface settles.
                 NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
                                 glowColor: errorGlowColor, brightColor: errorBrightColor,
                                 tracesOutline: notchVM.notchState != .closed
-                                    && (isGlowSettled || !glowExpandsFromClosed))
+                                    && (isGlowSettled || !glowExpandsFromClosed),
+                                wingFade: wingFade)
             } else if shouldShowActivityGlow {
                 let showBothSources = hasSimultaneousClaudeCodexActivity
                     && !((showQuestionNotice || showPermissionNotice) && notchVM.notchState == .peeking)
@@ -304,7 +307,8 @@ struct ClangNotchContentView: View {
                                 brightColor: showBothSources ? codexBrightColor : currentBrightColor,
                                 secondaryGlowColor: showBothSources ? claudeGlowColor : nil,
                                 secondaryBrightColor: showBothSources ? claudeBrightColor : nil,
-                                tracesOutline: notchVM.notchState != .closed)
+                                tracesOutline: notchVM.notchState != .closed,
+                                wingFade: wingFade)
             }
 
             if showClosedJellyRipple && notchVM.notchState == .closed {
@@ -317,6 +321,8 @@ struct ClangNotchContentView: View {
                         ? Color(nsColor: nowPlayingMonitor.nowPlaying?.accent ?? .white)
                         : currentBrightColor
                 )
+                // Past its edges too, where the ripple spreads.
+                .mask { WingFadeMask(fade: wingFade).animation(WingFade.animation, value: wingFade).padding(-24) }
             }
 
             if notchVM.notchState == .closed && !closedDisplayedLabel.isEmpty {
@@ -327,6 +333,7 @@ struct ClangNotchContentView: View {
                     glowColor: hasSimultaneousClaudeCodexActivity ? codexBrightColor : currentBrightColor,
                     secondaryGlowColor: hasSimultaneousClaudeCodexActivity ? claudeBrightColor : nil
                 )
+                .mask { WingFadeMask(fade: wingFade).animation(WingFade.animation, value: wingFade).padding(-24) }
             }
         }
     }
@@ -393,11 +400,6 @@ struct ClangNotchContentView: View {
         guard notchVM.notchState == .closed,
               notchVM.notchSize.width <= notchVM.closedNotchSize.width + 0.5 else { return notchSurfaceSize.width }
         return notchVM.closedNotchSize.width + topCornerRadius * 2
-    }
-
-    private var notchSurfaceShape: some View {
-        NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius)
-            .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
     }
 
     private var notchVisual: some View {
@@ -467,7 +469,14 @@ struct ClangNotchContentView: View {
                 }
                 .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
             }
-            .mask(alignment: .top) { notchSurfaceShape }
+            .mask(alignment: .top) {
+                // The animation sits on the mask alone: on the whole notch it would also take over
+                // a dropdown coming down while the cursor rests on a wing.
+                WingFadeMask(fade: wingFade)
+                    .animation(WingFade.animation, value: wingFade)
+                    .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
+                    .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
+            }
             .overlay(alignment: .top) {
                 glowOverlay
                     .frame(width: glowSurfaceWidth, height: notchSurfaceSize.height)
@@ -1255,6 +1264,8 @@ struct ClangNotchContentView: View {
                     MediaWaveform(style: .wing, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
                                   color: nowPlayingMonitor.nowPlaying?.accent)
                         .frame(width: mediaWingWidth, height: MediaWaveform.Style.wing.height)
+                        .opacity(rightWingLayerOpacity)
+                        .animation(WingFade.animation, value: rightWingLayerOpacity)
                         .padding(.trailing, lowBattery == nil ? 8 : 6)
                         .transition(.opacity)
                 }
@@ -1269,6 +1280,8 @@ struct ClangNotchContentView: View {
                     MediaWaveform(style: .mini, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
                                   color: nowPlayingMonitor.nowPlaying?.accent)
                         .frame(width: MediaWaveform.Style.mini.width, height: MediaWaveform.Style.mini.height)
+                        .opacity(rightWingLayerOpacity)
+                        .animation(WingFade.animation, value: rightWingLayerOpacity)
                         .padding(.trailing, lowBattery == nil ? 8 : 6)
                         .transition(.opacity.combined(with: .scale(scale: 0.5, anchor: .trailing)))
                 }
@@ -3007,11 +3020,28 @@ struct ClangNotchContentView: View {
 
     /// Visible outer bounds own interaction; transparent hosting space passes through.
     private func updateInteractiveRegion() {
+        let hasWings = notchVM.notchState == .closed
+            && notchVM.notchSize.width > notchVM.closedNotchSize.width + 1
         UICoordinator.shared.setInteractiveSize(
             notchVM.notchSize,
             shape: isExpanded ? NotchShape(topCornerRadius: topCornerRadius,
-                                          bottomCornerRadius: bottomCornerRadius) : nil
+                                          bottomCornerRadius: bottomCornerRadius) : nil,
+            wingsBeyond: hasWings ? notchVM.closedNotchSize.width : nil
         )
+    }
+
+    /// The 음파 막대 are an NSView, which the surface's SwiftUI mask doesn't reach: they take
+    /// the faded wing's opacity directly. They sit past the ramp, where it is flat anyway.
+    private var rightWingLayerOpacity: Double {
+        1 - wingFade.right * (1 - WingFade.floor)
+    }
+
+    /// The closed wing under the cursor steps aside: surface, content and glow melt into the
+    /// menu bar from the notch's edge outward, and clicks go through (`UICoordinator`).
+    private var wingFade: WingFade {
+        let wing = notchVM.notchState == .closed ? ui.hoveredWing : nil
+        return WingFade(notchWidth: notchVM.closedNotchSize.width,
+                        left: wing == .left ? 1 : 0, right: wing == .right ? 1 : 0)
     }
 
     private func triggerStartupGlow() {

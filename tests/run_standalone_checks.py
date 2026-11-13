@@ -26,6 +26,7 @@ checks = [
     ("ClaudeQuestionHookChecks", ["ClangNotch/Core/ClaudeCode/ClaudeQuestionHooks.swift"], ""),
     ("ClaudeNotificationHookChecks", ["ClangNotch/Core/ClaudeCode/ClaudeNotificationHooks.swift"], ""),
     ("NextStepHookChecks", ["ClangNotch/Core/Permission/NextStepHooks.swift"], ""),
+    ("WingFadeChecks", ["ClangNotch/Views/Notch/WingFade.swift"], ""),
 ]
 
 with tempfile.TemporaryDirectory(prefix="clangnotch-standalone-checks-") as folder:

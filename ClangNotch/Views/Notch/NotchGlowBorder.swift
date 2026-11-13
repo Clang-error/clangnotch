@@ -12,6 +12,8 @@ struct NotchGlowBorder: View {
     /// Travel along the outline at a constant speed instead of sweeping across it.
     /// The open panel's tall sides would otherwise light all at once and vanish.
     let tracesOutline: Bool
+    /// A closed wing stepping aside fades the glow on its side with it.
+    let wingFade: WingFade?
 
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var powerMonitor = PowerStateMonitor.shared
@@ -26,7 +28,8 @@ struct NotchGlowBorder: View {
         brightColor: Color,
         secondaryGlowColor: Color? = nil,
         secondaryBrightColor: Color? = nil,
-        tracesOutline: Bool = false
+        tracesOutline: Bool = false,
+        wingFade: WingFade? = nil
     ) {
         self.topCornerRadius = topCornerRadius
         self.bottomCornerRadius = bottomCornerRadius
@@ -35,6 +38,7 @@ struct NotchGlowBorder: View {
         self.secondaryGlowColor = secondaryGlowColor
         self.secondaryBrightColor = secondaryBrightColor
         self.tracesOutline = tracesOutline
+        self.wingFade = wingFade
     }
 
     var body: some View {
@@ -47,7 +51,8 @@ struct NotchGlowBorder: View {
             paused: reduceMotion || !ui.isVisible,
             // Battery saver: at most 30 fps on battery. Measured 2026-11-09 on battery: GPU use
             // +17–19%p at 60 fps (about 170 mW), +10%p at 30, +14%p for the old 15 fps SwiftUI glow.
-            maxFrameRate: settings.batterySaverEnabled && !powerMonitor.isCharging ? 30 : 0
+            maxFrameRate: settings.batterySaverEnabled && !powerMonitor.isCharging ? 30 : 0,
+            wingFade: wingFade
         )
         .allowsHitTesting(false)
     }
