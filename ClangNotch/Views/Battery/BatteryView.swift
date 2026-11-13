@@ -268,26 +268,54 @@ private struct BatteryRow: View {
     }
 }
 
-/// Closed-notch right-wing badge for the low priority device: icon and level, in red.
+/// 저배터리 배지: the low priority device's level written inside a small battery, as in the
+/// iPhone's status bar. Orange from 20%, red from 10%. A charging device is not low
+/// (`lowPriorityDevices`), so there is no charging look.
+/// Alone on the wings the device's icon sits on the left wing and this is the battery only;
+/// beside an agent's wing content it is smaller and carries the icon itself.
 struct ClosedLowBatteryBadge: View {
     let device: BatteryDevice
+    var showsIcon = true
 
-    static func width(for device: BatteryDevice) -> CGFloat {
-        let text = ceil(("\(device.displayLevel)%" as NSString).size(withAttributes: [
-            .font: NSFont.systemFont(ofSize: 10, weight: .semibold)
-        ]).width)
-        return 14 + 3 + text
+    static let wingIconWidth: CGFloat = 20
+    private static let iconWidth: CGFloat = 13
+    private static let nub: CGFloat = 2.5
+
+    static func width(showsIcon: Bool) -> CGFloat {
+        showsIcon ? iconWidth + 3 + 22 + nub : 27 + nub
+    }
+
+    static func tint(level: Int) -> Color {
+        level <= 10 ? Color(red: 1.0, green: 0.27, blue: 0.23) : Color(red: 1.0, green: 0.62, blue: 0.04)
     }
 
     var body: some View {
+        let size = showsIcon ? CGSize(width: 22, height: 11) : CGSize(width: 27, height: 13)
+        let level = device.displayLevel
         HStack(spacing: 3) {
-            Image(systemName: device.compactSymbol)
-                .font(.system(size: 10))
-                .frame(width: 14)
-            Text("\(device.displayLevel)%")
-                .font(.system(size: 10, weight: .semibold))
-                .fixedSize()
+            if showsIcon {
+                Image(systemName: device.compactSymbol)
+                    .font(.system(size: 10))
+                    .foregroundColor(NotchPalette.ink.opacity(0.85))
+                    .frame(width: Self.iconWidth)
+            }
+            HStack(spacing: 1) {
+                ZStack(alignment: .leading) {
+                    NotchPalette.ink.opacity(0.22)
+                    Self.tint(level: level)
+                        .frame(width: max(3, size.width * CGFloat(min(level, 100)) / 100))
+                    Text("\(level)")
+                        .font(.system(size: size.height * 0.72, weight: .bold, design: .rounded))
+                        .fixedSize()
+                        .foregroundColor(NotchPalette.ink)
+                        .frame(width: size.width)
+                }
+                .frame(width: size.width, height: size.height)
+                .clipShape(RoundedRectangle(cornerRadius: size.height * 0.32, style: .continuous))
+                Capsule()
+                    .fill(NotchPalette.ink.opacity(0.4))
+                    .frame(width: Self.nub - 1, height: size.height * 0.38)
+            }
         }
-        .foregroundColor(Color(red: 0.95, green: 0.35, blue: 0.35))
     }
 }

@@ -92,7 +92,8 @@ questions += '''
 questions += block("private var baseNotchActive:").replace("private var", "var", 1) + "\n}\n"
 questions += '''
 enum ClosedLowBatteryBadge {
-    static func width(for device: Int) -> CGFloat { 0 }
+    static let wingIconWidth: CGFloat = 20
+    static func width(showsIcon: Bool) -> CGFloat { showsIcon ? 40.5 : 29.5 }
 }
 enum MediaWaveform {
     struct Style { let width: CGFloat; static let wing = Style(width: 17.8); static let mini = Style(width: 7.4) }
@@ -139,7 +140,7 @@ struct FixtureSession { let id: String }
     var codexHasRealActivity: Bool { settings.showSourceCodex && codexManager.state.isActive }
     func extractCodexModelName(_ value: String) -> String? { nil }
     func extractModelName(_ value: String) -> String? { nil }
-    func layout() -> (leftVisible: Bool, claudeOnRight: Bool, leftWidth: CGFloat, rightWidth: CGFloat) {
+    func layout() -> (leftVisible: Bool, claudeOnRight: Bool, leftWidth: CGFloat, rightWidth: CGFloat, batteryWings: Bool) {
 '''
 # The wing caps, as the view has them.
 questions = questions.replace("    func layout() -> (leftVisible", "".join(
@@ -148,7 +149,7 @@ questions = questions.replace("    func layout() -> (leftVisible", "".join(
 # Run the exact closed-header decisions and width calculations, without its view rendering.
 questions += block("private var closedHeader:").split("{", 1)[1].split("        if !hasAnyContent {")[0]
 questions += '''
-        return (hasLeftWing, showsSimultaneousClaudeWing, leftWingWidth, baseRightWingWidth)
+        return (hasLeftWing, showsSimultaneousClaudeWing, leftWingWidth, baseRightWingWidth, showsBatteryWings)
     }
 }
 '''

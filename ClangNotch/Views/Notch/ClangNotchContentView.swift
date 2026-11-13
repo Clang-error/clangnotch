@@ -1004,19 +1004,22 @@ struct ClangNotchContentView: View {
             ? MediaWaveform.Style.mini.width + (baseRightWingWidth > 0 || showsTetherIcon ? 6 : 0) : 0
 
         // A low priority battery rides at the outer edge of the right wing and stays there
-        // whatever else the wing is showing, until it recovers or is switched off.
+        // whatever else the wing is showing, until it recovers or is switched off. With nothing
+        // else on the wings it takes both: the device on the left, its battery on the right.
         let lowBattery = batteryManager.closedNotchLowBattery
-        let batteryBadgeWidth: CGFloat = lowBattery.map {
-            ClosedLowBatteryBadge.width(for: $0)
+        let showsBatteryWings = lowBattery != nil && !showLeftWing && agentRightWingWidth == 0
+            && tetherPlace == nil && !nowPlayingMonitor.isShowing
+        let batteryBadgeWidth: CGFloat = lowBattery == nil ? 0
+            : ClosedLowBatteryBadge.width(showsIcon: !showsBatteryWings)
                 + (baseRightWingWidth > 0 || showsTetherIcon || showsMediaMini || showsMediaWings ? 6 : 0)
-        } ?? 0
         let rightWingWidth = baseRightWingWidth + mediaWingWidth + tetherIconWidth + mediaMiniWidth + batteryBadgeWidth
 
         // Both wings have to claim the same width, otherwise this centred row slides
         // sideways by half the difference and the shorter side's content ends up under
         // the physical notch. The slots include each wing's 8pt edge padding.
-        let hasLeftWing = showLeftWing || showsTetherWings || showsMediaWings
-        let leftContentWidth = showsTetherWings ? tetherLeftWidth : showsMediaWings ? mediaArtSize : leftWingWidth
+        let hasLeftWing = showLeftWing || showsTetherWings || showsMediaWings || showsBatteryWings
+        let leftContentWidth = showsTetherWings ? tetherLeftWidth : showsMediaWings ? mediaArtSize
+            : showsBatteryWings ? ClosedLowBatteryBadge.wingIconWidth : leftWingWidth
         let leftSlot: CGFloat = hasLeftWing ? leftContentWidth + 8 : 0
         let rightSlot: CGFloat = rightWingWidth > 0 ? rightWingWidth + 8 : 0
         let wingWidth = max(leftSlot, rightSlot)
@@ -1048,6 +1051,12 @@ struct ClangNotchContentView: View {
                     HStack(spacing: 6) {
                         if showsMediaWings, let playing = nowPlayingMonitor.nowPlaying {
                             MediaArtwork(playing: playing, size: mediaArtSize)
+                                .transition(.scale(scale: 0.5).combined(with: .opacity))
+                        } else if showsBatteryWings, let lowBattery {
+                            Image(systemName: lowBattery.compactSymbol)
+                                .font(.system(size: 15))
+                                .foregroundColor(NotchPalette.ink.opacity(0.92))
+                                .frame(width: ClosedLowBatteryBadge.wingIconWidth)
                                 .transition(.scale(scale: 0.5).combined(with: .opacity))
                         } else if showsTetherWings {
                             Image(systemName: "personalhotspot")
@@ -1284,8 +1293,8 @@ struct ClangNotchContentView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.5, anchor: .trailing)))
                 }
                 if let lowBattery {
-                    ClosedLowBatteryBadge(device: lowBattery)
-                        .frame(width: ClosedLowBatteryBadge.width(for: lowBattery), alignment: .trailing)
+                    ClosedLowBatteryBadge(device: lowBattery, showsIcon: !showsBatteryWings)
+                        .frame(width: ClosedLowBatteryBadge.width(showsIcon: !showsBatteryWings), alignment: .trailing)
                         .padding(.trailing, 8)
                 }
             }
@@ -1318,6 +1327,7 @@ struct ClangNotchContentView: View {
             // animated: music stopping dropped them in one frame (user, 2026-11-13).
             .animation(.easeOut(duration: 0.28), value: showsMediaMini)
             .animation(.easeOut(duration: 0.28), value: showsMediaWings)
+            .animation(.easeOut(duration: 0.28), value: showsBatteryWings)
         }
     }
 

@@ -117,6 +117,16 @@ struct NotchLayoutChecks {
         wings.claudeCodeManager.state.isThinking = false
         wings.codexManager.state.isThinking = false
         wings.doneFlash = nil
+        wings.batteryManager.closedNotchLowBattery = 15
+        check(wings.layout().leftVisible && wings.layout().batteryWings, "A low battery alone takes both wings: the device on the left")
+        wings.nowPlayingMonitor.isShowing = true
+        check(wings.layout().leftVisible && !wings.layout().batteryWings, "Music keeps both wings; the battery rides as the small badge")
+        wings.nowPlayingMonitor.isShowing = false
+        wings.claudeCodeManager.state.isThinking = true
+        check(!wings.layout().batteryWings, "An agent at work keeps its wings; the battery rides as the small badge")
+        wings.claudeCodeManager.state.isThinking = false
+        wings.batteryManager.closedNotchLowBattery = nil
+        check(!wings.layout().leftVisible && !wings.layout().batteryWings, "No low battery, no wings")
         questions.triggerCodexInputNotice(request("짧은 질문"))
         let shortHeight = questions.notchVM.notchSize.height
         check(shortHeight < 170, "A short question must not leave a large empty band")
