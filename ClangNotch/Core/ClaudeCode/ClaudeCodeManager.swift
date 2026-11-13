@@ -1090,6 +1090,21 @@ final class ClaudeCodeManager: ObservableObject {
             return
         }
 
+        // Compacted (auto or /compact): the context is what is left, until the next message's
+        // usage says more. Before, the bar kept the old size until then, which after a manual
+        // /compact meant until the user next wrote (user, 2026-11-13).
+        if json["type"] as? String == "system", json["subtype"] as? String == "compact_boundary",
+           let post = (json["compactMetadata"] as? [String: Any])?["postTokens"] as? Int,
+           var sessionState = sessionStates[sessionId] {
+            sessionState.tokenUsage.inputTokens = post
+            sessionState.tokenUsage.cacheReadInputTokens = 0
+            sessionState.tokenUsage.cacheCreationInputTokens = 0
+            sessionStates[sessionId] = sessionState
+            syncStateIfSelected(sessionId)
+            objectWillChange.send()
+            return
+        }
+
         // Check for interruption in toolUseResult
         if let toolUseResult = json["toolUseResult"] {
             let resultStr = "\(toolUseResult)"
@@ -1739,9 +1754,47 @@ final class ClaudeCodeManager: ObservableObject {
     /// Each session's real context window, from its status line (`StatuslineBridge`).
     @Published private(set) var contextWindowSizes: [String: Int] = [:]
 
-    func receiveStatusline(sessionId: String, contextWindowSize: Int) {
+    func receiveStatusline(sessionId: String, contextWindowSize: Int, model: String?) {
+        if let model {
+            let key = Self.baseModel(model)
+            if Self.windowByModel[key] != contextWindowSize {
+                var known = Self.windowByModel
+                known[key] = contextWindowSize
+                UserDefaults.standard.set(known, forKey: Self.windowByModelKey)
+            }
+        }
         guard contextWindowSizes[sessionId] != contextWindowSize else { return }
         contextWindowSizes[sessionId] = contextWindowSize
+    }
+
+    /// The context window to measure a session against: its own status line's, else the last
+    /// one a status line reported for its model (kept across launches; the Claude app runs no
+    /// status line, and a relaunch forgot every session's), else 200k until usage passes it.
+    /// The guess alone read most sessions wrong (user, 2026-11-13).
+    func contextWindow(for sessionId: String, used: Int) -> Int {
+        if let size = contextWindowSizes[sessionId] { return size }
+        if let model = sessionStates[sessionId]?.model, !model.isEmpty,
+           let size = Self.windowByModel[Self.baseModel(model)], size >= used { return size }
+        return used > 200_000 ? 1_000_000 : 200_000
+    }
+
+    /// How much of its window the session's last message used (the context bar's numbers).
+    func contextUse(for sessionId: String) -> (used: Int, limit: Int)? {
+        guard let usage = sessionStates[sessionId]?.tokenUsage else { return nil }
+        // Same input-only sum Claude Code's own used_percentage uses.
+        let used = usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens
+        guard used > 0 else { return nil }
+        return (used, contextWindow(for: sessionId, used: used))
+    }
+
+    private static let windowByModelKey = "claudeContextWindowByModel"
+    private static var windowByModel: [String: Int] {
+        UserDefaults.standard.dictionary(forKey: windowByModelKey) as? [String: Int] ?? [:]
+    }
+
+    /// "claude-opus-5-5[1m]" and the transcript's "claude-opus-5-5" are the same model here.
+    private static func baseModel(_ id: String) -> String {
+        String(id.prefix { $0 != "[" }).lowercased()
     }
 
     /// The X on the 다음 단계 드롭다운 and the NEEDS YOU 카드. A request can outlive its answer:

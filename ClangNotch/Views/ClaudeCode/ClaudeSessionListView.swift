@@ -217,6 +217,34 @@ private struct UnifiedWorkspaceSessionRow: View {
         return nil
     }
 
+    /// 곧 압축될 수 있음: one of the row's sessions is close to its automatic compaction. The
+    /// 미리보기 줄 then ends with it, in orange (`ContextCompaction`).
+    private var compactionNote: (agent: String, text: String)? {
+        for session in group.claude {
+            if let use = manager.contextUse(for: session.id),
+               ContextCompaction.isNear(.claude, used: use.used, limit: use.limit) {
+                return ("Claude", ContextCompaction.note(used: use.used, limit: use.limit))
+            }
+        }
+        for session in group.codex {
+            if let usage = codexManager.sessionStates[session.id]?.tokenUsage,
+               ContextCompaction.isNear(.codex, used: usage.contextTokens, limit: usage.modelContextWindow) {
+                return ("Codex", ContextCompaction.note(used: usage.contextTokens, limit: usage.modelContextWindow))
+            }
+        }
+        return nil
+    }
+
+    /// The 미리보기 줄: what runs, or the hint; near a compaction, the note after it (or in
+    /// place of the hint when nothing runs).
+    private var subtitle: (text: String, warns: Bool)? {
+        if let note = compactionNote {
+            if let preview { return ("\(preview) · \(note.text)", true) }
+            return ("\(note.agent): \(note.text)", true)
+        }
+        return (preview ?? sessionHint).map { ($0, needsPermission || awaitingAnswer) }
+    }
+
     /// Tells rows of one folder apart when nothing is running: the session's last prompt,
     /// or its id when the replayed history holds no prompt.
     private var sessionHint: String? {
@@ -340,10 +368,10 @@ private struct UnifiedWorkspaceSessionRow: View {
                                 .lineLimit(1)
                         }
                     }
-                    if let subtitle = preview ?? sessionHint {
-                        Text(subtitle)
+                    if let subtitle {
+                        Text(subtitle.text)
                             .font(.system(size: 11))
-                            .foregroundColor(needsPermission || awaitingAnswer ? .orange : .secondary)
+                            .foregroundColor(subtitle.warns ? .orange : .secondary)
                             .lineLimit(1)
                             .padding(.top, sessionTitle == nil ? 0 : 3)
                     }

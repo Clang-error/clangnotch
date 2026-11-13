@@ -61,7 +61,8 @@ final class HookReceiver {
         }
         if let sessionId = json["session_id"] as? String,
            let size = (json["context_window"] as? [String: Any])?["context_window_size"] as? Int {
-            ClaudeCodeManager.shared.receiveStatusline(sessionId: sessionId, contextWindowSize: size)
+            ClaudeCodeManager.shared.receiveStatusline(sessionId: sessionId, contextWindowSize: size,
+                                                       model: (json["model"] as? [String: Any])?["id"] as? String)
             return
         }
         if json["tool_name"] as? String == "AskUserQuestion" {

@@ -79,7 +79,9 @@ struct SessionDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             if AppSettings.shared.showContextProgress, let context {
-                contextRow(used: context.used, limit: context.limit)
+                contextRow(used: context.used, limit: context.limit,
+                           nearCompaction: ContextCompaction.isNear(target.agent == .claude ? .claude : .codex,
+                                                                    used: context.used, limit: context.limit))
             }
             HStack(alignment: .top, spacing: 12) {
                 stepList
@@ -149,16 +151,12 @@ struct SessionDetailView: View {
         .popIn()
     }
 
-    /// How full the session's context window is. Claude's size comes from its status line;
-    /// a session without one is taken as 200k until it passes that, which only 1M allows.
+    /// How full the session's context window is. Claude's size comes from its status line, or
+    /// the size a status line last reported for its model (`ClaudeCodeManager.contextWindow`).
     private var context: (used: Int, limit: Int)? {
         switch target.agent {
         case .claude:
-            guard let usage = manager.sessionStates[target.sessionId]?.tokenUsage else { return nil }
-            // Same input-only sum Claude Code's own used_percentage uses.
-            let used = usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens
-            let limit = manager.contextWindowSizes[target.sessionId] ?? (used > 200_000 ? 1_000_000 : 200_000)
-            return (used, limit)
+            return manager.contextUse(for: target.sessionId)
         case .codex:
             guard let usage = codexManager.sessionStates[target.sessionId]?.tokenUsage,
                   usage.contextTokens > 0 else { return nil }
@@ -167,7 +165,7 @@ struct SessionDetailView: View {
     }
 
     /// One thin line under the header.
-    private func contextRow(used: Int, limit: Int) -> some View {
+    private func contextRow(used: Int, limit: Int, nearCompaction: Bool) -> some View {
         let progress = limit > 0 ? min(1, Double(used) / Double(limit)) : 0
         let color: Color = progress > 0.9 ? .red : progress > 0.7 ? .orange : progress > 0.5 ? .yellow : .green
         return HStack(spacing: 8) {
@@ -185,6 +183,16 @@ struct SessionDetailView: View {
             Text("\(Self.tokens(used)) / \(Self.tokens(limit))")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundColor(NotchPalette.ink.opacity(0.6))
+            if nearCompaction {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left")
+                        .accessibilityHidden(true)
+                    Text(L("곧 압축될 수 있음", "May compact soon"))
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.orange)
+                .fixedSize()
+            }
         }
         .padding(.leading, 32)
     }
