@@ -179,7 +179,7 @@ final class ClaudeUsageManager: ObservableObject {
     func fetchUsage(interactive: Bool, retryingAfter401: Bool = false) async {
         isLoading = true
         let token: String
-        switch await currentToken(interactive: interactive) {
+        switch await currentToken() {
         case .token(let value):
             token = value
         case .expired:
@@ -255,8 +255,7 @@ final class ClaudeUsageManager: ObservableObject {
                 sevenDay: parseLimitDataOptional(usage.sevenDay),
                 opus: parseLimitDataOptional(usage.sevenDayOpus),
                 sonnet: parseLimitDataOptional(usage.sevenDaySonnet),
-                fable: parseLimitEntry(usage.fable),
-                fetchedAt: Date()
+                fable: parseLimitEntry(usage.fable)
             )
             rateLimitedUntil = nil
             rateLimitStreak = 0
@@ -297,7 +296,7 @@ final class ClaudeUsageManager: ObservableObject {
 
     /// Return a usable access token, reading the Keychain/file only when the cache is
     /// empty or about to expire — so routine polls don't re-trigger the Keychain prompt.
-    private func currentToken(interactive: Bool) async -> TokenLookup {
+    private func currentToken() async -> TokenLookup {
         // 1) In-memory cache (fastest).
         if let token = cachedToken, Date() < cacheValidUntil { return .token(token) }
 

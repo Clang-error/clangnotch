@@ -1,6 +1,6 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|airpods|airpodslow|osd|lowbattery|tether|macbattery]`:
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|tools|many|airpods|airpodslow|osd|lowbattery|tether|macbattery]`:
 /// the notch runs on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard,
 /// volume, battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device, copied text or account balance from this Mac can end up in a video.
@@ -78,7 +78,7 @@ final class DemoDriver {
         if DemoMode.scene == .tether {
             applyTools()
             let now = Date()
-            TWorldSession.shared.demoApply(TWorldBalance(name: "T플랜 공유 데이터", totalKB: 40 * 1_048_576,
+            TWorldSession.shared.demoApply(TWorldBalance(totalKB: 40 * 1_048_576,
                                                          usedKB: 13.62 * 1_048_576, remainingKB: 26.38 * 1_048_576,
                                                          fetchedAt: now.addingTimeInterval(-4 * 60)))
             TetherPlaceMonitor.shared.demoTether(place: L("집", "Home"))
@@ -186,7 +186,6 @@ final class DemoDriver {
     private struct Script {
         let name: String
         let agent: Agent
-        let branch: String
         let prompt: String
         let answer: String
         var start: TimeInterval
@@ -208,7 +207,7 @@ final class DemoDriver {
 
     private static func scripts(for scene: DemoMode.Scene) -> [Script] {
         let orbit = Script(
-            name: "orbit-api", agent: .claude(.desktop), branch: "feat/billing-tax",
+            name: "orbit-api", agent: .claude(.desktop),
             prompt: "Add regional tax to invoice totals",
             answer: "Invoice totals now include regional tax. All 48 billing tests pass.",
             start: 2, end: 30, steps: [
@@ -226,7 +225,7 @@ final class DemoDriver {
                 Step(after: 20, tool: "Bash", argument: "pnpm test"),
             ])
         let lumen = Script(
-            name: "lumen-web", agent: .claude(.terminal), branch: "main",
+            name: "lumen-web", agent: .claude(.terminal),
             prompt: "Add a dark mode toggle to settings",
             answer: "Dark mode toggle added to the settings page, next to the language picker.",
             start: 9, end: 40, steps: [
@@ -239,7 +238,7 @@ final class DemoDriver {
                 ("Header", "One click from every page"),
             ]))
         let atlas = Script(
-            name: "atlas-cli", agent: .codex, branch: "fix/retry-backoff",
+            name: "atlas-cli", agent: .codex,
             prompt: "Retry failed uploads with backoff",
             answer: "Uploads now retry with exponential backoff, capped at 5 attempts.",
             start: 2, end: 35, steps: [
@@ -249,7 +248,7 @@ final class DemoDriver {
                 Step(after: 20, tool: "exec", argument: "cargo test"),
             ])
         let prism = Script(
-            name: "prism-app", agent: .codex, branch: "feat/onboarding",
+            name: "prism-app", agent: .codex,
             prompt: "Build the onboarding screens",
             answer: "Three onboarding screens added, with skip and progress dots.",
             start: 9, end: 40, steps: [
@@ -278,14 +277,14 @@ final class DemoDriver {
             let codexNames = ["atlas-cli", "prism-app", "quill-sdk"]
             let claude = claudeNames.enumerated().map { index, name in
                 var script = index.isMultiple(of: 2) ? orbit : lumen
-                script = Script(name: name, agent: script.agent, branch: script.branch, prompt: script.prompt,
+                script = Script(name: name, agent: script.agent, prompt: script.prompt,
                                 answer: script.answer, start: 2 + Double(index) * 3, end: 40 + Double(index),
                                 steps: script.steps)
                 return script
             }
             let codex = codexNames.enumerated().map { index, name in
                 let base = index.isMultiple(of: 2) ? atlas : prism
-                return Script(name: name, agent: .codex, branch: base.branch, prompt: base.prompt,
+                return Script(name: name, agent: .codex, prompt: base.prompt,
                               answer: base.answer, start: 17 + Double(index) * 3, end: 42 + Double(index),
                               steps: base.steps)
             }
@@ -339,17 +338,14 @@ final class DemoDriver {
                 let session = ClaudeSession(pid: 0, workspaceFolders: [script.path], ideName: "Claude",
                                             cwd: script.path)
                 var state = ClaudeCodeState()
-                state.sessionId = session.id
                 state.model = "claude-opus-5-5"
                 state.cwd = script.path
-                state.gitBranch = script.branch
                 state.entrypoint = entrypoint
                 state.lastUpdateTime = now
                 state.tokenUsage = ClaudeTokenUsage(inputTokens: 2_400 + Int(progress * 180),
-                                                    outputTokens: 900 + Int(progress * 140),
                                                     cacheReadInputTokens: 30_000 + Int(progress * 2_600),
                                                     cacheCreationInputTokens: 3_100 + Int(progress * 420))
-                state.recentMessages = [ClaudeMessage(role: .user, text: script.prompt, time: time(script.start))]
+                state.recentMessages = [ClaudeMessage(role: .user, text: script.prompt)]
                 func tool(_ index: Int, _ step: Step, _ begin: TimeInterval) -> ClaudeToolExecution {
                     var tool = ClaudeToolExecution(id: "demo-\(loop)-\(script.name)-\(index)", toolName: step.tool,
                                                    argument: step.argument, startTime: time(begin))
@@ -361,8 +357,6 @@ final class DemoDriver {
                 if working {
                     state.turnStartTime = time(script.start)
                     state.isThinking = state.activeTools.isEmpty && !asking
-                } else if t >= script.end {
-                    state.lastStopReason = "end_turn"
                 }
                 if asking, let question = script.question {
                     state.pendingInputRequests = [ClaudeInputRequest(id: "demo-\(loop)-\(script.name)-question", input: [
@@ -389,20 +383,14 @@ final class DemoDriver {
 
             case .codex:
                 let session = CodexSession(id: script.id, cwd: script.path,
-                                           gitBranch: script.branch, timestamp: time(0),
+                                           timestamp: time(0),
                                            jsonlFile: URL(fileURLWithPath: "/dev/null"))
                 var state = CodexState()
-                state.sessionId = session.id
                 state.model = "gpt-6"
-                state.cwd = script.path
-                state.gitBranch = script.branch
                 state.lastUpdateTime = now
                 state.lastUserPrompt = script.prompt
                 let tokens = 24_000 + Int(progress * 1_760)
-                state.tokenUsage = CodexTokenUsage(inputTokens: 14_000 + Int(progress * 900),
-                                                   outputTokens: 1_200 + Int(progress * 160),
-                                                   totalTokens: tokens, contextTokens: tokens,
-                                                   modelContextWindow: 272_000)
+                state.tokenUsage = CodexTokenUsage(contextTokens: tokens, modelContextWindow: 272_000)
                 func tool(_ index: Int, _ step: Step, _ begin: TimeInterval) -> CodexToolExecution {
                     CodexToolExecution(id: "demo-\(loop)-\(script.name)-\(index)", toolName: step.tool,
                                        argument: step.argument, startTime: time(begin))
@@ -452,7 +440,7 @@ final class DemoDriver {
         ClaudeUsageManager.shared.demoApply(claudeSessions.isEmpty ? .empty : ClaudeUsageData(
             fiveHour: .init(percentage: 46 + max(0, min(t, 40) - 2) * 0.25, resetsAt: now.addingTimeInterval(2 * 3600 + 10 * 60)),
             sevenDay: .init(percentage: 31, resetsAt: now.addingTimeInterval(3 * 86_400 + 9 * 3600)),
-            opus: nil, sonnet: nil, fable: nil, fetchedAt: now))
+            opus: nil, sonnet: nil, fable: nil))
     }
 
     // MARK: - Tools
@@ -467,7 +455,7 @@ final class DemoDriver {
         ClaudeUsageManager.shared.demoApply(ClaudeUsageData(
             fiveHour: .init(percentage: 46, resetsAt: now.addingTimeInterval(2 * 3600 + 10 * 60)),
             sevenDay: .init(percentage: 31, resetsAt: now.addingTimeInterval(3 * 86_400 + 9 * 3600)),
-            opus: nil, sonnet: nil, fable: nil, fetchedAt: now))
+            opus: nil, sonnet: nil, fable: nil))
         ClipboardManager.shared.demoApply([
             ClipboardItem(text: "npm run build && npm run preview", copiedAt: now.addingTimeInterval(-3 * 3600), isPinned: true),
             ClipboardItem(text: "git checkout -b feat/billing-tax", copiedAt: now.addingTimeInterval(-40)),

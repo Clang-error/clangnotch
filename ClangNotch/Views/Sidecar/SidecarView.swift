@@ -181,17 +181,17 @@ private struct SidecarCard: View {
 
     private var iPadGlyph: some View {
         ZStack {
-            // Breathing halo while switching or connected
+            // Breathing halo while switching (the glyph is only drawn while not connected)
             Circle()
-                .fill(tone.opacity((busy || connected) ? 0.18 : 0))
+                .fill(tone.opacity(busy ? 0.18 : 0))
                 .frame(width: 96, height: 96)
                 .blur(radius: 14)
                 .scaleEffect(pulse ? 1.12 : 0.9)
-                .opacity((busy || connected) ? (pulse ? 0.55 : 0.25) : 0)
+                .opacity(busy ? (pulse ? 0.55 : 0.25) : 0)
 
             // iPad body
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill((busy || connected) ? tone.opacity(0.12) : NotchPalette.ink.opacity(0.04))
+                .fill(busy ? tone.opacity(0.12) : NotchPalette.ink.opacity(0.04))
                 .overlay(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .stroke(tone, lineWidth: 2.5)
@@ -215,10 +215,6 @@ private struct SidecarCard: View {
                 .progressViewStyle(.circular)
                 .controlSize(.small)
                 .tint(pending)
-        } else if connected {
-            Image(systemName: "checkmark")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(accent)
         } else {
             Image(systemName: "plus")
                 .font(.system(size: 18, weight: .light))

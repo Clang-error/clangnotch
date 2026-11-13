@@ -277,6 +277,9 @@ private struct ClosedToolTrack: View {
     let color: Color
     var isPaused = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// A hidden notch (full-screen app, Mission Control) is only at alpha 0: the timeline would
+    /// keep redrawing the wing 25 times a second with nobody to see it.
+    @ObservedObject private var ui = UICoordinator.shared
     /// Taken when the view is created, so a track that starts paused has it from its first frame.
     @State private var frozenPhase = ClosedToolTrack.phase(at: Date())
 
@@ -285,7 +288,7 @@ private struct ClosedToolTrack: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: reduceMotion || isPaused)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 25.0, paused: reduceMotion || isPaused || !ui.isVisible)) { timeline in
             // Near either end the segment is mostly clipped; a stopped one stays whole.
             let phase = isPaused ? min(max(frozenPhase, 0.26), 0.74) : Self.phase(at: timeline.date)
             GeometryReader { proxy in

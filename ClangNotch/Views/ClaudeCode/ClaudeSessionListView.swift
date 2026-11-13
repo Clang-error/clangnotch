@@ -13,29 +13,17 @@ private struct UnifiedWorkspaceGroup: Identifiable {
 struct ClaudeSessionListView: View {
     @ObservedObject var manager: ClaudeCodeManager
     @ObservedObject var codexManager: CodexManager
-    let maxItems: Int?
-    let onOpen: () -> Void
-    /// Set in the notch: a row opens its 세션 화면 instead of jumping to the app.
-    let onSelect: ((SessionDetailTarget) -> Void)?
+    /// A row opens its 세션 화면.
+    let onSelect: (SessionDetailTarget) -> Void
     @State private var listAppearedAt = Date()
     /// Row order captured while the cursor is over the list, so a row never moves under it.
     @State private var frozenOrder: [String]?
 
-    init(manager: ClaudeCodeManager, codexManager: CodexManager, maxItems: Int? = nil, onOpen: @escaping () -> Void = {},
-         onSelect: ((SessionDetailTarget) -> Void)? = nil) {
-        self.manager = manager
-        self.codexManager = codexManager
-        self.maxItems = maxItems
-        self.onOpen = onOpen
-        self.onSelect = onSelect
-    }
-
     var body: some View {
         let groups = unifiedGroups
-        let visibleGroups = maxItems.map { Array(groups.prefix($0)) } ?? groups
 
         Group {
-            if visibleGroups.isEmpty {
+            if groups.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Image(systemName: "terminal")
                         .font(.system(size: 24, weight: .light))
@@ -50,7 +38,7 @@ struct ClaudeSessionListView: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                let rows = frozen(visibleGroups.flatMap { group in
+                let rows = frozen(groups.flatMap { group in
                     group.claude.map { UnifiedWorkspaceGroup(path: group.path, claude: [$0]) }
                         + group.codex.map { UnifiedWorkspaceGroup(path: group.path, codex: [$0]) }
                 })
@@ -59,7 +47,7 @@ struct ClaudeSessionListView: View {
                         VStack(spacing: 3) {
                             UnifiedWorkspaceSessionRow(
                                 group: row,
-                                onOpen: onOpen, onSelect: onSelect, manager: manager, codexManager: codexManager
+                                onSelect: onSelect, manager: manager, codexManager: codexManager
                             )
                             SubagentRows(subagents: row.claude.first.flatMap { manager.sessionStates[$0.id]?.subagents } ?? [])
                         }
@@ -134,7 +122,7 @@ struct ClaudeSessionListView: View {
     /// A permission or a real question waiting (a lingering next-step box doesn't count).
     private func needsYou(_ group: UnifiedWorkspaceGroup) -> Bool {
         group.claude.contains { session in
-            manager.sessionsConfirmedNeedingPermission.contains { $0.id == session.id }
+            manager.sessionsNeedingPermission.contains { $0.id == session.id }
                 || manager.sessionStates[session.id]?.pendingInputRequests.contains { !$0.isWrapUp } == true
         } || group.codex.contains { codexManager.sessionStates[$0.id]?.pendingInputRequest != nil }
     }
@@ -169,11 +157,9 @@ struct ClaudeSessionListView: View {
 
 private struct UnifiedWorkspaceSessionRow: View {
     let group: UnifiedWorkspaceGroup
-    let onOpen: () -> Void
-    let onSelect: ((SessionDetailTarget) -> Void)?
+    let onSelect: (SessionDetailTarget) -> Void
     @ObservedObject var manager: ClaudeCodeManager
     @ObservedObject var codexManager: CodexManager
-    @ObservedObject private var settings = AppSettings.shared
     @State private var hovering = false
 
     private var claudeActive: Bool {
@@ -288,23 +274,12 @@ private struct UnifiedWorkspaceSessionRow: View {
 
     var body: some View {
         Button {
-            if let onSelect {
-                if let session = group.claude.first {
-                    manager.selectSession(session)
-                    onSelect(SessionDetailTarget(agent: .claude, sessionId: session.id))
-                } else if let session = group.codex.first {
-                    codexManager.selectSession(session)
-                    onSelect(SessionDetailTarget(agent: .codex, sessionId: session.id))
-                }
-                return
-            }
-            onOpen()
             if let session = group.claude.first {
                 manager.selectSession(session)
-                manager.focusIDE(for: session)
+                onSelect(SessionDetailTarget(agent: .claude, sessionId: session.id))
             } else if let session = group.codex.first {
                 codexManager.selectSession(session)
-                codexManager.focusApp(for: session)
+                onSelect(SessionDetailTarget(agent: .codex, sessionId: session.id))
             }
         } label: {
             HStack(spacing: 8) {
@@ -321,10 +296,10 @@ private struct UnifiedWorkspaceSessionRow: View {
                             .foregroundColor(.primary)
                             .lineLimit(1)
                         if !group.claude.isEmpty {
-                            SourceBadge(label: "Claude", count: group.claude.count, color: .orange, active: claudeActive)
+                            SourceBadge(label: "Claude", color: .orange, active: claudeActive)
                         }
                         if !group.codex.isEmpty {
-                            SourceBadge(label: "Codex", count: group.codex.count, color: .blue, active: codexActive)
+                            SourceBadge(label: "Codex", color: .blue, active: codexActive)
                         }
                         if subagentCount > 0 {
                             // 서브에이전트 배지: this session started subagents and they are at work.
@@ -399,7 +374,7 @@ private struct UnifiedWorkspaceSessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(onSelect != nil ? L("세션 진행 보기", "Show session progress") : L("\(destinationLabel) 열기", "Open \(destinationLabel)"))
+        .help(L("세션 진행 보기", "Show session progress"))
         .contextMenu {
             ForEach(group.claude) { session in
                 if let id = manager.conversationId(for: session) {
@@ -551,14 +526,13 @@ private struct FolderElbow: Shape {
 
 private struct SourceBadge: View {
     let label: String
-    let count: Int
     let color: Color
     let active: Bool
 
     var body: some View {
         HStack(spacing: 3) {
             Circle().fill(color).frame(width: 4, height: 4)
-            Text(count > 1 ? "\(label) \(count)" : label)
+            Text(label)
         }
         .font(.system(size: 10, weight: .medium))
         .foregroundColor(color.opacity(active ? 1 : 0.75))

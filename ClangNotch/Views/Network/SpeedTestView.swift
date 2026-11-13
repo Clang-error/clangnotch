@@ -43,7 +43,7 @@ struct SpeedTestView: View {
                 verdictSection(verdict)
             }
             actionButton
-            if settings.enableSpeedTest, settings.enableTWorld, !settings.tworldHotspotSSID.isEmpty,
+            if settings.enableTWorld, !settings.tworldHotspotSSID.isEmpty,
                network.ssid == settings.tworldHotspotSSID {
                 TWorldUsageView()
             } else if DemoMode.isActive && DemoMode.scene == .tether {

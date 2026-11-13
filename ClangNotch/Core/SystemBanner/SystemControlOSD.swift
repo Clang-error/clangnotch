@@ -110,8 +110,8 @@ final class SystemControlOSD: ObservableObject {
     }
 
     func demoBrightness(_ fraction: Double) {
-        guard let id = Self.builtInDisplayID else { return }
-        show(Self.brightnessReading(fraction: fraction, displayID: id), on: NotchDetector.notchScreen)
+        guard Self.builtInDisplayID != nil else { return }
+        show(Self.brightnessReading(fraction: fraction), on: NotchDetector.notchScreen)
     }
 
     // MARK: - Keys
@@ -354,16 +354,11 @@ final class SystemControlOSD: ObservableObject {
         return volumeReading(fraction: Double(volume), muted: hasMute && muted != 0)
     }
 
-    private static func brightnessReading(fraction: Double, displayID: CGDirectDisplayID) -> SystemControlReading {
+    /// Only the built-in display's brightness is read.
+    private static func brightnessReading(fraction: Double) -> SystemControlReading {
         let percent = fraction * 100
-        var badge = "\(Int(percent.rounded()))%"
-        if CGDisplayIsBuiltin(displayID) != 0 {
-            badge += " • \(formatNits(builtInNits(percent: percent))) " + L("니트", "nits")
-        }
-        let title = CGDisplayIsBuiltin(displayID) != 0
-            ? L("내장 디스플레이", "Built-in Display")
-            : screen(for: displayID)?.localizedName ?? L("디스플레이", "Display")
-        return SystemControlReading(kind: .brightness, title: title, fraction: fraction, badge: badge)
+        let badge = "\(Int(percent.rounded()))% • \(formatNits(builtInNits(percent: percent))) " + L("니트", "nits")
+        return SystemControlReading(kind: .brightness, title: L("내장 디스플레이", "Built-in Display"), fraction: fraction, badge: badge)
     }
 
     private static var builtInDisplayID: CGDirectDisplayID? {
@@ -374,7 +369,7 @@ final class SystemControlOSD: ObservableObject {
         guard let id = builtInDisplayID, let getBrightness else { return nil }
         var value: Float = 0
         guard getBrightness(id, &value) == 0 else { return nil }
-        return brightnessReading(fraction: Double(value), displayID: id)
+        return brightnessReading(fraction: Double(value))
     }
 
     /// `DisplayServicesGetBrightness` from the private DisplayServices framework, looked up at runtime.

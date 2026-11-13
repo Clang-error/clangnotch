@@ -3,7 +3,7 @@ import AppKit
 @main
 struct NowPlayingChecks {
     static func track(_ title: String, app: String = "com.apple.Music", playing: Bool = true) -> NowPlaying {
-        NowPlaying(title: title, artist: "Artist", album: nil, bundleID: app, appName: nil, isPlaying: playing, artwork: nil)
+        NowPlaying(title: title, artist: "Artist", bundleID: app, appName: nil, isPlaying: playing, artwork: nil)
     }
 
     static func main() {

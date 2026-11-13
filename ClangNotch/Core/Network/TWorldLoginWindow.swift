@@ -11,13 +11,11 @@ final class TWorldLoginWindow: NSObject, NSWindowDelegate, WKUIDelegate, WKNavig
     private let confirm = NSButton(title: "로그인 후 연결 확인", target: nil, action: nil)
     private var popups: [NSWindow] = []
     private let onCookies: ([HTTPCookie], TWorldHeaderCapture.Capture) async throws -> Void
-    private let onConnected: () -> Void
     private let onClosed: () -> Void
 
     init(cookies: [HTTPCookie], onCookies: @escaping ([HTTPCookie], TWorldHeaderCapture.Capture) async throws -> Void,
-         onConnected: @escaping () -> Void, onClosed: @escaping () -> Void) {
+         onClosed: @escaping () -> Void) {
         self.onCookies = onCookies
-        self.onConnected = onConnected
         self.onClosed = onClosed
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: Self.profileID)
@@ -82,7 +80,6 @@ final class TWorldLoginWindow: NSObject, NSWindowDelegate, WKUIDelegate, WKNavig
                 }
                 try await onCookies(cookies.filter(TWorldClient.isTWorldCookie), capture)
                 close()
-                onConnected()
             } catch {
                 status.stringValue = error.localizedDescription
                 confirm.isEnabled = true

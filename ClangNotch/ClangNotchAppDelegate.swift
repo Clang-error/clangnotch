@@ -11,7 +11,6 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
 
         // ssh started this copy to ask the user something (`SSHHost`): it answers and exits.
         if SSHAskpass.runIfRequested() { return }
-        if TWorldCommand.runIfRequested() { return }
 
         // Recording mode: only the notch and the scripted sessions. No hook receiver
         // (the real instance owns port 4318), no update checks.
@@ -76,7 +75,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        CommandLine.arguments.contains("--tworld-login")
+        false
     }
 
     @objc func showSettingsWindow() {

@@ -50,8 +50,8 @@ final class TetherPlaceMonitor: NSObject, ObservableObject {
     @Published private(set) var isLocating = false
     @Published private(set) var lastError: String?
 
-    /// The SSID check is cheap, so it runs often enough to catch a new connection quickly;
-    /// the location fix and the alert repeat on the slower cadence while tethering lasts.
+    /// The fallback timer's pace (a new connection itself arrives through `pathMonitor`); the
+    /// location fix and the alert repeat on the slower cadence while tethering lasts.
     private let pollInterval: TimeInterval = 60
     private let alertInterval: TimeInterval = 10 * 60
     /// Leaving a place on the same hotspot changes nothing on the network, so only a location

@@ -64,7 +64,6 @@ final class ClaudeFixture {
     let questionWaitStaleAfter: TimeInterval = 300
     let staleLineAfter: TimeInterval = 120
     let turnSafetyTimeout: TimeInterval = 300
-    func resetToolIdleTimer() {}
     func holdsWrapUpForStopHook(_ sessionId: String) -> Bool { false }
     func updateSessionsNeedingPermission() {}
     func captureConversation(from: [String: Any], into: inout ClaudeCodeState) {}
@@ -202,7 +201,7 @@ swift += '''}
         precondition(!c.state.isActive, "Missing completion must expire")
         for terminal in ["end_turn", "stop_sequence", "max_tokens"] {
             c.parseMessageForSession(["role":"assistant", "stop_reason":terminal, "content":[["type":"text", "text":"done"]]], sessionId:"s")
-            precondition(!c.state.isActive && c.state.lastStopReason == terminal)
+            precondition(!c.state.isActive)
         }
         c.lastCompletedTurn = nil
         c.parseMessageForSession(["id":"m1", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"thinking"]]], sessionId:"s")

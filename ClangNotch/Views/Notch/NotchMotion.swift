@@ -123,7 +123,7 @@ struct GlowSweepText: ViewModifier {
         }
     }
 
-    /// Same as NotchGlowBorder's: `Color.mix(with:by:)` needs macOS 15; the target is 14.2.
+    /// Same as `NotchGlowLayers`': `Color.mix(with:by:)` needs macOS 15; the target is 14.2.
     static func blend(_ from: Color, _ to: Color?, _ fraction: Double) -> Color {
         guard let to, fraction > 0 else { return from }
         guard let blended = NSColor(from).usingColorSpace(.sRGB)?

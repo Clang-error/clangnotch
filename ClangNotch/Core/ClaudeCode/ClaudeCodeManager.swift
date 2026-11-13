@@ -32,25 +32,10 @@ final class ClaudeCodeManager: ObservableObject {
     // MARK: - Multi-Session Permission Tracking
 
     /// Per-session state tracking for permission detection
-    @Published private(set) var sessionStates: [String: ClaudeCodeState] = [:] {
-        didSet {
-            for (id, newState) in sessionStates {
-                let oldConfirmed = oldValue[id]?.needsPermissionConfirmed ?? false
-                let oldNeeds = oldValue[id]?.needsPermission ?? false
-                if newState.needsPermissionConfirmed != oldConfirmed || newState.needsPermission != oldNeeds {
-                    let stack = Thread.callStackSymbols.prefix(8).joined(separator: "\n    ")
-                    debugLog("[ClaudeCode] [\(Date())] STATE CHANGE \(id.prefix(30))... needsPermission \(oldNeeds)->\(newState.needsPermission) confirmed \(oldConfirmed)->\(newState.needsPermissionConfirmed)\n    \(stack)")
-                }
-            }
-        }
-    }
+    @Published private(set) var sessionStates: [String: ClaudeCodeState] = [:]
 
     /// Sessions currently waiting for user permission approval
     @Published private(set) var sessionsNeedingPermission: [ClaudeSession] = []
-
-    /// Tool approval requests confirmed via Claude Code's Notification hook.
-    /// Questions are tracked separately in `pendingInputRequests`.
-    @Published private(set) var sessionsConfirmedNeedingPermission: [ClaudeSession] = []
 
     /// The last turn any session finished normally (end_turn); drives the closed-notch Done and the 완료 드롭다운.
     @Published private(set) var lastCompletedTurn: CompletedTurn?
@@ -195,11 +180,6 @@ final class ClaudeCodeManager: ObservableObject {
     private var idleCheckTimer: Timer?
     /// Initial idle check; an active turn reschedules this once at its expiry.
     private let idleCheckDelay: TimeInterval = 1.0
-
-    /// Timer to re-evaluate quiet activity after a tool starts.
-    private var toolIdleTimer: Timer?
-    /// Tool execution itself remains active until its result arrives.
-    private let toolIdleDelay: TimeInterval = 4.0
 
     /// Silence limit since the latest meaningful activity, unless a tool/question is pending.
     private let turnSafetyTimeout: TimeInterval = 300.0
@@ -537,7 +517,7 @@ final class ClaudeCodeManager: ObservableObject {
         let settings = AppSettings.shared
         do {
             try NextStepHooks.sync(in: claudeDir.appendingPathComponent("settings.json"), port: port, maxTime: 600,
-                                   enabled: settings.enableClaudeCodeJSONL && settings.experimentalClaudeNextStepAnswers)
+                                   enabled: settings.showSourceClaudeCode && settings.experimentalClaudeNextStepAnswers)
         } catch {
             debugLog("[ClaudeCode] Could not update the next-step hook: \(error.localizedDescription)")
         }
@@ -548,7 +528,7 @@ final class ClaudeCodeManager: ObservableObject {
     private func startSessionScanning() {
         // The demo never reads real transcripts or touches ~/.claude/settings.json.
         guard !DemoMode.isActive else { return }
-        if AppSettings.shared.enableClaudeCodeJSONL,
+        if AppSettings.shared.showSourceClaudeCode,
            let port = UInt16(exactly: AppSettings.shared.hookPort) {
             do {
                 try ClaudeQuestionHooks.install(in: claudeDir, port: port)
@@ -623,7 +603,7 @@ final class ClaudeCodeManager: ObservableObject {
     // MARK: - Directory Watching (instant new-session detection)
 
     /// Watch the projects dir + every project subdir so new sessions are picked up
-    /// immediately instead of waiting for the 10s scan tick.
+    /// immediately instead of waiting for the next scan tick (3 s while working, 15 s idle).
     private func startWatchingProjectsDirectory() {
         refreshProjectDirWatchers()
 
@@ -684,42 +664,12 @@ final class ClaudeCodeManager: ObservableObject {
         }
     }
 
-    private func stopWatchingProjectsDirectory() {
-        projectsDirWatcher?.cancel()
-        projectsDirWatcher = nil
-        for (_, source) in projectDirWatchers {
-            source.cancel()
-        }
-        projectDirWatchers.removeAll()
-    }
-
     private func isProcessRunning(pid: Int) -> Bool {
-        let runningApps = NSWorkspace.shared.runningApplications
-        if runningApps.contains(where: { $0.processIdentifier == Int32(pid) }) {
-            return true
-        }
-
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, Int32(pid)]
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.size
         let result = sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0)
         return result == 0 && size > 0
-    }
-
-    private func stopWatching() {
-        sessionScanTimer?.invalidate()
-        sessionScanTimer = nil
-        registryDirWatcher?.cancel()
-        registryDirWatcher = nil
-        idleCheckTimer?.invalidate()
-        idleCheckTimer = nil
-        toolIdleTimer?.invalidate()
-        toolIdleTimer = nil
-        stopWatchingProjectsDirectory()
-
-        for sessionId in sessionWatchers.keys {
-            stopWatchingSession(id: sessionId)
-        }
     }
 
     // MARK: - Multi-Session Watching
@@ -748,11 +698,8 @@ final class ClaudeCodeManager: ObservableObject {
             return
         }
 
-        // Try to find the project directory
-        var projectDir: URL?
         var jsonlFile: URL?
 
-        // First try direct projectKey match
         if let projectKey = session.projectKey {
             debugLog("[ClaudeCode]   - Project key: \(projectKey)")
             let directPath = projectsDir.appendingPathComponent(projectKey)
@@ -761,52 +708,12 @@ final class ClaudeCodeManager: ObservableObject {
             if let terminalId = session.terminalSessionId {
                 let specificFile = directPath.appendingPathComponent("\(terminalId).jsonl")
                 if FileManager.default.fileExists(atPath: specificFile.path) {
-                    projectDir = directPath
                     jsonlFile = specificFile
                     debugLog("[ClaudeCode]   - Found terminal session file: \(terminalId).jsonl")
                 }
             } else if let file = findActiveSessionFiles(in: directPath).first {
-                projectDir = directPath
                 jsonlFile = file
                 debugLog("[ClaudeCode]   - Found via direct match: \(directPath.path)")
-            }
-        }
-
-        // Fallback: scan all project directories for a match
-        if jsonlFile == nil, let workspace = session.workspaceFolders.first {
-            debugLog("[ClaudeCode]   - Direct match failed, scanning all projects...")
-            let fm = FileManager.default
-
-            // Strip session fragment for comparison
-            let cleanWorkspace = workspace.components(separatedBy: "#").first ?? workspace
-            let normalizedWorkspace = cleanWorkspace.lowercased()
-
-            if let projectDirs = try? fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: nil) {
-                // Look for directory that matches the workspace path
-                for dir in projectDirs {
-                    // Convert dir name back to path: "-Users-foo-project" -> "/Users/foo/project"
-                    let dirName = dir.lastPathComponent
-                    let dirPath = dirName.replacingOccurrences(of: "-", with: "/")
-                    // Handle leading dash correctly (absolute paths start with /)
-                    let normalizedDirPath = dirPath.hasPrefix("/") ? dirPath : "/" + dirPath
-                    if normalizedDirPath.lowercased() == normalizedWorkspace {
-                        // For terminal sessions, use the specific session file
-                        if let terminalId = session.terminalSessionId {
-                            let specificFile = dir.appendingPathComponent("\(terminalId).jsonl")
-                            if fm.fileExists(atPath: specificFile.path) {
-                                projectDir = dir
-                                jsonlFile = specificFile
-                                debugLog("[ClaudeCode]   - Found terminal session via scan: \(terminalId).jsonl")
-                                break
-                            }
-                        } else if let file = findActiveSessionFiles(in: dir).first {
-                            projectDir = dir
-                            jsonlFile = file
-                            debugLog("[ClaudeCode]   - Found via scan: \(dir.path)")
-                            break
-                        }
-                    }
-                }
             }
         }
 
@@ -985,28 +892,12 @@ final class ClaudeCodeManager: ObservableObject {
                 sessionState.activeTools.removeAll()
                 sessionState.pendingInputRequests.removeAll()
                 sessionState.needsPermission = false
-                sessionState.needsPermissionConfirmed = false
-                sessionState.pendingPermissionTool = nil
             }
             sessionStates[sessionId] = sessionState
         }
         updateSessionsNeedingPermission()
         if let selectedId = selectedSession?.id { syncStateIfSelected(selectedId) }
         if let nextCheck { resetIdleTimer(after: nextCheck) }
-    }
-
-    /// Reset the tool idle timer - called when any tool activity is detected
-    private func resetToolIdleTimer() {
-        toolIdleTimer?.invalidate()
-        toolIdleTimer = Timer.scheduledTimer(withTimeInterval: toolIdleDelay, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.markSessionDoneAfterToolIdle()
-            }
-        }
-    }
-
-    private func markSessionDoneAfterToolIdle() {
-        markAllSessionsIdle()
     }
 
     private static func sessionTitle(in json: [String: Any]) -> String? {
@@ -1112,7 +1003,6 @@ final class ClaudeCodeManager: ObservableObject {
                 debugLog("[ClaudeCode] Detected user interruption in toolUseResult for session \(sessionId.prefix(8))...")
                 if var sessionState = sessionStates[sessionId] {
                     sessionState.isThinking = false
-                    sessionState.lastStopReason = "interrupted"
                     sessionState.activeTools.removeAll()
                     sessionState.pendingInputRequests.removeAll()
                     sessionState.stagedWrapUp = nil
@@ -1158,7 +1048,7 @@ final class ClaudeCodeManager: ObservableObject {
         }
 
         if let message = json["message"] as? [String: Any] {
-            parseMessageForSession(message, sessionId: sessionId, lineDate: lineDate, isStale: isStale,
+            parseMessageForSession(message, sessionId: sessionId, lineDate: lineDate,
                                    isMeta: json["isMeta"] as? Bool == true)
         }
     }
@@ -1216,7 +1106,7 @@ final class ClaudeCodeManager: ObservableObject {
         }
     }
 
-    private func parseMessageForSession(_ message: [String: Any], sessionId: String, lineDate: Date? = nil, isStale: Bool = false,
+    private func parseMessageForSession(_ message: [String: Any], sessionId: String, lineDate: Date? = nil,
                                         isMeta: Bool = false) {
         guard var sessionState = sessionStates[sessionId] else { return }
 
@@ -1224,28 +1114,14 @@ final class ClaudeCodeManager: ObservableObject {
             sessionState.model = model
         }
 
-        // Track stop_reason for session completion detection
-        if let stopReason = message["stop_reason"] as? String {
-            sessionState.lastStopReason = stopReason
-            if stopReason == "end_turn" {
-                sessionState.isThinking = false
-            }
-        }
-
         if let role = message["role"] as? String {
             if role == "user" || role == "assistant" {
-                if !isStale {
-                    sessionState.pendingInputRequests.removeAll { $0.id == "notification" }
-                }
+                sessionState.pendingInputRequests.removeAll { $0.id == "notification" }
                 // Activity is dated by the line itself, so a replayed old line can't extend
                 // the idle timeout, and it never starts a turn.
                 sessionState.lastUpdateTime = lineDate ?? Date()
-                if !isStale {
-                    sessionState.isThinking = true
-                    // Reset stop_reason when new activity starts
-                    sessionState.lastStopReason = nil
-                    if sessionState.turnStartTime == nil { sessionState.turnStartTime = lineDate ?? Date() }
-                }
+                sessionState.isThinking = true
+                if sessionState.turnStartTime == nil { sessionState.turnStartTime = lineDate ?? Date() }
             }
         }
 
@@ -1254,7 +1130,7 @@ final class ClaudeCodeManager: ObservableObject {
                 if let type = item["type"] as? String {
                     switch type {
                     case "thinking":
-                        if !isStale { sessionState.isThinking = true }
+                        sessionState.isThinking = true
 
                     case "text":
                         // Text and thinking can both continue after a tool result.
@@ -1263,7 +1139,6 @@ final class ClaudeCodeManager: ObservableObject {
                            text.contains("[Request interrupted by user") {
                             debugLog("[ClaudeCode] Detected user interruption for session \(sessionId.prefix(8))...")
                             sessionState.isThinking = false
-                            sessionState.lastStopReason = "interrupted"
                             sessionState.activeTools.removeAll()
                             sessionState.pendingInputRequests.removeAll()
                             sessionState.stagedWrapUp = nil
@@ -1273,8 +1148,6 @@ final class ClaudeCodeManager: ObservableObject {
                     case "tool_use":
                         // Tool use means thinking is done, now acting
                         sessionState.isThinking = false
-                        // Reset tool idle timer - new tool activity detected
-                        resetToolIdleTimer()
 
                         if let toolId = item["id"] as? String,
                            let toolName = item["name"] as? String {
@@ -1314,14 +1187,7 @@ final class ClaudeCodeManager: ObservableObject {
                                 }
                             }
 
-                            if isStale {
-                                // Old line: remember the tool, but never show it as running.
-                                if !sessionState.recentTools.contains(where: { $0.id == toolId }) {
-                                    tool.endTime = tool.startTime
-                                    sessionState.recentTools.insert(tool, at: 0)
-                                    if sessionState.recentTools.count > 10 { sessionState.recentTools.removeLast() }
-                                }
-                            } else if !sessionState.activeTools.contains(where: { $0.id == toolId }) {
+                            if !sessionState.activeTools.contains(where: { $0.id == toolId }) {
                                 debugLog("[ClaudeCode] Tool started: \(toolName) (id: \(toolId.prefix(8))...) desc: \(toolDescription ?? "-")")
                                 sessionState.activeTools.append(tool)
                                 if toolName == questionToolName, !dismissedInputRequestIDs.contains(toolId) {
@@ -1339,7 +1205,6 @@ final class ClaudeCodeManager: ObservableObject {
         // Parse usage for token tracking
         if let usage = message["usage"] as? [String: Any] {
             sessionState.tokenUsage.inputTokens = usage["input_tokens"] as? Int ?? sessionState.tokenUsage.inputTokens
-            sessionState.tokenUsage.outputTokens = usage["output_tokens"] as? Int ?? sessionState.tokenUsage.outputTokens
             sessionState.tokenUsage.cacheReadInputTokens = usage["cache_read_input_tokens"] as? Int ?? sessionState.tokenUsage.cacheReadInputTokens
             sessionState.tokenUsage.cacheCreationInputTokens = usage["cache_creation_input_tokens"] as? Int ?? sessionState.tokenUsage.cacheCreationInputTokens
         }
@@ -1367,8 +1232,6 @@ final class ClaudeCodeManager: ObservableObject {
                     // "true") permission fields the instant they were reset.
                     if let refreshed = sessionStates[sessionId] {
                         sessionState.needsPermission = refreshed.needsPermission
-                        sessionState.needsPermissionConfirmed = refreshed.needsPermissionConfirmed
-                        sessionState.pendingPermissionTool = refreshed.pendingPermissionTool
                     }
 
                     // Move tool to recentTools instead of just removing
@@ -1382,7 +1245,7 @@ final class ClaudeCodeManager: ObservableObject {
                         }
                     }
 
-                    if !isStale { sessionState.isThinking = true }
+                    sessionState.isThinking = true
                 }
             }
         }
@@ -1399,17 +1262,16 @@ final class ClaudeCodeManager: ObservableObject {
         if let stopReason = message["stop_reason"] as? String,
            ["end_turn", "stop_sequence", "max_tokens"].contains(stopReason),
            stopReason != "end_turn" || hasAnswerText {
-            sessionState.lastStopReason = stopReason
             sessionState.isThinking = false
             let turnStart = sessionState.turnStartTime
             sessionState.turnStartTime = nil
             // The closing message is out: the app draws the next-step box now, and so does the
             // notch, unless it waits a moment for the hook that lights the box's buttons.
             if hasAnswerText, sessionState.stagedWrapUp != nil,
-               isStale || isLoadingHistoryBySession[sessionId] == true || !holdsWrapUpForStopHook(sessionId) {
+               isLoadingHistoryBySession[sessionId] == true || !holdsWrapUpForStopHook(sessionId) {
                 sessionState.showStagedWrapUp()
             }
-            if stopReason == "end_turn", hasAnswerText, !isStale,
+            if stopReason == "end_turn", hasAnswerText,
                isLoadingHistoryBySession[sessionId] != true,
                let messageId = message["id"] as? String,
                completedTurnMessageIDs[sessionId] != messageId {
@@ -1510,8 +1372,6 @@ final class ClaudeCodeManager: ObservableObject {
     private func clearPermissionCheckForSession(sessionId: String) {
         if var sessionState = sessionStates[sessionId], sessionState.needsPermission {
             sessionState.needsPermission = false
-            sessionState.needsPermissionConfirmed = false
-            sessionState.pendingPermissionTool = nil
             sessionStates[sessionId] = sessionState
             syncStateIfSelected(sessionId)
             objectWillChange.send()
@@ -1549,8 +1409,8 @@ final class ClaudeCodeManager: ObservableObject {
         resetIdleTimer()
     }
 
-    /// Handles a `Notification` hook event POSTed by Claude Code (see .claude/settings.json
-    /// hook config) — a deterministic signal that Claude is waiting on the user, instead of
+    /// Handles a `Notification` hook event POSTed by Claude Code (the user's own hook in
+    /// `~/.claude/settings.json`; the app doesn't install this one) — a deterministic signal that Claude is waiting on the user, instead of
     /// the fragile fallback heuristic of inferring it from tool_use/tool_result timing.
     func handleNotificationHook(transcriptPath: String, notificationType: String) {
         debugLog("[ClaudeCode] [\(Date())] Notification hook received: \(notificationType) for \(transcriptPath)")
@@ -1578,10 +1438,6 @@ final class ClaudeCodeManager: ObservableObject {
 
         debugLog("[ClaudeCode] [\(Date())] Notification hook: session \(sessionId.prefix(8))... needs permission (\(notificationType))")
         sessionState.needsPermission = true
-        sessionState.needsPermissionConfirmed = true
-        if sessionState.pendingPermissionTool == nil {
-            sessionState.pendingPermissionTool = sessionState.activeTools.first?.toolName ?? "Claude"
-        }
         sessionStates[sessionId] = sessionState
         syncStateIfSelected(sessionId)
         updateSessionsNeedingPermission()
@@ -1653,8 +1509,6 @@ final class ClaudeCodeManager: ObservableObject {
             state.isThinking = false
             state.turnStartTime = nil
             state.needsPermission = false
-            state.needsPermissionConfirmed = false
-            state.pendingPermissionTool = nil
             sessionStates[candidate.id] = state
             syncStateIfSelected(candidate.id)
             changed = true
@@ -1673,8 +1527,6 @@ final class ClaudeCodeManager: ObservableObject {
         state.pendingInputRequests.removeAll()
         state.stagedWrapUp = nil
         state.needsPermission = false
-        state.needsPermissionConfirmed = false
-        state.pendingPermissionTool = nil
         sessionStates[sessionId] = state
         heldCompletions[sessionId] = nil
         if let path = sessionJSONLPaths[sessionId] {
@@ -1688,7 +1540,6 @@ final class ClaudeCodeManager: ObservableObject {
 
     /// A running Claude Code process as its registry record describes it.
     private struct LiveSessionRecord {
-        let pid: Int
         /// The process whose terminal shows the session: itself, or for a background job
         /// the terminal process that parked it and stays attached to it.
         var terminalPid: Int
@@ -1732,7 +1583,6 @@ final class ClaudeCodeManager: ObservableObject {
             let status = record["status"] as? String
             let entrypoint = (record["entrypoint"] as? String).map(ClaudeEntrypoint.init(raw:))
             live[conversationId] = LiveSessionRecord(
-                pid: pid,
                 terminalPid: pid,
                 isIdle: status == "idle" || status == "shell",
                 statusChangedAt: (record["statusUpdatedAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) },
@@ -1748,9 +1598,6 @@ final class ClaudeCodeManager: ObservableObject {
 
     // MARK: - Remote (SSH) Sessions
 
-    /// Applies one Claude Code hook event forwarded from an SSH host by the hook script
-    /// RemoteClaudeManager installs there. A remote session has no JSONL to tail, so its
-    /// state is driven only by these events: prompt → tool start/end → stop.
     /// Each session's real context window, from its status line (`StatuslineBridge`).
     @Published private(set) var contextWindowSizes: [String: Int] = [:]
 
@@ -1811,6 +1658,9 @@ final class ClaudeCodeManager: ObservableObject {
         objectWillChange.send()
     }
 
+    /// Applies one Claude Code hook event forwarded from an SSH host by the hook script
+    /// RemoteClaudeManager installs there. A remote session has no JSONL to tail, so its
+    /// state is driven only by these events: prompt → tool start/end → stop.
     func handleRemoteHook(host: String, json: [String: Any]) {
         guard sessionScanTimer != nil,
               let conversationId = json["session_id"] as? String,
@@ -1834,7 +1684,6 @@ final class ClaudeCodeManager: ObservableObject {
             remoteHost: host
         )
         var sessionState = sessionStates[session.id] ?? ClaudeCodeState()
-        sessionState.sessionId = conversationId
         sessionState.cwd = json["cwd"] as? String ?? sessionState.cwd
         sessionState.entrypoint = .ssh
 
@@ -1844,8 +1693,6 @@ final class ClaudeCodeManager: ObservableObject {
         if event != "Notification" {
             sessionState.pendingInputRequests.removeAll { $0.id == "notification" }
             sessionState.needsPermission = false
-            sessionState.needsPermissionConfirmed = false
-            sessionState.pendingPermissionTool = nil
         }
 
         switch event {
@@ -1853,7 +1700,6 @@ final class ClaudeCodeManager: ObservableObject {
             sessionState.activeTools.removeAll()
             sessionState.pendingInputRequests.removeAll()
             sessionState.isThinking = true
-            sessionState.lastStopReason = nil
             sessionState.turnStartTime = now
             if let prompt = json["prompt"] as? String, let text = displayableUserPrompt(prompt) {
                 appendConversationMessage(ClaudeMessage(role: .user, text: text), into: &sessionState)
@@ -1895,7 +1741,6 @@ final class ClaudeCodeManager: ObservableObject {
                 sessionState.pendingInputRequests.removeAll()
                 sessionState.isThinking = false
                 sessionState.turnStartTime = nil
-                sessionState.lastStopReason = "interrupted"
             }
         case "Resumed":
             // The host's registry record no longer says `waiting` (`handleRemoteRegistry`): the
@@ -1906,7 +1751,6 @@ final class ClaudeCodeManager: ObservableObject {
                 sessionState.activeTools.removeAll()
                 sessionState.isThinking = false
                 sessionState.turnStartTime = nil
-                sessionState.lastStopReason = "interrupted"
             }
         case "Interrupted":
             // Esc, read from the host's transcript (`handleRemoteTranscript`); hooks have no
@@ -1915,14 +1759,12 @@ final class ClaudeCodeManager: ObservableObject {
             sessionState.pendingInputRequests.removeAll()
             sessionState.isThinking = false
             sessionState.turnStartTime = nil
-            sessionState.lastStopReason = "interrupted"
         case "Stop":
             sessionState.activeTools.removeAll()
             sessionState.pendingInputRequests.removeAll()
             sessionState.isThinking = false
             let turnStart = sessionState.turnStartTime
             sessionState.turnStartTime = nil
-            sessionState.lastStopReason = "end_turn"
             // A turn rebuilt from a transcript's history (`handleRemoteTranscript`) ended before
             // this Mac was listening: no Done for it.
             if json["clangnotch_history"] as? Bool != true {
@@ -1939,10 +1781,6 @@ final class ClaudeCodeManager: ObservableObject {
                 break
             }
             sessionState.needsPermission = true
-            sessionState.needsPermissionConfirmed = true
-            if sessionState.pendingPermissionTool == nil {
-                sessionState.pendingPermissionTool = sessionState.activeTools.first?.toolName ?? "Claude"
-            }
         default:
             return
         }
@@ -2094,21 +1932,8 @@ final class ClaudeCodeManager: ObservableObject {
     }
 
     private func updateSessionsNeedingPermission() {
-        var needingPermission: [ClaudeSession] = []
-        var confirmedNeedingPermission: [ClaudeSession] = []
-
-        for session in availableSessions {
-            if let sessionState = sessionStates[session.id], sessionState.needsPermission == true {
-                needingPermission.append(session)
-                if sessionState.needsPermissionConfirmed {
-                    confirmedNeedingPermission.append(session)
-                }
-            }
-        }
-
-        sessionsNeedingPermission = needingPermission
-        sessionsConfirmedNeedingPermission = confirmedNeedingPermission
-        debugLog("[ClaudeCode] [\(Date())] updateSessionsNeedingPermission: \(needingPermission.map { $0.displayName }), confirmed: \(confirmedNeedingPermission.map { $0.displayName })")
+        let needingPermission = availableSessions.filter { sessionStates[$0.id]?.needsPermission == true }
+        if needingPermission != sessionsNeedingPermission { sessionsNeedingPermission = needingPermission }
     }
 
     /// Read the real working directory from a session JSONL's top-level `cwd` field.

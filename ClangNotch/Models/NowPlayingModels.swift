@@ -5,7 +5,6 @@ import Foundation
 struct NowPlaying: Equatable {
     var title: String
     var artist: String?
-    var album: String?
     /// The app that plays it: Safari for the WebKit.GPU process that really plays a video.
     var bundleID: String?
     var appName: String?

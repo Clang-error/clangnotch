@@ -68,7 +68,6 @@ struct ClaudeSession: Identifiable, Codable, Equatable {
 /// Token usage data from JSONL message.usage field
 struct ClaudeTokenUsage: Equatable {
     var inputTokens: Int = 0
-    var outputTokens: Int = 0
     var cacheReadInputTokens: Int = 0
     var cacheCreationInputTokens: Int = 0
 }
@@ -197,33 +196,6 @@ enum ClaudeEntrypoint: Equatable {
         default: self = .unknown
         }
     }
-
-    /// Short label for the footer badge
-    var label: String {
-        switch self {
-        case .terminal: return "Terminal"
-        case .desktop: return "Desktop"
-        case .vscode: return "VS Code"
-        case .sdk: return "SDK"
-        case .ssh: return "SSH"
-        case .unknown: return ""
-        }
-    }
-
-    /// SF Symbol for the badge
-    var iconName: String {
-        switch self {
-        case .terminal: return "terminal"
-        case .desktop: return "macwindow"
-        case .vscode: return "chevron.left.forwardslash.chevron.right"
-        case .sdk: return "curlybraces"
-        case .ssh: return "network"
-        case .unknown: return "questionmark"
-        }
-    }
-
-    /// Whether the badge should be shown (hidden until a known entrypoint is seen)
-    var isVisible: Bool { self != .unknown }
 }
 
 // MARK: - Conversation Message
@@ -235,13 +207,11 @@ struct ClaudeMessage: Identifiable, Equatable {
     let id: UUID
     let role: Role
     let text: String
-    let time: Date
 
-    init(role: Role, text: String, time: Date = Date()) {
+    init(role: Role, text: String) {
         self.id = UUID()
         self.role = role
         self.text = text
-        self.time = time
     }
 }
 
@@ -299,10 +269,8 @@ struct ClaudeInputRequest: Identifiable, Equatable {
 
 /// Complete Claude Code state for display
 struct ClaudeCodeState: Equatable {
-    var sessionId: String = ""
     var model: String = ""
     var cwd: String = ""
-    var gitBranch: String = ""
     var entrypoint: ClaudeEntrypoint = .unknown
     /// The session's name: one set with /rename or in the desktop app, else Claude's own.
     var title: String?
@@ -339,13 +307,6 @@ struct ClaudeCodeState: Equatable {
 
     /// True when Claude is waiting for user permission to execute a tool
     var needsPermission: Bool = false
-    /// True when `needsPermission` was set by Claude Code's own Notification hook
-    /// (deterministic) rather than guessed from JSONL tool_use/tool_result timing
-    /// (a tool just running long looks identical to one genuinely awaiting the user).
-    /// Only hook-confirmed sessions should trigger an interruptive peek notification.
-    var needsPermissionConfirmed: Bool = false
-    /// The tool waiting for permission (if any)
-    var pendingPermissionTool: String?
 
     /// True when Claude is actively generating a response (thinking)
     var isThinking: Bool = false
@@ -354,9 +315,6 @@ struct ClaudeCodeState: Equatable {
     /// nil = no turn in progress. Keeps the active indicator alive across silent
     /// thinking gaps where no JSONL is written.
     var turnStartTime: Date?
-
-    /// Last stop_reason from Claude (e.g., "end_turn", "tool_use")
-    var lastStopReason: String?
 
     // Convenience accessors
     var hasActiveTools: Bool { !activeTools.isEmpty }

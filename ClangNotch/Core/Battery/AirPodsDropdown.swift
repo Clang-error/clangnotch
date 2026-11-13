@@ -152,7 +152,7 @@ final class AirPodsDropdown: ObservableObject {
 
     /// The 미디어 드롭다운's 핀: pinned, it doesn't fold and can be dragged anywhere on screen;
     /// unpinned, it glides back under the notch and folds after its usual time. A device's card
-    /// waits meanwhile, since the cards share one panel (2026-11-12, a first version).
+    /// waits meanwhile (2026-11-12, a first version; `shared` and `media` each have a panel).
     @Published private(set) var pinned = false
     private var dragStart: (mouse: NSPoint, origin: NSPoint)?
 

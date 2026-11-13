@@ -11,7 +11,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("showSourceCodex") public var showSourceCodex: Bool = true
     @AppStorage("showSourceClaudeCode") public var showSourceClaudeCode: Bool = true
 
-    // Clipboard history (NSPasteboard polling, text-only, memory-only)
+    // Clipboard history (NSPasteboard polling): text, copied files and images. The list lives in
+    // memory; images are kept in the app's cache folder.
     @AppStorage("enableClipboardHistory") public var enableClipboardHistory: Bool = true
 
     // Per-app volume mixer (Core Audio process taps, macOS 14.2+, needs audio-capture permission)
@@ -49,9 +50,9 @@ public final class AppSettings: ObservableObject {
     // SSID behind Location Services, so turning this on is what asks for it.
     @AppStorage("enableNetworkName") public var enableNetworkName: Bool = true
 
-    // Exact hotspot name; an empty value disables T world quota display and polling.
     /// SKT shared data (T world). Off by default: it needs the user's own SKT account.
     @AppStorage("enableTWorld") public var enableTWorld: Bool = false
+    /// Exact hotspot name; an empty value hides the SKT shared data card.
     @AppStorage("tworldHotspotSSID") public var tworldHotspotSSID: String = "아이폰"
 
     // Battery levels for Mac, Bluetooth accessories and iOS devices.
@@ -114,11 +115,9 @@ public final class AppSettings: ObservableObject {
         "ai,volume,sidecar,clipboard,speed,battery,keyboardLock"
 
 
-    // Battery saver: 15 FPS on battery, 25 FPS when charging
+    // Battery saver: on battery the glow is capped at 30 fps; no cap while charging.
     @AppStorage("batterySaverEnabled") public var batterySaverEnabled: Bool = true
 
-    // Claude Code JSONL Session Tracking
-    @AppStorage("enableClaudeCodeJSONL") public var enableClaudeCodeJSONL: Bool = true
     @AppStorage("showPermissionIndicator") public var showPermissionIndicator: Bool = true
     @AppStorage("showTodoList") public var showTodoList: Bool = true
     // "플랜 표시 (사용량 카드)" under Claude Code and under Codex: the plan badge beside each
@@ -126,7 +125,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("showClaudePlan") public var showClaudePlan: Bool = true
     @AppStorage("showCodexPlan") public var showCodexPlan: Bool = true
     // "사용량 한도 표시" under Codex: the Codex 사용량 카드 (notch and menu bar popover). Its
-    // limits come in the session logs, so unlike Claude's there is nothing to poll.
+    // limits come in the session logs and, every 5 minutes while this is on, from the local
+    // `codex app-server` (no sign-in of its own, unlike Claude's).
     @AppStorage("showCodexUsage") public var showCodexUsage: Bool = true
     // 설정 › 실험 기능 › "Codex 질문에 노치에서 답하기": answers go in through the Codex app's
     // internal IPC socket (CodexAppIPC) and the shared daemon's experimental API (CodexDaemonIPC),
@@ -177,9 +177,6 @@ public final class AppSettings: ObservableObject {
     /// reading their session files over SSH (see RemoteCodexManager).
     @AppStorage("remoteCodexHosts") public var remoteCodexHosts: String = ""
 
-    // Codex JSONL Session Tracking
-    @AppStorage("enableCodexJSONL") public var enableCodexJSONL: Bool = true
-
     // Context and Display Settings
     @AppStorage("showContextProgress") public var showContextProgress: Bool = true
 
@@ -188,11 +185,11 @@ public final class AppSettings: ObservableObject {
     @AppStorage("claudeUsageRefreshMode") public var claudeUsageRefreshMode: String = "smart"  // "smart" or "fixed"
     @AppStorage("claudeUsageRefreshInterval") public var claudeUsageRefreshInterval: Int = 300  // seconds
 
+    /// Daily check of GitHub Releases for a newer version (`UpdateChecker`).
+    @AppStorage("checkForUpdates") public var checkForUpdates: Bool = true
     /// App copy language — settings window, notch and menu bar popover: "system" (default since
     /// 2026-11-13: Korean on a Korean system, English on any other), "ko" or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.
-    /// Daily check of GitHub Releases for a newer version (`UpdateChecker`).
-    @AppStorage("checkForUpdates") public var checkForUpdates: Bool = true
     @AppStorage("settingsLanguage") public var settingsLanguage: String = "system"
 
     public init() {}
@@ -202,7 +199,6 @@ public final class AppSettings: ObservableObject {
     func migrateRemoteSwitches() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "remoteClaudeEnabled") == nil, !SSHHost.list(remoteClaudeHosts).isEmpty { remoteClaudeEnabled = true }
-        if defaults.object(forKey: "remoteCodexEnabled") == nil, !SSHHost.list(remoteCodexHosts).isEmpty { remoteCodexEnabled = true }
     }
 }
 

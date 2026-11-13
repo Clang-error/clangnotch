@@ -59,7 +59,6 @@ final class CodexManager: ObservableObject {
             sessionState.pendingInputRequest = nil
             sessionStates[sessionId] = sessionState
         }
-        objectWillChange.send()
     }
 
     /// Questions whose answer is on its way to the Codex app, so a second tap can't send a second message.
@@ -199,15 +198,13 @@ final class CodexManager: ObservableObject {
         debugLog("[Codex] Codex dir: \(codexDir.path)")
         debugLog("[Codex] Sessions dir: \(sessionsDir.path)")
         debugLog("[Codex] ========================================")
-        if AppSettings.shared.enableCodexJSONL {
+        if AppSettings.shared.showSourceCodex {
             startSessionScanning()
             startRateLimitRefreshing()
         }
     }
 
-    // MARK: - Public Methods
-
-    /// Scan for active Codex sessions
+    /// The names Codex gives its threads (`session_index.jsonl`), read again when the file changes.
     private func loadThreadNames(for sessionIDs: [String]) {
         let file = codexDir.appendingPathComponent("session_index.jsonl")
         if let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
@@ -274,10 +271,16 @@ final class CodexManager: ObservableObject {
         stateThreadNames = names
     }
 
+    // MARK: - Public Methods
+
+    /// Scan for active Codex sessions
     func scanForSessions() {
         let fm = FileManager.default
         var sessions: [CodexSession] = []
-        var allSessionFiles: [(url: URL, modifiedAt: Date)] = []
+        // Only read while no limits are known, and no window is longer than a week.
+        let needsRateLimits = !rateLimits.hasData
+        let rateLimitThreshold = Date().addingTimeInterval(-7 * 86_400)
+        var rateLimitFiles: [URL] = []
 
         debugLog("[Codex] Scanning for sessions...")
 
@@ -312,10 +315,9 @@ final class CodexManager: ObservableObject {
                     continue
                 }
 
-                let attrs = try? fm.attributesOfItem(atPath: fileURL.path)
-                let modDate = attrs?[.modificationDate] as? Date ?? .distantPast
+                let modDate = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
                 // A host's sessions may run under another account: its limits aren't this Mac's.
-                if !isRemote { allSessionFiles.append((fileURL, modDate)) }
+                if needsRateLimits, !isRemote, modDate > rateLimitThreshold { rateLimitFiles.append(fileURL) }
 
                 // A quiet working session or unanswered question must not expire.
                 if retainedFiles.contains(fileURL)
@@ -331,14 +333,12 @@ final class CodexManager: ObservableObject {
         }
         sessionActivityCache = sessionActivityCache.filter { $0.value.modifiedAt > recentThreshold }
 
-        if !rateLimits.hasData {
-            // File modification order is not a reliable account-usage order when
-            // several Codex tasks are open. Each loader compares the JSONL event
-            // timestamp, so every recent rollout can safely contribute its newest
-            // matching window without stale sessions winning.
-            for candidate in allSessionFiles {
-                loadLatestRateLimits(from: candidate.url)
-            }
+        // File modification order is not a reliable account-usage order when
+        // several Codex tasks are open. Each loader compares the JSONL event
+        // timestamp, so every recent rollout can safely contribute its newest
+        // matching window without stale sessions winning.
+        for file in rateLimitFiles {
+            loadLatestRateLimits(from: file)
         }
 
         loadThreadNames(for: sessions.map(\.id))
@@ -451,9 +451,6 @@ final class CodexManager: ObservableObject {
             state = sessionState
         } else {
             state = CodexState()
-            state.cwd = session.cwd
-            state.sessionId = session.id
-            state.gitBranch = session.gitBranch ?? ""
         }
     }
 
@@ -547,7 +544,7 @@ final class CodexManager: ObservableObject {
     /// used by Codex Desktop, without spending any model usage.
     private func startRateLimitRefreshing() {
         guard rateLimitRefreshTimer == nil, !DemoMode.isActive else { return }
-        refreshRateLimitsNow()
+        if AppSettings.shared.showCodexUsage { refreshRateLimitsNow() }
         rateLimitRefreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshRateLimitsIfDue()
@@ -558,6 +555,8 @@ final class CodexManager: ObservableObject {
     /// Timer path only. A spent weekly window can't change before it resets, so the
     /// app-server round trip is skipped until then; `refresh()` (manual) still goes through.
     private func refreshRateLimitsIfDue() {
+        // Only the Codex 사용량 카드 shows them.
+        guard AppSettings.shared.showCodexUsage else { return }
         if let resetsAt = weeklyLimitResetsAt {
             nextRateLimitRefreshAt = resetsAt.addingTimeInterval(60)
             return
@@ -770,11 +769,6 @@ final class CodexManager: ObservableObject {
         // verdict (`{"risk_level":…}`) came up as a Done (seen 2026-11-12, phone → chomelab).
         if let source = payload["source"] as? [String: Any], source["subagent"] != nil { return nil }
 
-        var gitBranch: String?
-        if let git = payload["git"] as? [String: Any] {
-            gitBranch = git["branch"] as? String
-        }
-
         var timestamp = Date()
         if let timestampStr = json["timestamp"] as? String {
             timestamp = Self.iso8601Formatter.date(from: timestampStr) ?? Date()
@@ -786,7 +780,6 @@ final class CodexManager: ObservableObject {
             id: sessionId,
             // A Windows host's folder (C:\Users\…): slashes, so its last part reads as the name.
             cwd: CodexSession.remoteHost(of: file) == nil ? cwd : cwd.replacingOccurrences(of: "\\", with: "/"),
-            gitBranch: gitBranch,
             timestamp: timestamp,
             jsonlFile: file,
             originator: payload["originator"] as? String ?? "",
@@ -823,11 +816,7 @@ final class CodexManager: ObservableObject {
 
         let jsonlFile = session.jsonlFile
 
-        var sessionState = CodexState()
-        sessionState.cwd = session.cwd
-        sessionState.sessionId = session.id
-        sessionState.gitBranch = session.gitBranch ?? ""
-        sessionStates[session.id] = sessionState
+        sessionStates[session.id] = CodexState()
 
         do {
             let handle = try FileHandle(forReadingFrom: jsonlFile)
@@ -989,18 +978,9 @@ final class CodexManager: ObservableObject {
             || eventTimestamp < (sessionState.lastUpdateTime ?? .distantPast)
 
         switch type {
-        case "session_meta":
-            // Already parsed during session discovery
-            break
-
         case "turn_context":
-            if let payload = json["payload"] as? [String: Any] {
-                if let model = payload["model"] as? String {
-                    sessionState.model = model
-                }
-                if let cwd = payload["cwd"] as? String {
-                    sessionState.cwd = cwd.contains("\\") && isRemote(sessionId) ? cwd.replacingOccurrences(of: "\\", with: "/") : cwd
-                }
+            if let payload = json["payload"] as? [String: Any], let model = payload["model"] as? String {
+                sessionState.model = model
             }
 
         case "event_msg":
@@ -1038,8 +1018,6 @@ final class CodexManager: ObservableObject {
         if selectedSession?.id == sessionId {
             state = sessionState
         }
-
-        objectWillChange.send()
     }
 
     private func parseEventMsg(
@@ -1099,20 +1077,13 @@ final class CodexManager: ObservableObject {
             }
 
         case "token_count":
-            if let info = payload["info"] as? [String: Any],
-               let totalUsage = info["total_token_usage"] as? [String: Any] {
-                sessionState.tokenUsage.inputTokens = totalUsage["input_tokens"] as? Int ?? 0
-                sessionState.tokenUsage.outputTokens = totalUsage["output_tokens"] as? Int ?? 0
-                sessionState.tokenUsage.totalTokens = totalUsage["total_tokens"] as? Int ?? 0
-
+            if let info = payload["info"] as? [String: Any], info["total_token_usage"] != nil {
                 if let lastUsage = info["last_token_usage"] as? [String: Any] {
                     sessionState.tokenUsage.contextTokens = lastUsage["total_tokens"] as? Int ?? 0
                 }
                 if let contextWindow = info["model_context_window"] as? Int {
                     sessionState.tokenUsage.modelContextWindow = contextWindow
                 }
-
-                debugLog("[Codex] Token update: in=\(sessionState.tokenUsage.inputTokens) out=\(sessionState.tokenUsage.outputTokens) total=\(sessionState.tokenUsage.totalTokens)")
             }
 
             if let rawRateLimits = payload["rate_limits"] as? [String: Any],

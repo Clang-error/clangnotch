@@ -13,7 +13,6 @@ import Foundation
 struct CodexSession: Identifiable, Equatable {
     let id: String  // session_id from session_meta
     let cwd: String
-    let gitBranch: String?
     let timestamp: Date
     let jsonlFile: URL
     var originator: String = ""
@@ -45,11 +44,8 @@ struct CodexSession: Identifiable, Equatable {
 
 /// Token usage data from Codex token_count event
 struct CodexTokenUsage: Equatable {
-    var inputTokens: Int = 0
-    var outputTokens: Int = 0
-    var totalTokens: Int = 0
     /// What the last turn sent and got back (`last_token_usage`) — the part sitting in the
-    /// context window. `totalTokens` adds up every turn, so it outgrows the window.
+    /// context window. `total_token_usage` adds up every turn, so it outgrows the window.
     var contextTokens: Int = 0
     var modelContextWindow: Int = 200_000
 }
@@ -130,10 +126,7 @@ struct CodexRateLimits: Equatable {
 
 /// Complete Codex session state for display
 struct CodexState: Equatable {
-    var sessionId: String = ""
     var model: String = ""
-    var cwd: String = ""
-    var gitBranch: String = ""
 
     var tokenUsage: CodexTokenUsage = CodexTokenUsage()
 

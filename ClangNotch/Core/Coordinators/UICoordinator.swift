@@ -157,7 +157,10 @@ public final class UICoordinator: ObservableObject {
         // too — otherwise reaching for a Space opens the notch and it eats the clicks.
         // The setting is read on each poll, so turning it on or off applies within a second.
         let fullScreen = FullScreenDetector.isFullScreenActive() && !AppSettings.shared.keepNotchInFullScreen
-        let shouldHide = shouldHideNotch
+        let shouldHide = fullScreen || (missionControlMatters && MissionControlDetector.isActive())
+        // Only a full-screen app: Mission Control comes and goes in a second or two, and making
+        // the audio tap again each time would leave the bars bouncing by themselves.
+        NowPlayingLevels.shared.setNotchHidden(fullScreen)
         hiddenForMissionControl = shouldHide && !fullScreen
         guard shouldHide != lastFullScreen else { return }  // only act on change
         lastFullScreen = shouldHide

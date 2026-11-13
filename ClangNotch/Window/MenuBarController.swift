@@ -35,14 +35,15 @@ final class MenuBarController: NSObject {
                 self?.updateMenuBarVisibility()
             }
 
-        // Force the menu bar icon visible while the keyboard is locked, even if the
-        // user normally keeps it hidden — it's the fallback toggle when the notch
-        // itself isn't reachable (e.g. behind a full-screen app).
+        // Tethering at a saved place turns the icon red.
         TetherPlaceMonitor.shared.$activePlaceName
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateIconForCurrentState() }
             .store(in: &cancellables)
 
+        // Force the menu bar icon visible while the keyboard is locked, even if the
+        // user normally keeps it hidden — it's the fallback toggle when the notch
+        // itself isn't reachable (e.g. behind a full-screen app).
         KeyboardLockManager.shared.$isLocked
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -75,6 +76,7 @@ final class MenuBarController: NSObject {
                 updateIconForCurrentState()
             }
         } else if let statusItem {
+            stopAnimation()
             closePopover()
             NSStatusBar.system.removeStatusItem(statusItem)
             self.statusItem = nil
@@ -111,6 +113,7 @@ final class MenuBarController: NSObject {
     }
 
     private func updateIconForCurrentState() {
+        guard statusItem != nil else { return }
         updateIcon(for: MenuBarActivity.current)
     }
 
@@ -120,11 +123,12 @@ final class MenuBarController: NSObject {
         // Keyboard-locked takes priority — you want to see this at a glance without
         // opening the dropdown.
         if KeyboardLockManager.shared.isLocked {
+            // Or the working gradient's next frame paints over the lock.
+            stopAnimation()
             var lockConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
             lockConfig = lockConfig.applying(.init(paletteColors: [.systemGreen]))
             button.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: "Keyboard Locked")?
                 .withSymbolConfiguration(lockConfig)
-            button.contentTintColor = nil
             staticIconKey = "lock"
             return
         }
@@ -132,7 +136,6 @@ final class MenuBarController: NSObject {
         // Tethering at a saved place stays red until it ends — easy to miss otherwise.
         if TetherPlaceMonitor.shared.activePlaceName != nil {
             stopAnimation()
-            button.contentTintColor = nil
             if staticIconKey != "red" {
                 button.image = Self.notchGlyph(colors: [.systemRed])
                 staticIconKey = "red"
@@ -144,7 +147,6 @@ final class MenuBarController: NSObject {
         // that flows across it — orange→pink for Claude, blue→cyan for Codex, orange↔blue
         // when both run — and it turns solid red when one is waiting on you. Colours are
         // baked in: this status button ignores template masking and contentTintColor.
-        button.contentTintColor = nil
         switch activity {
         case .idle:
             stopAnimation()
@@ -157,8 +159,7 @@ final class MenuBarController: NSObject {
             let colors: [NSColor]
             if claude && codex { key = "both"; colors = Self.bothColors }
             else if claude { key = "claude"; colors = Self.claudeColors }
-            else if codex { key = "codex"; colors = Self.codexColors }
-            else { key = "other"; colors = [.systemGreen] }
+            else { key = "codex"; colors = Self.codexColors }
             staticIconKey = nil
             startAnimation(key: key, colors: colors)
         case .needsPermission, .awaitingAnswer:

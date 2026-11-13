@@ -27,11 +27,32 @@ final class NowPlayingLevels {
     private let queue = DispatchQueue(label: "com.clangerror.ClangNotch.levels", qos: .userInitiated)
     nonisolated static let log = Logger(subsystem: "com.clangerror.ClangNotch", category: "NowPlayingLevels")
 
+    /// Nothing can draw the bars while the notch is hidden for a full-screen app
+    /// and no 미디어 드롭다운 is out: no tap and no FFT meanwhile. The tap is made again when
+    /// either comes back, so the bars may bounce by themselves for that moment.
+    private var notchHidden = false
+    private var cardDown = false
+    private var playing: NowPlaying?
+
     private init() {}
+
+    func setNotchHidden(_ hidden: Bool) {
+        guard notchHidden != hidden else { return }
+        notchHidden = hidden
+        follow(playing)
+    }
+
+    func setCardDown(_ down: Bool) {
+        guard cardDown != down else { return }
+        cardDown = down
+        follow(playing)
+    }
 
     /// Called with every change of what plays.
     func follow(_ playing: NowPlaying?) {
+        self.playing = playing
         guard let playing, playing.isPlaying, let pid = playing.pid,
+              !notchHidden || cardDown,
               AppSettings.shared.enableNowPlaying, AppSettings.shared.enableNowPlayingLevels,
               !DemoMode.isActive, Self.isSafe else {
             stop()

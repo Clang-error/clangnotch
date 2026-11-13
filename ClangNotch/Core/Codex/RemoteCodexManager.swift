@@ -46,7 +46,7 @@ final class RemoteCodexManager: ObservableObject {
     /// may open a window.
     func sync(asking: String? = nil) {
         let settings = AppSettings.shared
-        let wanted = settings.enableCodexJSONL && settings.remoteCodexEnabled && !DemoMode.isActive
+        let wanted = settings.showSourceCodex && settings.remoteCodexEnabled && !DemoMode.isActive
             ? SSHHost.list(settings.remoteCodexHosts) : []
         for host in hosts where !wanted.contains(host) { stop(host) }
         for host in wanted where !hosts.contains(host) {

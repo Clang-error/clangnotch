@@ -39,9 +39,7 @@ enum MenuBarActivity: Equatable {
         case .idle: return [.secondary]
         case .working(let claude, let codex, _):
             if claude && codex { return [.orange, .blue] }
-            if claude { return [.orange, .pink] }
-            if codex { return [.blue, .cyan] }
-            return [.green]
+            return claude ? [.orange, .pink] : [.blue, .cyan]
         case .needsPermission, .awaitingAnswer: return [.red]
         }
     }

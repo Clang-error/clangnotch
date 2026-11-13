@@ -81,7 +81,6 @@ struct ClaudeUsageData: Equatable {
     let opus: LimitData?
     let sonnet: LimitData?
     let fable: LimitData?
-    let fetchedAt: Date
 
     /// True when any window is spent. The endpoint carries no explicit "blocked"
     /// flag, and a low 5-hour reading says nothing about a spent weekly or
@@ -95,8 +94,7 @@ struct ClaudeUsageData: Equatable {
         sevenDay: nil,
         opus: nil,
         sonnet: nil,
-        fable: nil,
-        fetchedAt: Date()
+        fable: nil
     )
 
     struct LimitData: Equatable {

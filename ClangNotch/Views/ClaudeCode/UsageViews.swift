@@ -220,7 +220,7 @@ struct UsageBarRow: View {
     }
 }
 
-/// Always-visible usage panel for the open-notch AI tab. Shows 5-hour and 7-day
+/// Always-visible usage panel for the open-notch AI tab and the menu bar popover. Shows 5-hour and 7-day
 /// subscription usage as clear bars when data is available, and an explicit
 /// loading / login-needed / retrying state otherwise — so the user always sees
 /// *something*, even before the first successful fetch.

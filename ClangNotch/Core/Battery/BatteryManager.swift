@@ -33,8 +33,8 @@ final class BatteryManager: ObservableObject {
     static let shared = BatteryManager()
 
     @Published private(set) var devices: [BatteryDevice] = []
-    @Published private(set) var lastUpdated: Date?
-    @Published private(set) var isRefreshing = false
+    private var lastUpdated: Date?
+    private var isRefreshing = false
 
     /// 무선 아이폰·아이패드는 절전에 들어가면 탐색 목록에서 통째로 사라진다
     /// (실측: 15초 간격에서 45%만 응답, 값은 항상 일관). 사라졌다고 목록에서 빼면
@@ -64,26 +64,21 @@ final class BatteryManager: ObservableObject {
     private var bluetoothEvents: BluetoothEvents?
 
     private init() {
-        // 닫힌 노치 순위는 1·2순위 두 칸이었다가 개수 제한 없는 목록이 됐다(2026-09-27). 한 번만 옮겨 온다.
-        let defaults = UserDefaults.standard
-        let legacySlots = ["closedBatteryPrimaryID", "closedBatterySecondaryID"]
-        if defaults.object(forKey: "closedBatteryPriorityIDs") == nil {
-            AppSettings.shared.closedBatteryPriorityIDs = legacySlots
-                .compactMap { defaults.string(forKey: $0) }
-                .filter { !$0.isEmpty }
-                .joined(separator: "\n")
-        }
-        for key in legacySlots + ["lowBatteryNotchSnoozed"] { defaults.removeObject(forKey: key) }
-
         lastSeen = Self.loadCache()
         // 첫 수집은 몇 초 걸리고, 그때 폰이 절전이면 아예 못 잡는다(실측 68초 뒤 등장).
         // 그동안 빈 화면을 보여주지 않도록 마지막으로 알던 값을 먼저 깔아둔다.
         if !lastSeen.isEmpty { merge([]) }
     }
 
-    /// 앱 기동 시 호출 — 탭을 열지 않아도 알림 감시는 계속된다.
+    /// 설정 › 기능 › 배터리 잔량이 켜져 있는 동안만 참. 꺼지면 수집도 표시도 멈춘다.
+    private var isMonitoring = false
+
+    /// 앱 기동 시, 그리고 설정에서 켤 때 호출 — 탭을 열지 않아도 알림 감시는 계속된다.
     func startMonitoring() {
         guard !DemoMode.isActive else { return }
+        isMonitoring = true
+        // 껐다 켠 직후: 첫 수집이 끝날 때까지 마지막으로 알던 값을 깔아 둔다(기동 때와 같다).
+        if devices.isEmpty, !lastSeen.isEmpty { merge([]) }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             Task { @MainActor in
                 self.log("notif auth granted=\(granted) error=\(error?.localizedDescription ?? "none")")
@@ -91,6 +86,24 @@ final class BatteryManager: ObservableObject {
         }
         setPolling(idleInterval)
         startFastPath()
+    }
+
+    /// 설정에서 끌 때 호출 — 재실행을 기다리지 않고 타이머와 전원 알림을 푼다. 헤더 배터리 줄과
+    /// 저배터리 배지가 묵은 값으로 남지 않게 목록도 비운다(캐시는 남아 다시 켜면 돌아온다).
+    /// 블루투스 연결 알림은 그대로 둔다: 폴링이 아니고, 받는 쪽이 설정을 스스로 확인한다.
+    func stopMonitoring() {
+        isMonitoring = false
+        timer?.invalidate()
+        timer = nil
+        interval = 0
+        fastTimer?.invalidate()
+        fastTimer = nil
+        if let powerSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), powerSource, .defaultMode)
+            self.powerSource = nil
+        }
+        lastUpdated = nil
+        devices = []
     }
 
     /// 60초 타이머 + 전원 변경 알림(충전기·잔량 변화)으로 싼 값만 갱신한다.
@@ -109,13 +122,14 @@ final class BatteryManager: ObservableObject {
 
     /// 맥 + 연결된 블루투스만 읽는다. system_profiler와 iOS 조회는 느린 주기 몫이다.
     func refreshFast() {
-        guard !isFastRefreshing, !DemoMode.isActive else { return }
+        guard isMonitoring, !isFastRefreshing, !DemoMode.isActive else { return }
         isFastRefreshing = true
         Task.detached(priority: .utility) {
             let bluetooth = Collector.bluetooth(connectedOnly: true)
             let found = bluetooth + Collector.accessories(skipping: bluetooth) + Collector.mac()
             await MainActor.run {
-                self.mergeFast(found)
+                // 수집하는 사이 꺼졌으면 버린다.
+                if self.isMonitoring { self.mergeFast(found) }
                 self.isFastRefreshing = false
             }
         }
@@ -170,7 +184,7 @@ final class BatteryManager: ObservableObject {
     /// 잠든 폰이 응답을 거르면 충전을 시작해도 15분 넘게 표시가 남았다(2026-11-02 실측).
     /// 충전이 잡히면 표시가 빠지면서 다시 성기게 돌아간다.
     private func updatePolling() {
-        guard !DemoMode.isActive else { return }
+        guard isMonitoring, !DemoMode.isActive else { return }
         let lowIOS = closedNotchLowBattery?.kindKey == "ios"
         setPolling(tabVisible || lowIOS ? activeInterval : idleInterval)
     }
@@ -200,6 +214,7 @@ final class BatteryManager: ObservableObject {
             let bluetooth = Collector.bluetooth()
             let found = bluetooth + Collector.accessories(skipping: bluetooth) + Collector.macAndIOS()
             await MainActor.run {
+                guard self.isMonitoring else { self.isRefreshing = false; return }
                 self.merge(found)
                 self.lastUpdated = Date()
                 self.isRefreshing = false
@@ -491,13 +506,17 @@ final class BatteryManager: ObservableObject {
     /// 아이폰이 목록에서 사라진다는 제보를 추적하기 위한 임시 기록.
     /// 회차마다 어떤 기기가 실시간이고 어떤 게 캐시인지 남긴다.
     private func trace(fresh: Set<String>) {
+        #if DEBUG
         let line = devices.map { d in
             "\(d.name)=\(d.percent)\(fresh.contains(d.id) ? "" : "?")"
         }.joined(separator: " ")
         log("[\(devices.count)] \(line)")
+        #endif
     }
 
+    /// 개발용 빌드에서만 남긴다: 배포본이 개발 맥의 경로에 쓰려고 할 이유가 없다.
     private func log(_ message: String) {
+        #if DEBUG
         let path = NSHomeDirectory() + "/04.SideProjects/battery-hub/notch.log"
         let entry = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
         // 계속 도는 폴링이라 두면 무한히 자란다. 커지면 새로 시작.
@@ -510,6 +529,7 @@ final class BatteryManager: ObservableObject {
         } else {
             try? entry.write(toFile: path, atomically: true, encoding: .utf8)
         }
+        #endif
     }
 }
 
@@ -586,6 +606,9 @@ private enum Collector {
 
     // MARK: iOS 기기 (libimobiledevice)
 
+    private static var iosIdentities: [String: (name: String, symbol: String)] = [:]
+    private static let iosIdentitiesLock = NSLock()
+
     private static func ios() -> [BatteryDevice] {
         guard let idevice = tool("idevice_id"), let info = tool("ideviceinfo") else { return [] }
 
@@ -599,15 +622,23 @@ private enum Collector {
             let battery = parseColonPairs(shell(info, flags + ["-u", udid, "-q", "com.apple.mobile.battery"]))
             guard let percent = battery["BatteryCurrentCapacity"].flatMap({ Int($0) }) else { return nil }
 
-            let name = shell(info, flags + ["-u", udid, "-k", "DeviceName"])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let product = shell(info, flags + ["-u", udid, "-k", "ProductType"])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // 이름과 기종은 기기마다 한 번만 묻는다: 수집 때마다 프로세스 둘을 더 띄울 값이 아니다.
+            // 이름을 바꾼 기기는 다음 실행부터 새 이름으로 보인다.
+            let identity = iosIdentitiesLock.withLock { iosIdentities[udid] } ?? {
+                let name = shell(info, flags + ["-u", udid, "-k", "DeviceName"])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let product = shell(info, flags + ["-u", udid, "-k", "ProductType"])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let identity = (name: name, symbol: product.hasPrefix("iPad") ? "ipad" : "iphone")
+                // 잠든 폰이 빈 이름을 돌려준 회차는 담아 두지 않는다.
+                if !name.isEmpty, !product.isEmpty { iosIdentitiesLock.withLock { iosIdentities[udid] = identity } }
+                return identity
+            }()
 
             return BatteryDevice(
                 id: udid,
-                name: name.isEmpty ? String(udid.prefix(8)) : name,
-                symbol: product.hasPrefix("iPad") ? "ipad" : "iphone",
+                name: identity.name.isEmpty ? String(udid.prefix(8)) : identity.name,
+                symbol: identity.symbol,
                 percent: percent,
                 charging: battery["BatteryIsCharging"] == "true",
                 live: true, seenAt: Date(), parts: []

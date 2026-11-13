@@ -94,7 +94,6 @@ static void emit(void) {
             lastPlaying = playing;
             put(o, @"title", info[@"kMRMediaRemoteNowPlayingInfoTitle"]);
             put(o, @"artist", info[@"kMRMediaRemoteNowPlayingInfoArtist"]);
-            put(o, @"album", info[@"kMRMediaRemoteNowPlayingInfoAlbum"]);
             NSDictionary *c = client();
             NSString *track = [NSString stringWithFormat:@"%@\x1f%@\x1f%@", c[@"parentApplicationBundleIdentifier"] ?: c[@"bundleIdentifier"],
                                info[@"kMRMediaRemoteNowPlayingInfoTitle"], info[@"kMRMediaRemoteNowPlayingInfoArtist"]];

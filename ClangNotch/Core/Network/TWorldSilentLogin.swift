@@ -32,14 +32,12 @@ enum TWorldHeaderCapture {
 
     struct Capture: Equatable {
         var endpoint: URL?
-        var method: String = "GET"
         var headers: [String: String] = [:]
         var isEmpty: Bool { headers.isEmpty && endpoint == nil }
     }
 
     private struct Raw: Decodable {
         let url: String
-        let method: String
         let headers: [String: String]
     }
 
@@ -52,7 +50,7 @@ enum TWorldHeaderCapture {
                let request = try? JSONDecoder().decode(Raw.self, from: data) {
                 let endpoint = URL(string: request.url, relativeTo: webView.url)?.absoluteURL
                 let headers = request.headers.filter { !TWorldClient.reservedHeaders.contains($0.key.lowercased()) }
-                return Capture(endpoint: endpoint, method: request.method.uppercased(), headers: headers)
+                return Capture(endpoint: endpoint, headers: headers)
             }
             try? await Task.sleep(for: .milliseconds(250))
         }

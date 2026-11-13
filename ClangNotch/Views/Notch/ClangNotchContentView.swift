@@ -37,16 +37,17 @@ struct ClangNotchContentView: View {
     @StateObject private var appearance = NotchAppearance.shared
     @StateObject private var claudeCodeManager = ClaudeCodeManager.shared
     @StateObject private var codexManager = CodexManager.shared
-    @StateObject private var clipboardManager = ClipboardManager.shared
-    @StateObject private var audioMixer = AudioMixerManager.shared
-    @StateObject private var sidecarManager = SidecarManager.shared
+    // Not observed: only the tabs they are handed to read what these publish, and a copy
+    // or a change in the sounding apps would otherwise redraw the whole notch.
+    private let clipboardManager = ClipboardManager.shared
+    private let audioMixer = AudioMixerManager.shared
+    private let sidecarManager = SidecarManager.shared
     @StateObject private var keyboardLockManager = KeyboardLockManager.shared
     @StateObject private var batteryManager = BatteryManager.shared
     @StateObject private var tetherMonitor = TetherPlaceMonitor.shared
     @StateObject private var nowPlayingMonitor = NowPlayingMonitor.shared
     @StateObject private var speedTest = SpeedTestManager.shared
     @State private var expandedMode: NotchMode = .ai
-    @State private var isHovering = false
     @State private var hoverTask: Task<Void, Never>?
     @State private var hoverExitNotBefore = Date.distantPast
     @State private var isMenuTracking = false
@@ -123,7 +124,7 @@ struct ClangNotchContentView: View {
     // looking grainy and sluggish against the black notch.
     private let codexGlowColor = Color(red: 0.2, green: 0.5, blue: 1.0)
     private let codexBrightColor = Color(red: 0.5, green: 0.75, blue: 1.0)
-    // Wing indicator dots keep the original Codex blue.
+    // The closed wing's GPT icon glow keeps the original Codex blue.
     private let codexIndicatorColor = Color(red: 0.1, green: 0.3, blue: 0.7)
     // Apple Pay's confirmation blue (dark-mode system blue).
     private let doneBlue = Color(red: 0.04, green: 0.52, blue: 1.0)
@@ -511,9 +512,7 @@ struct ClangNotchContentView: View {
                     if newState != .closed {
                         resetClosedJellyReveal()
                     }
-                    // Default the expanded view to whatever is active when opening —
-                    // a locked keyboard takes priority since that's most likely why
-                    // you opened the notch.
+                    // Opening goes back to the tabs' size (a 세션 화면 left it wider).
                     if newState == .open {
                         notchVM.resizeOpen(to: activeMode.expandedSize)
                     }
@@ -522,7 +521,7 @@ struct ClangNotchContentView: View {
                 .onChange(of: notchVM.notchSize) { _, _ in
                     updateInteractiveRegion()
                 }
-                .onChange(of: settings.enableCodexJSONL) { _, enabled in
+                .onChange(of: settings.showSourceCodex) { _, enabled in
                     codexManager.setTrackingEnabled(enabled)
                 }
     }
@@ -1497,7 +1496,7 @@ struct ClangNotchContentView: View {
     }
 
     private var attentionCount: Int {
-        (settings.showSourceClaudeCode ? claudeCodeManager.sessionsConfirmedNeedingPermission.count : 0)
+        (settings.showSourceClaudeCode ? claudeCodeManager.sessionsNeedingPermission.count : 0)
             + (settings.showSourceClaudeCode ? claudeCodeManager.sessionsAwaitingInput.count : 0)
             + (settings.showSourceCodex ? codexManager.pendingInputRequests.count : 0)
     }
@@ -1507,7 +1506,7 @@ struct ClangNotchContentView: View {
         var ids: [String] = []
         if settings.showSourceClaudeCode {
             if settings.showPermissionIndicator {
-                ids += claudeCodeManager.sessionsConfirmedNeedingPermission.map(\.id)
+                ids += claudeCodeManager.sessionsNeedingPermission.map(\.id)
             }
             ids += claudeCodeManager.availableSessions
                 .filter { claudeCodeManager.sessionStates[$0.id]?.pendingInputRequests.contains { !$0.isWrapUp } == true }
@@ -1661,13 +1660,13 @@ struct ClangNotchContentView: View {
                                             } })
                     }
                 }
-                if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsConfirmedNeedingPermission.isEmpty {
+                if settings.showSourceClaudeCode && settings.showPermissionIndicator && !claudeCodeManager.sessionsNeedingPermission.isEmpty {
                     NotchSection(title: "NEEDS YOU · Claude", rail: claudeGlowColor, onDismiss: {
-                        if let session = claudeCodeManager.sessionsConfirmedNeedingPermission.first {
+                        if let session = claudeCodeManager.sessionsNeedingPermission.first {
                             claudeCodeManager.dismissPermission(sessionId: session.id)
                         }
                     }) {
-                        let permissionSession = claudeCodeManager.sessionsConfirmedNeedingPermission.first
+                        let permissionSession = claudeCodeManager.sessionsNeedingPermission.first
                         Button {
                             if let permissionSession {
                                 if acknowledgesOnly(.claude, permissionSession.id) {
@@ -1725,8 +1724,6 @@ struct ClangNotchContentView: View {
                     ClaudeSessionListView(
                         manager: claudeCodeManager,
                         codexManager: codexManager,
-                        maxItems: nil,
-                        onOpen: { notchVM.close() },
                         onSelect: { showSessionDetail($0) }
                     )
                 }
@@ -2345,10 +2342,6 @@ struct ClangNotchContentView: View {
         hoverTask?.cancel()
 
         if hovering {
-            withAnimation(animationSpring) {
-                isHovering = true
-            }
-
             if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
                 return
             }
@@ -2364,7 +2357,7 @@ struct ClangNotchContentView: View {
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {
-                    guard notchVM.notchState != .open, isHovering,
+                    guard notchVM.notchState != .open,
                           !(notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice || doneNotice != nil)) else { return }
                     if settings.notchHapticsEnabled {
                         TrackpadHaptics.tap(strength: settings.notchHapticStrength)
@@ -2375,11 +2368,9 @@ struct ClangNotchContentView: View {
         } else {
             // Question and permission reading stays compact until answered or explicitly dismissed.
             if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
-                isHovering = false
                 return
             }
             if notchVM.notchState == .peeking && doneNotice != nil {
-                isHovering = false
                 scheduleDoneNoticeDismiss(after: 1.5)
                 return
             }
@@ -2390,10 +2381,6 @@ struct ClangNotchContentView: View {
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {
-                    withAnimation(animationSpring) {
-                        isHovering = false
-                    }
-
                     // .peeking too, not just .open: a peek whose own timer was cancelled
                     // (by an open() that has since gone away) has nothing else left to close
                     // it, and it would sit there as an expanded rectangle indefinitely.
@@ -2584,11 +2571,6 @@ struct ClangNotchContentView: View {
         notchVM.peek(duration: nil, additionalHeight: additionalHeight, width: openNotchSize.width)
     }
 
-    /// Mirrors `dismissSpeedNotice()`: dropping the notice also has to collapse the peek it
-    /// opened, otherwise the notch is left expanded with nothing in it.
-    /// Brings the asking session's own app or terminal forward — the same destination as
-    /// clicking that session in the list — since the answer has to be typed there. Falls
-    /// back to expanding the AI tab only when the asking session can't be identified.
     /// The 질문 드롭다운's go button reads like the session's: 터미널 열기 or GUI 열기.
     private var askingSessionOpenTitle: String {
         if let request = codexInputRequest,
@@ -2606,6 +2588,9 @@ struct ClangNotchContentView: View {
         return L("이동", "Go")
     }
 
+    /// Brings the asking session's own app or terminal forward — the same destination as
+    /// 터미널 열기 / GUI 열기 on its 세션 화면 — since the answer has to be typed there. Falls
+    /// back to expanding the AI tab only when the asking session can't be identified.
     private func goToAskingSession() {
         if let request = codexInputRequest,
            let session = codexManager.availableSessions.first(where: {
@@ -2634,6 +2619,8 @@ struct ClangNotchContentView: View {
         }
     }
 
+    /// Mirrors `dismissSpeedNotice()`: dropping the notice also has to collapse the peek it
+    /// opened, otherwise the notch is left expanded with nothing in it.
     private func dismissQuestionNotice() {
         showQuestionNotice = false
         questionExpanded = false

@@ -106,7 +106,7 @@ final class ClipboardManager: ObservableObject {
         let pixels = CGSize(width: rep?.pixelsWide ?? Int(image.size.width), height: rep?.pixelsHigh ?? Int(image.size.height))
         let label = L("이미지 \(Int(pixels.width))×\(Int(pixels.height))", "Image \(Int(pixels.width))×\(Int(pixels.height))")
         return ClipboardItem(text: label, copiedAt: Date(),
-                             kind: .image(file: file, type: type, thumbnail: Self.thumbnail(of: image), pixels: pixels))
+                             kind: .image(file: file, type: type, thumbnail: Self.thumbnail(of: image)))
     }
 
     /// A 96 pt thumbnail, so the row doesn't hold the full image in memory.
@@ -135,7 +135,7 @@ final class ClipboardManager: ObservableObject {
             pasteboard.setString(item.text, forType: .string)
         case .files(let urls):
             pasteboard.writeObjects(urls as [NSURL])
-        case .image(let file, let type, _, _):
+        case .image(let file, let type, _):
             if let data = try? Data(contentsOf: file) { pasteboard.setData(data, forType: type) }
         }
         // Update lastChangeCount so our own write doesn't appear as a new item

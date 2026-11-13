@@ -10,6 +10,10 @@ import ApplicationServices
 /// the keyboard (an AirPods Max crown) can't be caught with a key tap, so the window
 /// itself is moved through Accessibility the moment it is created. Needs
 /// Accessibility permission.
+///
+/// Since macOS 27.2 the move is ignored (the banner window can't be moved from outside); what
+/// still works there is noticing the window, which is how a change made without a key shows
+/// the 조절창. The keys themselves are handled by `SystemControlOSD`, so no banner appears.
 @MainActor
 final class SystemBannerCenterer {
     static let shared = SystemBannerCenterer()

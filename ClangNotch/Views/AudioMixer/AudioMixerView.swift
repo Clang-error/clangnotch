@@ -24,7 +24,6 @@ struct AudioMixerView: View {
             .padding(.vertical, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { manager.start() }
     }
 
     /// Shown only when an app holds the mic *and* output is Bluetooth — lowering a tapped

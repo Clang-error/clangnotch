@@ -18,8 +18,8 @@ struct KeyboardLockView: View {
         .onAppear { manager.refreshPermissionStatus() }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             // Accessibility approval can change in System Settings while this
-            // accessory app remains alive and inactive. Poll only while the
-            // permission screen is visible so the control updates immediately.
+            // accessory app remains alive and inactive. The timer runs while this tab is
+            // shown; it only asks again while the permission is still missing.
             if !manager.hasAccessibilityPermission {
                 manager.refreshPermissionStatus()
             }

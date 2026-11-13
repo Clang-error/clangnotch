@@ -6,7 +6,8 @@ import Foundation
 /// Since macOS 15.4 MediaRemote answers only Apple-signed processes, so ours reads it from inside
 /// `/usr/bin/perl`: perl loads `libClangNotchNowPlaying.dylib` (built from `NowPlayingBridge/`)
 /// and calls its `cn_stream`, which prints a JSON line whenever what plays changes. One process,
-/// woken only by MediaRemote's own notifications; it exits by itself when this app is gone.
+/// woken by MediaRemote's own notifications and, while something plays, by a 5 s timer that
+/// reads again (a stop some apps never announce); it exits by itself when this app is gone.
 /// Checked on macOS 27.2.1 (2026-11-12): a direct call from our own process returns nothing,
 /// the same calls inside perl return the title, artist, app and artwork.
 @MainActor
@@ -77,6 +78,7 @@ final class NowPlayingMonitor: ObservableObject {
 
     func setCardIsDown(_ down: Bool) {
         if cardIsDown != down { cardIsDown = down }
+        NowPlayingLevels.shared.setCardDown(down)
     }
 
     private var process: Process?
@@ -202,7 +204,7 @@ final class NowPlayingMonitor: ObservableObject {
             return
         }
         let old = nowPlaying
-        var new = NowPlaying(title: title, artist: json["artist"] as? String, album: json["album"] as? String,
+        var new = NowPlaying(title: title, artist: json["artist"] as? String,
                              bundleID: json["parent"] as? String ?? json["bundle"] as? String,
                              appName: json["app"] as? String, isPlaying: playing, artwork: nil)
         new.pid = (json["pid"] as? Int).map { pid_t($0) }

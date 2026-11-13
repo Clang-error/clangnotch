@@ -833,6 +833,9 @@ struct FeaturesSettingsTab: View {
                 SettingToggle(L("배터리 잔량", "Battery levels"),
                               L("Mac·블루투스 기기·iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
                               isOn: $settings.enableBattery)
+                    .onChange(of: settings.enableBattery) { _, on in
+                        if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
+                    }
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
                               L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
                               isOn: $settings.enableSpeedTest)
@@ -912,8 +915,8 @@ struct FeaturesSettingsTab: View {
                         .disabled(!settings.enableBattery)
                 }
                 SettingToggle(L("에어팟·헤드셋 배터리 부족 시 드롭다운", "Card when AirPods or a headset run low"),
-                              L("에어팟·에어팟 맥스·헤드셋이 20%, 10%가 되면 한 번씩. 20% 넘게 충전될 때까지 다시 안 뜸",
-                                "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged past 20%"),
+                              L("에어팟·에어팟 맥스·헤드셋이 20%, 10%가 되면 한 번씩. 30% 이상으로 충전될 때까지 다시 안 뜸",
+                                "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged back to 30%"),
                               isOn: $settings.airPodsLowBatteryDropdown)
                     .disabled(!settings.enableBattery)
                 if settings.airPodsLowBatteryDropdown {
@@ -1127,15 +1130,8 @@ struct AgentsSettingsTab: View {
     @ObservedObject private var remoteCodex = RemoteCodexManager.shared
 
     /// One switch per agent: showing it in the notch and reading its session logs go together.
-    private var claudeEnabled: Binding<Bool> {
-        Binding(get: { settings.showSourceClaudeCode && settings.enableClaudeCodeJSONL },
-                set: { settings.showSourceClaudeCode = $0; settings.enableClaudeCodeJSONL = $0 })
-    }
-
-    private var codexEnabled: Binding<Bool> {
-        Binding(get: { settings.showSourceCodex && settings.enableCodexJSONL },
-                set: { settings.showSourceCodex = $0; settings.enableCodexJSONL = $0 })
-    }
+    private var claudeEnabled: Binding<Bool> { $settings.showSourceClaudeCode }
+    private var codexEnabled: Binding<Bool> { $settings.showSourceCodex }
 
     var body: some View {
         Form {
@@ -1216,10 +1212,11 @@ struct AgentsSettingsTab: View {
             Section {
                 Toggle(L("사용", "Enabled"), isOn: codexEnabled)
                 SettingToggle(L("사용량 한도 표시", "Show usage limits"),
-                              L("Codex가 세션 기록에 남기는 5시간·주간 한도를 사용량 카드에 표시. 따로 로그인이나 조회 없음",
-                                "Shows the 5-hour and weekly limits Codex writes into its session logs. No extra sign-in or polling"),
+                              L("Codex의 5시간·주간 한도를 사용량 카드에 표시. 세션 기록과 이 맥의 Codex에서 읽으며 따로 로그인 없음",
+                                "Shows Codex's 5-hour and weekly limits, read from its session logs and the Codex on this Mac. No extra sign-in"),
                               isOn: $settings.showCodexUsage)
                     .disabled(!codexEnabled.wrappedValue)
+                    .onChange(of: settings.showCodexUsage) { _, on in if on { CodexManager.shared.refresh() } }
                 CodexAccountStatus()
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
                     .disabled(!codexEnabled.wrappedValue || !settings.showCodexUsage)
@@ -1229,7 +1226,7 @@ struct AgentsSettingsTab: View {
                               isOn: $settings.remoteCodexEnabled)
                     .disabled(!codexEnabled.wrappedValue)
                     .onChange(of: settings.remoteCodexEnabled) { remoteCodex.sync() }
-                    .onChange(of: settings.enableCodexJSONL) { remoteCodex.apply() }
+                    .onChange(of: settings.showSourceCodex) { remoteCodex.apply() }
                 if settings.remoteCodexEnabled {
                     RemoteHostsEditor(
                         hosts: $settings.remoteCodexHosts, statuses: remoteCodex.statuses,
@@ -1267,7 +1264,7 @@ struct ExperimentalSettingsTab: View {
                               L("Codex 앱과 터미널 Codex(Plan 모드)가 선택지로 물으면 노치에서 바로 답함. Codex 내부 연결을 써서 업데이트되면 안 될 수 있음",
                                 "Answers multiple-choice questions from the Codex app and from Codex in a terminal (Plan mode). Uses Codex's internal connections, so an update may break it"),
                               isOn: $settings.experimentalCodexAppAnswers)
-                    .disabled(!(settings.showSourceCodex && settings.enableCodexJSONL))
+                    .disabled(!settings.showSourceCodex)
             } header: {
                 Text("Codex")
             }
@@ -1277,7 +1274,7 @@ struct ExperimentalSettingsTab: View {
                               L("Claude 앱이 다음 단계 상자로 물으면 노치에서 버튼을 눌러 답함. 턴이 끝난 뒤 10분 동안. Claude Code 훅으로 세션을 깨워 답을 전해서 앱에서 누른 것과 기록이 다름",
                                 "Press the Claude app's next-step buttons from the notch. For 10 minutes after the turn ends. A Claude Code hook wakes the session with the answer, so the record differs from pressing in the app"),
                               isOn: $settings.experimentalClaudeNextStepAnswers)
-                    .disabled(!(settings.showSourceClaudeCode && settings.enableClaudeCodeJSONL))
+                    .disabled(!settings.showSourceClaudeCode)
                     .onChange(of: settings.experimentalClaudeNextStepAnswers) { _, _ in
                         ClaudeCodeManager.shared.syncNextStepHook()
                     }

@@ -110,7 +110,9 @@ final class TWorldSession: ObservableObject {
         await prepare()
         guard !requiresLogin, !isRefreshing else { return }
         // Even manual refresh has a cooldown: T world allows 50 queries / 120 minutes.
-        guard lastAttempt.map({ Date().timeIntervalSince($0) >= (force ? 180 : 600) }) ?? true else { return }
+        // 570, not 600: the keep-alive ticks every 600 s and its query starts a moment after
+        // the tick, so a full 600 skipped every other tick (10–20 minutes apart, not 10).
+        guard lastAttempt.map({ Date().timeIntervalSince($0) >= (force ? 180 : 570) }) ?? true else { return }
         isRefreshing = true
         lastAttempt = Date()
         let currentGeneration = generation
@@ -137,20 +139,17 @@ final class TWorldSession: ObservableObject {
     }
 
     private func recover(after error: TWorldError) async throws -> (TWorldBalance, [HTTPCookie]) {
-        do { throw error }
-        catch let error as TWorldError {
-            // A server error is worth one re-capture: the API's required headers changed on
-            // 2026-09-23 (T-SvcMgmtNum, T-DubScrbInfo) and the page's own request is the
-            // only source of the current set. Not more than every 30 minutes, though.
-            let staleCapture = lastCaptureAt.map { Date().timeIntervalSince($0) > 1_800 } ?? true
-            guard error == .loginRequired || (error == .serviceUnavailable && (headers.isEmpty || staleCapture)) else { throw error }
-            silentLogins.removeAll { Date().timeIntervalSince($0) > 86_400 }
-            guard silentLogins.count < 12 else { throw TWorldError.loginRequired }
-            silentLogins.append(Date())
-            let recovered = try await TWorldSilentLogin.recover(credentials: credentials)
-            adopt(recovered.capture)
-            return try await client.fetch(cookies: recovered.cookies, headers: headers, endpoint: endpoint)
-        }
+        // A server error is worth one re-capture: the API's required headers changed on
+        // 2026-09-23 (T-SvcMgmtNum, T-DubScrbInfo) and the page's own request is the
+        // only source of the current set. Not more than every 30 minutes, though.
+        let staleCapture = lastCaptureAt.map { Date().timeIntervalSince($0) > 1_800 } ?? true
+        guard error == .loginRequired || (error == .serviceUnavailable && (headers.isEmpty || staleCapture)) else { throw error }
+        silentLogins.removeAll { Date().timeIntervalSince($0) > 86_400 }
+        guard silentLogins.count < 12 else { throw TWorldError.loginRequired }
+        silentLogins.append(Date())
+        let recovered = try await TWorldSilentLogin.recover(credentials: credentials)
+        adopt(recovered.capture)
+        return try await client.fetch(cookies: recovered.cookies, headers: headers, endpoint: endpoint)
     }
 
     private func adopt(_ capture: TWorldHeaderCapture.Capture) {
@@ -178,7 +177,7 @@ final class TWorldSession: ObservableObject {
         }
     }
 
-    func showLogin(onConnected: (() -> Void)? = nil) {
+    func showLogin() {
         if let loginWindow { loginWindow.show(); return }
         Task { [self] in
             await prepare()
@@ -198,8 +197,6 @@ final class TWorldSession: ObservableObject {
                 self.errorMessage = nil
                 self.lastAttempt = Date()
                 self.startKeepAlive()
-            } onConnected: {
-                onConnected?()
             } onClosed: { [weak self] in
                 self?.loginWindow = nil
             }

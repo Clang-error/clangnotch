@@ -9,7 +9,7 @@ struct CornerResizeHandle: View {
 
     var body: some View {
         Button(action: action) {
-            CornerArc(cornerRadius: cornerRadius)
+            CornerArc()
                 .stroke(NotchPalette.ink.opacity(hovering ? 1 : 0.75),
                         style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .frame(width: cornerRadius, height: cornerRadius)
@@ -27,7 +27,6 @@ struct CornerResizeHandle: View {
 /// The corner's own curve (as `NotchShape` draws it), pulled in a few points and trimmed at
 /// both ends so it reads as a grip rather than an outline.
 private struct CornerArc: Shape {
-    let cornerRadius: CGFloat
     private let inset: CGFloat = 7
 
     func path(in rect: CGRect) -> Path {

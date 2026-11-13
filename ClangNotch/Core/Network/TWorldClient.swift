@@ -4,7 +4,6 @@ import LocalAuthentication
 import os
 
 struct TWorldBalance: Equatable {
-    let name: String
     let totalKB: Double
     let usedKB: Double
     let remainingKB: Double
@@ -36,7 +35,7 @@ struct TWorldBalance: Equatable {
               total >= 0, used >= 0, remaining >= 0, remaining <= total else {
             throw TWorldError.invalidResponse
         }
-        return Self(name: item.skipNm, totalKB: total, usedKB: used, remainingKB: remaining, fetchedAt: now)
+        return Self(totalKB: total, usedKB: used, remainingKB: remaining, fetchedAt: now)
     }
 
     private struct Response: Decodable {

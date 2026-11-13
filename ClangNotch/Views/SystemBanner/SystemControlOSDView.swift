@@ -128,7 +128,7 @@ struct SystemControlOSDView: View {
     private func widestBadges(for reading: SystemControlReading) -> [String] {
         switch reading.kind {
         case .brightness:
-            return [reading.badge.contains("•") ? "100% • 600 " + L("니트", "nits") : "100%"]
+            return ["100% • 600 " + L("니트", "nits")]
         case .volume, .mute:
             return ["100%", L("음소거", "Muted")]
         }
