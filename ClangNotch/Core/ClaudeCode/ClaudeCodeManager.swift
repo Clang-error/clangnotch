@@ -1372,19 +1372,22 @@ final class ClaudeCodeManager: ObservableObject {
             }
         }
 
+        // The final message is written as several lines (thinking, server tools, text), each
+        // already carrying end_turn, seconds or minutes apart; its text line is the end. Ending
+        // the turn on the thinking line folded the wings, and the text line's Done then threw
+        // the surface back up at full size, untimed (user, 2026-11-13: 7 s apart in a trace).
+        let content = message["content"] as? [[String: Any]] ?? []
+        let hasAnswerText = content.contains { $0["type"] as? String == "text" }
+
         // Terminal stop reasons clear thinking + the turn marker authoritatively,
         // overriding any re-activation from the role/content branches above.
         if let stopReason = message["stop_reason"] as? String,
-           ["end_turn", "stop_sequence", "max_tokens"].contains(stopReason) {
+           ["end_turn", "stop_sequence", "max_tokens"].contains(stopReason),
+           stopReason != "end_turn" || hasAnswerText {
             sessionState.lastStopReason = stopReason
             sessionState.isThinking = false
             let turnStart = sessionState.turnStartTime
             sessionState.turnStartTime = nil
-
-            // The final message is written as several lines (thinking, server tools, text),
-            // each already carrying end_turn, some minutes apart; its text line is the end.
-            let content = message["content"] as? [[String: Any]] ?? []
-            let hasAnswerText = content.contains { $0["type"] as? String == "text" }
             // The closing message is out: the app draws the next-step box now, and so does the
             // notch, unless it waits a moment for the hook that lights the box's buttons.
             if hasAnswerText, sessionState.stagedWrapUp != nil,
