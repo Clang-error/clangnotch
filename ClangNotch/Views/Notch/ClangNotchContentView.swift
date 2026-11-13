@@ -66,6 +66,8 @@ struct ClangNotchContentView: View {
     /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
     @State private var doneFlash: DoneFlash?
     @State private var doneFlashTask: Task<Void, Never>?
+    /// Bumped when a working session reaches the hard hat (아이콘 모자), to redraw the wing.
+    @State private var hatClock = 0
     @StateObject private var permissionCenter = PermissionRequestCenter.shared
     @State private var showPermissionNotice = false
     /// The request on screen, kept so the dropdown still shows it while folding away.
@@ -817,6 +819,50 @@ struct ClangNotchContentView: View {
     private static let wingLabelCap: CGFloat = 96
     private static let wingDetailCap: CGFloat = 72
 
+    /// A closed wing's Claude icons. With 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기" on,
+    /// each wears its session's hat (아이콘 모자).
+    private func claudeWingIcons(count: Int, spreadsLeading: Bool, glowColor: Color) -> some View {
+        ClosedAgentIconStack(agent: .claude, count: count, hats: claudeWingHats,
+                             spreadsLeading: spreadsLeading, glowColor: glowColor)
+            // A turn that only thinks writes nothing for minutes, so nothing would redraw
+            // the wing when it reaches the hard hat: sleep until then, once.
+            .task(id: claudeHardhatDue) {
+                guard let due = claudeHardhatDue else { return }
+                try? await Task.sleep(for: .seconds(due.timeIntervalSinceNow + 0.2))
+                if !Task.isCancelled { hatClock &+= 1 }
+            }
+    }
+
+    /// The hat of every working Claude session, in the order the wing draws its icons. The
+    /// front icon is the selected session while it works (the wing names its tool first);
+    /// the others keep their places by turn start, so a hat doesn't hop between icons as
+    /// sessions report in.
+    private var claudeWingHats: [ClaudeIconHat?] {
+        guard settings.experimentalClaudeIconHats else { return [] }
+        _ = hatClock
+        let now = Date()
+        let selected = claudeCodeManager.selectedSession?.id
+        return claudeCodeManager.availableSessions
+            .compactMap { session in claudeCodeManager.sessionStates[session.id].map { (id: session.id, state: $0) } }
+            .filter { $0.state.isActive }
+            .sorted { a, b in
+                if (a.id == selected) != (b.id == selected) { return a.id == selected }
+                let (x, y) = (a.state.turnStartTime ?? .distantPast, b.state.turnStartTime ?? .distantPast)
+                return x != y ? x < y : a.id < b.id
+            }
+            .prefix(ClosedAgentIconStack.maxIcons)
+            .map { ClaudeIconHat.wearing($0.state, now: now) }
+    }
+
+    private var claudeHardhatDue: Date? {
+        guard settings.experimentalClaudeIconHats else { return nil }
+        let now = Date()
+        return claudeCodeManager.sessionStates.values
+            .filter(\.isActive)
+            .compactMap { ClaudeIconHat.hardhatDue($0, now: now) }
+            .min()
+    }
+
     @ViewBuilder
     private var closedHeader: some View {
         // Claude Code active tool (from JSONL parsing) - check all sessions
@@ -1098,6 +1144,9 @@ struct ClangNotchContentView: View {
                                 Image("ClaudeIcon")
                                     .resizable()
                                     .frame(width: 12, height: 12)
+                                    .overlay {
+                                        if settings.experimentalClaudeIconHats { ClaudeIconHatView(hat: .crown) }
+                                    }
                             } else {
                                 Image("ChatGPTIcon")
                                     .resizable()
@@ -1114,8 +1163,7 @@ struct ClangNotchContentView: View {
                             let indicatorColor = isCodexActive ? codexIndicatorColor : claudeGlowColor
                             let isActive = isCodexActive || isClaudeActive
                             if showsClaudeIcon {
-                                ClosedAgentIconStack(agent: .claude, count: claudeWorkingCount,
-                                                     spreadsLeading: true, glowColor: indicatorColor)
+                                claudeWingIcons(count: claudeWorkingCount, spreadsLeading: true, glowColor: indicatorColor)
                                     .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)
                             } else if showsCodexIcon {
                                 ClosedAgentIconStack(agent: .codex, count: codexWorkingCount,
@@ -1190,8 +1238,7 @@ struct ClangNotchContentView: View {
                                     foregroundOpacity: currentClaudeTool != nil ? 0.85 : 0.7,
                                     glowColor: claudeGlowColor
                                 )
-                                ClosedAgentIconStack(agent: .claude, count: claudeWorkingCount,
-                                                     spreadsLeading: false, glowColor: claudeGlowColor)
+                                claudeWingIcons(count: claudeWorkingCount, spreadsLeading: false, glowColor: claudeGlowColor)
                                     // Same id as the left wing's Claude icon: when Codex joins,
                                     // Claude's icon glides across the notch instead of popping.
                                     .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)

@@ -11,6 +11,8 @@ struct ClosedAgentIconStack: View {
     let agent: Agent
     /// Working sessions of this agent; 1 draws the plain icon.
     let count: Int
+    /// 아이콘 모자: the front icon's hat, then one per copy in order; empty draws none.
+    var hats: [ClaudeIconHat?] = []
     /// Copies spread toward the leading edge (left wing) or the trailing edge (right wing).
     let spreadsLeading: Bool
     let glowColor: Color
@@ -63,10 +65,28 @@ struct ClosedAgentIconStack: View {
                     // shrinks back into it.
                     .transition(reduceMotion ? .opacity : .scale(scale: 0.1).combined(with: .opacity))
             }
+            // Hats go on once every copy is down: within a column the upper icon is drawn
+            // over the lower one and would bury its hat. They fade less than their icons,
+            // to stay readable.
+            ForEach(copies.reversed()) { copy in
+                if let hat = hat(at: copy.id) {
+                    let column = CGFloat(copy.column)
+                    ClaudeIconHatView(hat: hat, iconSize: Self.iconSize)
+                        .scaleEffect(max(0.6, 1 - 0.1 * column))
+                        .opacity(max(0.75, 1 - 0.15 * column))
+                        .offset(x: (spreadsLeading ? -1 : 1) * Self.columnStep * column,
+                                y: copy.row * Self.rowOffset)
+                        .transition(hatTransition)
+                }
+            }
             // The lone icon keeps its soft glow; on a stack the glow would wrap the black
             // ring too and swell into an orange blob behind the front icon.
             icon(outlined: count > 1)
                 .shadow(color: glowColor.opacity(count > 1 ? 0 : 0.6), radius: 3)
+            if let hat = hat(at: 0) {
+                ClaudeIconHatView(hat: hat, iconSize: Self.iconSize)
+                    .transition(hatTransition)
+            }
         }
         .frame(width: width, height: Self.iconSize + Self.rowOffset * 2,
                alignment: spreadsLeading ? .trailing : .leading)
@@ -74,6 +94,16 @@ struct ClosedAgentIconStack: View {
         // one splitting into a pair) spring to their new place too.
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.5),
                    value: count)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.6),
+                   value: hats)
+    }
+
+    private func hat(at index: Int) -> ClaudeIconHat? {
+        hats.indices.contains(index) ? hats[index] : nil
+    }
+
+    private var hatTransition: AnyTransition {
+        reduceMotion ? .opacity : .scale(scale: 0.3).combined(with: .opacity)
     }
 
     @ViewBuilder

@@ -144,6 +144,9 @@ public final class AppSettings: ObservableObject {
     // the turn and wakes the session with the pick (NextStepHooks). Off by default; the hook is
     // in ~/.claude/settings.json only while this is on.
     @AppStorage("experimentalClaudeNextStepAnswers") public var experimentalClaudeNextStepAnswers: Bool = false
+    // 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기": the closed wings' Claude icons wear a hat
+    // for what their session is doing (ClaudeIconHat). Off by default.
+    @AppStorage("experimentalClaudeIconHats") public var experimentalClaudeIconHats: Bool = false
     /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.

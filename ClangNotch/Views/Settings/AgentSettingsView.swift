@@ -70,7 +70,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
-        case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "experimental", "question", "answer", "next step"]
+        case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "experimental", "question", "answer", "next step", "hat"]
         }
     }
 
@@ -1276,7 +1276,7 @@ struct AgentsSettingsTab: View {
 }
 
 /// 설정 › 실험 기능: things that lean on another app's internals and may stop working after
-/// that app updates. Each is off until turned on.
+/// that app updates, and try-outs like the 아이콘 모자. Each is off until turned on.
 struct ExperimentalSettingsTab: View {
     @ObservedObject var settings: AppSettings
 
@@ -1301,6 +1301,11 @@ struct ExperimentalSettingsTab: View {
                     .onChange(of: settings.experimentalClaudeNextStepAnswers) { _, _ in
                         ClaudeCodeManager.shared.syncNextStepHook()
                     }
+                SettingToggle(L("Claude 아이콘에 모자 씌우기", "Hats on the Claude icon"),
+                              L("닫힌 노치 날개의 Claude 아이콘이 세션마다 하는 일에 따라 모자를 씀. 서브에이전트 1~2개는 실크해트, 3개 이상은 마법사 모자, 2분 넘게 이어지는 턴은 안전모, Done은 왕관",
+                                "Each Claude icon in the closed notch's wings wears a hat for what its session is doing: a top hat with one or two subagents, a wizard hat with three or more, a hard hat on a turn past two minutes, a crown on Done"),
+                              isOn: $settings.experimentalClaudeIconHats)
+                    .disabled(!settings.showSourceClaudeCode)
             } header: {
                 Text("Claude Code")
             } footer: {

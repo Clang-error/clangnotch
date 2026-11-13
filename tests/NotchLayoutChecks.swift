@@ -26,6 +26,22 @@ struct NotchLayoutChecks {
         check(NotchMode.order(from: "folder,battery,ai").prefix(2) == [.battery, .ai])
         check(Set(NotchMode.order(from: "folder,battery,ai")) == Set(NotchMode.allCases))
 
+        // 아이콘 모자: subagents outrank a long turn, and the hard hat comes at two minutes.
+        let hatNow = Date()
+        var hatState = ClaudeCodeState()
+        check(ClaudeIconHat.wearing(hatState, now: hatNow) == nil, "An idle session wears no hat")
+        hatState.turnStartTime = hatNow.addingTimeInterval(-119)
+        check(ClaudeIconHat.wearing(hatState, now: hatNow) == nil && ClaudeIconHat.hardhatDue(hatState, now: hatNow) != nil,
+              "Under two minutes: no hat yet, and a time to redraw at")
+        hatState.turnStartTime = hatNow.addingTimeInterval(-120)
+        check(ClaudeIconHat.wearing(hatState, now: hatNow) == .hardhat && ClaudeIconHat.hardhatDue(hatState, now: hatNow) == nil,
+              "Two minutes in: the hard hat")
+        let helper = { (id: String) in ClaudeSubagent(id: id, description: "", agentType: "Explore", awaitedToolUseId: nil) }
+        hatState.subagents = [helper("a")]
+        check(ClaudeIconHat.wearing(hatState, now: hatNow) == .tophat, "Subagents outrank the long turn")
+        hatState.subagents = [helper("a"), helper("b"), helper("c")]
+        check(ClaudeIconHat.wearing(hatState, now: hatNow) == .wizard, "Three subagents are an orchestra")
+
         let surface = NotchShape(topCornerRadius: 19, bottomCornerRadius: 24)
             .path(in: CGRect(x: 0, y: 0, width: 420, height: 340))
         check(surface.contains(CGPoint(x: 210, y: 100)))

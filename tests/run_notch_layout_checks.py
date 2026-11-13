@@ -174,6 +174,7 @@ with tempfile.TemporaryDirectory(prefix="clangnotch-layout-checks-") as folder:
         str(root / "ClangNotch/Views/Notch/NotchMotion.swift"),
         str(root / "ClangNotch/Views/Notch/ThinScrollers.swift"),
         str(root / "ClangNotch/Views/Notch/ClosedAgentIconStack.swift"),
+        str(root / "ClangNotch/Views/Notch/ClaudeIconHat.swift"),
         str(root / "ClangNotch/Window/NotchDetector.swift"),
         str(enum_file), str(root / "tests/NotchLayoutChecks.swift"),
         "-o", str(binary),
