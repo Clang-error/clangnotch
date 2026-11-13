@@ -152,7 +152,10 @@ final class SystemControlOSD: ObservableObject {
             // these keys; kept here they set only the built-in panel (reported 2026-11-10). The
             // key goes on, and the 조절창 still comes up and polls in what that app sets. It sets
             // every screen, so the 조절창 goes where the volume one does, not on the built-in panel.
-            if AppSettings.shared.passBrightnessKeys {
+            // Only with another screen connected: on the built-in panel alone there is nothing to
+            // hand them on for, and macOS took them and put up its own banner beside the 조절창,
+            // which can't be moved off screen since 27.2 (reported 2026-11-14).
+            if AppSettings.shared.passBrightnessKeys, Self.hasExternalDisplay {
                 if isDown, AppSettings.shared.showPassedBrightnessHUD { showBrightness(on: NSScreen.main) }
                 return false
             }
@@ -412,6 +415,11 @@ final class SystemControlOSD: ObservableObject {
         if nits >= 10 { return String(Int(nits.rounded())) }
         if nits >= 1 { return String(format: "%.1f", nits) }
         return String(format: "%.2f", nits)
+    }
+
+    /// A screen besides the built-in one: something for MonitorControl and the like to set.
+    private static var hasExternalDisplay: Bool {
+        NSScreen.screens.compactMap(displayID(of:)).contains { CGDisplayIsBuiltin($0) == 0 }
     }
 
     private static func displayID(of screen: NSScreen) -> CGDirectDisplayID? {

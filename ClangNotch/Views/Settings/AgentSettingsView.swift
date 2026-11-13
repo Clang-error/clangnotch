@@ -894,8 +894,8 @@ struct FeaturesSettingsTab: View {
                     .pickerStyle(.segmented)
                     .padding(.leading, 20)
                     SettingToggle(L("밝기 키는 다른 앱에 넘기기", "Leave brightness keys to other apps"),
-                                  L("MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기",
-                                    "On when MonitorControl, Lunar or BetterDisplay sets external displays too"),
+                                  L("MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기. 외부 모니터가 연결돼 있을 때만 넘김",
+                                    "On when MonitorControl, Lunar or BetterDisplay sets external displays too. Only while an external display is connected"),
                                   isOn: $settings.passBrightnessKeys)
                         .padding(.leading, 20)
                     if settings.passBrightnessKeys {
