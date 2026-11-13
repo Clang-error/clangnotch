@@ -686,11 +686,11 @@ struct NotchSettingsTab: View {
     /// values outside 2…60 are brought back into range.
     /// In a grouped Form a bare HStack with a text field becomes a label column with the field
     /// dropped below it (user's screenshot, 2026-11-12); LabeledContent keeps one centred row.
-    private func foldRow(_ title: String, _ seconds: Binding<Int>) -> some View {
+    private func foldRow(_ title: String, _ seconds: Binding<Int>, range: ClosedRange<Int> = 2...60) -> some View {
         LabeledContent(title) {
             HStack(alignment: .center, spacing: 6) {
                 TextField("", value: Binding(get: { seconds.wrappedValue },
-                                             set: { seconds.wrappedValue = min(60, max(2, $0)) }),
+                                             set: { seconds.wrappedValue = min(range.upperBound, max(range.lowerBound, $0)) }),
                           format: .number)
                     .labelsHidden()
                     .textFieldStyle(.roundedBorder)
@@ -699,7 +699,7 @@ struct NotchSettingsTab: View {
                     .frame(width: 46)
                 Text(L("초", "s"))
                     .foregroundColor(.secondary)
-                Stepper("", value: seconds, in: 2...60)
+                Stepper("", value: seconds, in: range)
                     .labelsHidden()
             }
         }
@@ -773,6 +773,7 @@ struct NotchSettingsTab: View {
                 foldRow(L("맥 배터리 부족", "Mac low battery"), $settings.foldSecondsMac)
                 foldRow(L("테더링 드롭다운", "Tethering"), $settings.foldSecondsTether)
                 foldRow(L("속도 드롭다운 (결과가 나온 뒤)", "Speed test (after the result)"), $settings.foldSecondsSpeed)
+                foldRow(L("복사 방울", "Copy drop"), $settings.foldSecondsCopy, range: 1...60)
                 Text(L("다 내려온 뒤부터 셈. 커서를 올려 두면 멈춤. 에어팟·맥 카드는 '자동으로 접기'를 켰을 때만(맥스·헤드셋·뚜껑 닫힌 채 낀 에어팟은 늘 접힘)",
                        "Counted from when it is all the way down. Paused while the cursor is on it. AirPods and Mac cards only with their auto-fold on (Max, headsets and buds worn with the lid shut always fold)"))
                     .font(.caption).foregroundColor(.secondary)
@@ -817,6 +818,28 @@ struct FeaturesSettingsTab: View {
                     .onChange(of: settings.enableClipboardHistory) { _, _ in
                         ClipboardManager.shared.syncWithSettings()
                     }
+                if settings.enableClipboardHistory {
+                    SettingToggle(L("복사하면 방울로 알리기", "Show a drop when you copy"),
+                                  L("다른 앱에서 복사하면 닫힌 노치에서 작은 원이 떨어져 나와 체크를 보여 주고 \(settings.foldSecondsCopy)초 뒤 다시 들어감(시간은 설정 › 노치). 노치가 펼쳐져 있을 때는 안 뜸",
+                                    "When you copy in another app, a small orb comes off the closed notch, shows a check and goes back in after \(settings.foldSecondsCopy) s (time in Settings › Notch). Not while the notch is open"),
+                                  isOn: $settings.clipboardOrb)
+                        .padding(.leading, 20)
+                    if settings.clipboardOrb {
+                        Picker(L("방울 방향", "Drop direction"), selection: $settings.clipboardOrbDirection) {
+                            Text(L("아래", "Down")).tag("down")
+                            Text(L("왼쪽", "Left")).tag("left")
+                            Text(L("오른쪽", "Right")).tag("right")
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.leading, 20)
+                        Picker(L("방울 모양", "Drop shape"), selection: $settings.clipboardOrbStyle) {
+                            Text(L("원 (체크만)", "Orb (check only)")).tag("orb")
+                            Text(L("알약 (체크 + 복사됨)", "Pill (check + Copied)")).tag("pill")
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.leading, 20)
+                    }
+                }
                 SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
                               L("앱마다 소리 크기 조절. 오디오 캡처 권한 필요", "Volume per app. Needs audio-capture permission"),
                               isOn: $settings.enableAudioMixer)

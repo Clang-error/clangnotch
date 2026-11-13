@@ -6,6 +6,9 @@ final class ClipboardManager: ObservableObject {
     static let shared = ClipboardManager()
 
     @Published private(set) var items: [ClipboardItem] = []
+    /// Each copy made in another app, for the 복사 방울 (`ClipboardOrbView`). Our own writes
+    /// move `lastChangeCount` along, so they don't count.
+    let copied = PassthroughSubject<Void, Never>()
 
     private let pasteboard = NSPasteboard.general
     private var lastChangeCount: Int = -1
@@ -61,6 +64,9 @@ final class ClipboardManager: ObservableObject {
         // Skip transient / concealed (password manager) items
         let types = pasteboard.types ?? []
         let typeStrings = types.map(\.rawValue)
+        // A password copied is still a copy: the orb says so, and the history leaves it out.
+        // A transient item is an app's own passing data, not something the user copied.
+        if !typeStrings.contains("org.nspasteboard.TransientType") { copied.send() }
         if typeStrings.contains("org.nspasteboard.ConcealedType") ||
            typeStrings.contains("org.nspasteboard.TransientType") { return }
 

@@ -684,6 +684,15 @@ struct ClangNotchContentView: View {
         decoratedNotch
         .padding(.bottom, isExpanded ? 8 : closedNotchGlowPadding)
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
+        .overlay(alignment: .top) {
+            ClipboardOrbView(surfaceWidth: notchVM.notchSize.width, surfaceHeight: notchVM.closedNotchSize.height,
+                             fromSurface: (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 || baseNotchActive,
+                             enabled: settings.clipboardOrb && settings.enableClipboardHistory
+                                && notchVM.notchState == .closed && ui.isVisible,
+                             direction: settings.clipboardOrbDirection,
+                             style: settings.clipboardOrbStyle,
+                             holdSeconds: settings.foldSecondsCopy)
+        }
         .compositingGroup()
         .environment(\.colorScheme, notchScheme)
         .preferredColorScheme(notchScheme)

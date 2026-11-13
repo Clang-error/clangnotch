@@ -14,6 +14,12 @@ public final class AppSettings: ObservableObject {
     // Clipboard history (NSPasteboard polling): text, copied files and images. The list lives in
     // memory; images are kept in the app's cache folder.
     @AppStorage("enableClipboardHistory") public var enableClipboardHistory: Bool = true
+    /// 복사 방울: a copy drops a small orb with a check out of the closed notch.
+    @AppStorage("clipboardOrb") public var clipboardOrb: Bool = true
+    /// Where it comes out: "down", "left" or "right".
+    @AppStorage("clipboardOrbDirection") public var clipboardOrbDirection: String = "down"
+    /// "orb" (the check alone) or "pill" (check + 복사됨).
+    @AppStorage("clipboardOrbStyle") public var clipboardOrbStyle: String = "orb"
 
     // Per-app volume mixer (Core Audio process taps, macOS 14.2+, needs audio-capture permission)
     @AppStorage("enableAudioMixer") public var enableAudioMixer: Bool = false
@@ -98,6 +104,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("foldSecondsHeadphones") public var foldSecondsHeadphones: Int = 10
     @AppStorage("foldSecondsMac") public var foldSecondsMac: Int = 10
     @AppStorage("foldSecondsMedia") public var foldSecondsMedia: Int = 5
+    /// The 복사 방울, from when it has come off (1–60: its check takes about 0.9 s to draw).
+    @AppStorage("foldSecondsCopy") public var foldSecondsCopy: Int = 1
 
     // Battery device ids shown in the open notch header, newline-separated.
     @AppStorage("headerBatteryDeviceIDs") public var headerBatteryDeviceIDs: String = ""
