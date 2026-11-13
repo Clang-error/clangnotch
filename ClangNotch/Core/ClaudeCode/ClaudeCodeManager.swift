@@ -541,6 +541,12 @@ final class ClaudeCodeManager: ObservableObject {
                 debugLog("[ClaudeCode] Could not install permission hook: \(error.localizedDescription)")
             }
             do {
+                try ClaudeNotificationHooks.install(in: claudeDir.appendingPathComponent("settings.json"), port: port,
+                                                    types: Self.attentionNotificationTypes.sorted())
+            } catch {
+                debugLog("[ClaudeCode] Could not install notification hook: \(error.localizedDescription)")
+            }
+            do {
                 try StatuslineBridge.install(in: claudeDir.appendingPathComponent("settings.json"), port: port)
             } catch {
                 debugLog("[ClaudeCode] Could not wrap the status line: \(error.localizedDescription)")
@@ -1409,8 +1415,8 @@ final class ClaudeCodeManager: ObservableObject {
         resetIdleTimer()
     }
 
-    /// Handles a `Notification` hook event POSTed by Claude Code (the user's own hook in
-    /// `~/.claude/settings.json`; the app doesn't install this one) — a deterministic signal that Claude is waiting on the user, instead of
+    /// Handles a `Notification` hook event POSTed by Claude Code (`ClaudeNotificationHooks`
+    /// puts the hook in `~/.claude/settings.json`) — a deterministic signal that Claude is waiting on the user, instead of
     /// the fragile fallback heuristic of inferring it from tool_use/tool_result timing.
     func handleNotificationHook(transcriptPath: String, notificationType: String) {
         debugLog("[ClaudeCode] [\(Date())] Notification hook received: \(notificationType) for \(transcriptPath)")

@@ -24,6 +24,7 @@ checks = [
                           "ClangNotch/Models/ClaudeCodeModels.swift",
                           "ClangNotch/Models/AgentInputModels.swift"], L),
     ("ClaudeQuestionHookChecks", ["ClangNotch/Core/ClaudeCode/ClaudeQuestionHooks.swift"], ""),
+    ("ClaudeNotificationHookChecks", ["ClangNotch/Core/ClaudeCode/ClaudeNotificationHooks.swift"], ""),
     ("NextStepHookChecks", ["ClangNotch/Core/Permission/NextStepHooks.swift"], ""),
 ]
 
