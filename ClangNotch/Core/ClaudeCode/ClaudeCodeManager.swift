@@ -1738,7 +1738,7 @@ final class ClaudeCodeManager: ObservableObject {
             }
             // Not "thinking" yet: the wing keeps the finished tool for a few seconds as it does for
             // a local session, and the next tool takes its place. Saying thinking at once made a
-            // run of Bash commands flicker Bash ↔ Thinking (user, 2026-11-12, chomelab). The turn
+            // run of Bash commands flicker Bash ↔ Thinking (user, 2026-11-12, a remote host). The turn
             // still counts as working (`turnStartTime`), and with no tool for 5 s the wing says
             // Thinking anyway.
             // Esc: the tool fails as interrupted and the turn ends there, with no Stop to say so.

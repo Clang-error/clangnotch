@@ -802,7 +802,7 @@ private enum Collector {
         return (names, result)
     }
 
-    /// IOBluetooth는 "30-d8-75-21-10-f1", system_profiler는 "30:D8:75:21:10:F1"로 준다.
+    /// IOBluetooth는 "aa-bb-cc-11-22-33", system_profiler는 "AA:BB:CC:11:22:33"로 준다.
     private static func normalizedAddress(_ address: String) -> String {
         address.lowercased().filter(\.isHexDigit)
     }

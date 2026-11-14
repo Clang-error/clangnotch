@@ -766,7 +766,7 @@ final class CodexManager: ObservableObject {
         }
         // A thread Codex starts for itself (`source: {"subagent": …}`), such as the "guardian"
         // that reviews each command before it runs: not the user's conversation, and its
-        // verdict (`{"risk_level":…}`) came up as a Done (seen 2026-11-12, phone → chomelab).
+        // verdict (`{"risk_level":…}`) came up as a Done (seen 2026-11-12, phone → a remote host).
         if let source = payload["source"] as? [String: Any], source["subagent"] != nil { return nil }
 
         var timestamp = Date()

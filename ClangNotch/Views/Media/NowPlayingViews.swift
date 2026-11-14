@@ -505,7 +505,7 @@ final class AudioOutputWatcher: ObservableObject {
         guard transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE else {
             return nil
         }
-        // A Bluetooth output's UID is its address and a suffix: "30-D8-75-21-10-F1:output".
+        // A Bluetooth output's UID is its address and a suffix: "AA-BB-CC-11-22-33:output".
         if let uid = AudioMixerManager.strProp(id, kAudioDevicePropertyDeviceUID),
            let device = IOBluetoothDevice(addressString: String(uid.prefix(17))) {
             let productID = unsafeBitCast(device, to: BTBatteryDevice.self).productID
