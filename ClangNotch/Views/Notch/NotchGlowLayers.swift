@@ -19,10 +19,12 @@ struct NotchGlowLayers: NSViewRepresentable, Animatable {
     let maxFrameRate: Float
     /// A closed wing stepping aside fades the glow on its side with it.
     let wingFade: WingFade?
+    /// 열리는 곳 표시: how far its tab is out, 0…1. The outline goes round it (`NotchShape`).
+    var tabProgress: CGFloat = 0
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(topCornerRadius, bottomCornerRadius) }
-        set { (topCornerRadius, bottomCornerRadius) = (newValue.first, newValue.second) }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(topCornerRadius, bottomCornerRadius), tabProgress) }
+        set { (topCornerRadius, bottomCornerRadius, tabProgress) = (newValue.first.first, newValue.first.second, newValue.second) }
     }
 
     func makeNSView(context: Context) -> NotchGlowLayerView { NotchGlowLayerView() }
@@ -32,7 +34,7 @@ struct NotchGlowLayers: NSViewRepresentable, Animatable {
             topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
             glow: glowColor.srgb, bright: brightColor.srgb,
             secondaryGlow: secondaryGlowColor?.srgb, secondaryBright: secondaryBrightColor?.srgb,
-            tracesOutline: tracesOutline, paused: paused, maxFrameRate: maxFrameRate, wingFade: wingFade))
+            tracesOutline: tracesOutline, paused: paused, maxFrameRate: maxFrameRate, wingFade: wingFade, tabProgress: tabProgress))
     }
 }
 
@@ -48,6 +50,7 @@ final class NotchGlowLayerView: NSView {
         var paused: Bool
         var maxFrameRate: Float
         var wingFade: WingFade?
+        var tabProgress: CGFloat
     }
 
     /// Seconds for the closed band to cross the notch once.
@@ -67,7 +70,7 @@ final class NotchGlowLayerView: NSView {
         + (0..<16).map { (0.16 - CGFloat($0) * 0.009, 0.11, true) }
     /// The three stacked halos, innermost first, as (blur radius, colour opacity).
     private static let halos: [(radius: CGFloat, opacity: CGFloat)] = [(8, 0.7), (16, 0.4), (24, 0.2)]
-    private static let lineWidth: CGFloat = 2.5
+    static let lineWidth: CGFloat = 2.5
 
     private var config: Config?
     /// Innermost first; each holds the next one in, and the innermost holds `content`.
@@ -123,10 +126,17 @@ final class NotchGlowLayerView: NSView {
         guard new != config else { return }
         var sameButFade = new
         sameButFade.wingFade = config?.wingFade
+        sameButFade.tabProgress = config?.tabProgress ?? 0
         if sameButFade == config {
-            // Only a wing stepping aside or back: fade, without restarting the glow.
+            // Only a wing stepping aside or back, and the 열리는 곳 표시 tab growing out with
+            // it: fade and redraw the outline, without restarting the glow.
+            let fadeChanged = new.wingFade != config?.wingFade
             config = new
-            applyWingFade(animated: true)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            applyPath(new)
+            CATransaction.commit()
+            if fadeChanged { applyWingFade(animated: true) }
             return
         }
         let rebuild = new.tracesOutline != config?.tracesOutline
@@ -165,9 +175,17 @@ final class NotchGlowLayerView: NSView {
         fadeContainer.frame = bounds
         for halo in haloLayers { halo.frame = bounds }
         content.frame = bounds
-        let path = NotchShape(topCornerRadius: config.topCornerRadius,
-                              bottomCornerRadius: config.bottomCornerRadius,
-                              drawsTopEdge: false).path(in: bounds).cgPath
+        applyPath(config)
+        startAnimations(config)
+        applyWingFade(animated: false)
+    }
+
+    private func applyPath(_ config: Config) {
+        var shape = NotchShape(topCornerRadius: config.topCornerRadius,
+                               bottomCornerRadius: config.bottomCornerRadius, drawsTopEdge: false)
+        shape.tabWidth = config.wingFade?.hintWidth ?? 0
+        shape.tabProgress = config.tabProgress
+        let path = shape.path(in: bounds).cgPath
         if config.tracesOutline {
             for layer in traceLayers {
                 layer.frame = bounds
@@ -176,11 +194,11 @@ final class NotchGlowLayerView: NSView {
         } else {
             bandMask.frame = bounds
             bandMask.path = path
-            // Taller than the outline so the stroke's outer half along the bottom is covered.
-            band.bounds = CGRect(x: 0, y: 0, width: bounds.width * Self.bandWidth, height: bounds.height + 6)
+            // Taller than the outline so the stroke's outer half along the bottom is covered,
+            // and the 열리는 곳 표시 tab under it.
+            band.bounds = CGRect(x: 0, y: 0, width: bounds.width * Self.bandWidth,
+                                 height: bounds.height + 6 + NotchShape.tabDepth)
         }
-        startAnimations(config)
-        applyWingFade(animated: false)
     }
 
     private func applyWingFade(animated: Bool) {

@@ -41,6 +41,12 @@ struct NotchGlowBorder: View {
         self.wingFade = wingFade
     }
 
+    /// 열리는 곳 표시 is out: the glow goes round its tab.
+    private var hintShown: Bool {
+        guard let wingFade else { return false }
+        return wingFade.hintWidth > 0 && !wingFade.isSolid
+    }
+
     var body: some View {
         NotchGlowLayers(
             topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
@@ -52,8 +58,10 @@ struct NotchGlowBorder: View {
             // Battery saver: at most 30 fps on battery. Measured 2026-11-09 on battery: GPU use
             // +17–19%p at 60 fps (about 170 mW), +10%p at 30, +14%p for the old 15 fps SwiftUI glow.
             maxFrameRate: settings.batterySaverEnabled && !powerMonitor.isCharging ? 30 : 0,
-            wingFade: wingFade
+            wingFade: wingFade,
+            tabProgress: hintShown ? 1 : 0
         )
+        .animation(WingOpenHint.animation, value: hintShown)
         .allowsHitTesting(false)
     }
 }

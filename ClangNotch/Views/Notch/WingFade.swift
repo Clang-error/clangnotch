@@ -10,6 +10,8 @@ struct WingFade: Equatable {
     /// 0 solid … 1 stepped aside, per side.
     var left: Double = 0
     var right: Double = 0
+    /// The 툴팁's tab under the notch while a wing is aside (`WingOpenHint`); 0 without it.
+    var hintWidth: CGFloat = 0
 
     /// How far out from the notch's edge the wing takes to melt away, and what is left of it.
     static let ramp: CGFloat = 30

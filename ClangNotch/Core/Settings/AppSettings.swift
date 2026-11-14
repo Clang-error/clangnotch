@@ -16,6 +16,11 @@ public final class AppSettings: ObservableObject {
     @AppStorage("enableClipboardHistory") public var enableClipboardHistory: Bool = true
     /// 복사 방울: a copy drops a small orb with a check out of the closed notch.
     @AppStorage("clipboardOrb") public var clipboardOrb: Bool = true
+    /// 날개 비켜 주기: a closed wing under the cursor steps aside (`WingFade`). Off, the wings
+    /// open the notch like its middle does.
+    @AppStorage("wingStepAside") public var wingStepAside: Bool = true
+    /// Its 툴팁: while a wing is aside, a tab under the notch says where to go (`WingOpenHint`).
+    @AppStorage("wingOpenHint") public var wingOpenHint: Bool = true
     /// Where it comes out: "down", "left" or "right".
     @AppStorage("clipboardOrbDirection") public var clipboardOrbDirection: String = "down"
     /// "orb" (the check alone) or "pill" (check + 복사됨).

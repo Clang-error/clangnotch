@@ -477,6 +477,13 @@ struct ClangNotchContentView: View {
                     .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
                     .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
             }
+            // With the surface it hangs from, so it takes the closed notch's jelly scale too.
+            .overlay(alignment: .top) {
+                if settings.wingOpenHint {
+                    WingOpenHint(notchHeight: notchVM.closedNotchSize.height, shown: !wingFade.isSolid,
+                                 surface: theme.surface ?? .black)
+                }
+            }
             .overlay(alignment: .top) {
                 glowOverlay
                     .frame(width: glowSurfaceWidth, height: notchSurfaceSize.height)
@@ -530,6 +537,9 @@ struct ClangNotchContentView: View {
                     updateInteractiveRegion()
                 }
                 .onChange(of: notchVM.notchSize) { _, _ in
+                    updateInteractiveRegion()
+                }
+                .onChange(of: settings.wingStepAside) { _, _ in
                     updateInteractiveRegion()
                 }
                 .onChange(of: settings.showSourceCodex) { _, enabled in
@@ -3091,7 +3101,7 @@ struct ClangNotchContentView: View {
             notchVM.notchSize,
             shape: isExpanded ? NotchShape(topCornerRadius: topCornerRadius,
                                           bottomCornerRadius: bottomCornerRadius) : nil,
-            wingsBeyond: hasWings ? notchVM.closedNotchSize.width : nil
+            wingsBeyond: hasWings && settings.wingStepAside ? notchVM.closedNotchSize.width : nil
         )
     }
 
@@ -3106,7 +3116,8 @@ struct ClangNotchContentView: View {
     private var wingFade: WingFade {
         let wing = notchVM.notchState == .closed ? ui.hoveredWing : nil
         return WingFade(notchWidth: notchVM.closedNotchSize.width,
-                        left: wing == .left ? 1 : 0, right: wing == .right ? 1 : 0)
+                        left: wing == .left ? 1 : 0, right: wing == .right ? 1 : 0,
+                        hintWidth: settings.wingOpenHint ? WingOpenHint.tabWidth : 0)
     }
 
     private func triggerStartupGlow() {

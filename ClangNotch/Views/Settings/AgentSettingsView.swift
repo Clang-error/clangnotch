@@ -737,6 +737,17 @@ struct NotchSettingsTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                SettingToggle(L("날개에 올리면 비켜 주기", "Wings step aside under the cursor"),
+                              L("닫힌 노치의 날개에 커서를 올리면 날개가 옅어져 뒤의 메뉴 막대가 보이고 클릭도 그리로 감. 노치는 가운데에 올려야 펼쳐짐. 끄면 날개에 올려도 펼쳐짐",
+                                "With the cursor on a wing of the closed notch, the wing fades to show the menu bar behind it and clicks go there. The notch opens from its middle. Off, the wings open it too"),
+                              isOn: $settings.wingStepAside)
+                if settings.wingStepAside {
+                    SettingToggle(L("툴팁 표시", "Show the tooltip"),
+                                  L("날개가 비켜나 있는 동안 노치 아래에 \"가운데에 올려서 펼치기\"를 띄움",
+                                    "While a wing is aside, \"Hover the middle to open\" shows under the notch"),
+                                  isOn: $settings.wingOpenHint)
+                        .padding(.leading, 20)
+                }
                 SettingToggle(L("열릴 때 햅틱", "Haptic on open"),
                               L("노치가 펼쳐질 때 트랙패드 햅틱", "Trackpad haptic when the notch opens"),
                               isOn: $settings.notchHapticsEnabled)
