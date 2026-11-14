@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Replays traced AirPods advertisement frames through AirPodsLidWatcher.handle and checks what
-the 에어팟 드롭다운 is told. The method and its Sighting struct are cut from the source; the
-watcher's other parts (scanning, proof, trace file) and the card are stood in for.
+the 에어팟 드롭다운 is told. The method, its Sighting struct and the reading of whose frame it is
+are cut from the source; the watcher's other parts (scanning, proof, trace file) and the card
+are stood in for.
 """
 import re
 import subprocess
@@ -23,6 +24,11 @@ sighting = block("    private struct Sighting {").replace("private struct", "str
 handle = (block("    private func handle(_ b: [UInt8], from id: UUID) {").replace("private func", "func", 1)
           .replace("let now = Date()", "let now = clock", 1))
 tenths = re.search(r"    private func tenths\(.*\n", source).group(0)
+claim = (block("    private func claim(").replace("private func", "func", 1)
+         .replace("let now = Date()", "let now = clock", 1))
+levels_read = block("    private static func levelsRead(").replace("private static", "static", 1)
+ending = block("    private static func ending(").replace("private static", "static", 1)
+lapse = re.search(r"    private static let readLapse.*\n", source).group(0).replace("private ", "", 1)
 
 harness = """
 import Foundation
@@ -30,7 +36,7 @@ import Foundation
 enum Kind { case buds, headphones }
 enum AirPodsArt { static func kind(for productID: UInt16) -> Kind? { productID == 0x202D ? .headphones : .buds } }
 
-struct Told { let drops: Bool; let side: String?; let level: Int?; let at: Double }
+struct Told { let drops: Bool; let side: String?; let level: Int?; let at: Double; let address: String }
 
 final class AirPodsDropdown {
     static let shared = AirPodsDropdown()
@@ -46,14 +52,19 @@ final class AirPodsDropdown {
     func caseOpened(address: String, productID: UInt16, level: Int?, caseLevel: Int?, side: String? = nil,
                     sides: (left: Int?, right: Int?)? = nil,
                     charging: (left: Bool, right: Bool, case: Bool)? = nil, drops: Bool = true) {
-        told.append(Told(drops: drops, side: side, level: level, at: at))
+        told.append(Told(drops: drops, side: side, level: level, at: at, address: address))
     }
 }
 
 final class Watcher {
     struct Paired { let address: String; let productID: UInt16 }
-    var candidates = [Paired(address: "pro", productID: 0x2024)]
+    var candidates = [Paired(address: "aa-bb-cc-11-22-33", productID: 0x2024)]
     var owners: [String: UUID] = [:]
+    var readAt: [String: Date] = [:]
+    func tailRead(_ address: String, from id: UUID, at now: Date) {
+        readAt[address] = now
+        owners[address] = id
+    }
     var slow = false
     var clock = Date(timeIntervalSince1970: 0)
 """ + sighting + """
@@ -67,10 +78,12 @@ final class Watcher {
     func acts(_ id: UUID, for address: String) -> Bool { true }
     func reevaluate() {}
     func handleHeadphones(_ b: [UInt8], model: UInt16, from id: UUID) {}
-""" + handle + "\n" + tenths + """
+""" + handle + "\n" + tenths + lapse + claim + "\n" + levels_read + "\n" + ending + """
 }
 
 let pair = UUID()
+
+func bytes(_ hex: String) -> [UInt8] { hex.split(separator: " ").map { UInt8($0, radix: 16)! } }
 
 /// Feeds frames as a live scan hears them: one every `every` seconds, each held for `count` frames.
 func replay(_ steps: [(String, Int)], every: Double = 3) -> [Told] {
@@ -78,21 +91,29 @@ func replay(_ steps: [(String, Int)], every: Double = 3) -> [Told] {
     AirPodsDropdown.shared.told = []
     var t = 0.0
     for (hex, count) in steps {
-        let bytes = hex.split(separator: " ").map { UInt8($0, radix: 16)! }
         for _ in 0..<count {
             watcher.clock = Date(timeIntervalSince1970: t)
             AirPodsDropdown.shared.at = t
-            watcher.handle(bytes, from: pair)
+            watcher.handle(bytes(hex), from: pair)
             t += every
         }
     }
     return AirPodsDropdown.shared.told
 }
 
-// Frames traced from this Mac's AirPods Pro (left bud worn, right bud in the case).
+// Frames traced from this Mac's AirPods Pro (left bud worn, right bud in the case). The tail is
+// as the Mac hands our own pair's over: the three levels in percent, their tens the state's
+// tenths (8 → 82 %, A → 100 %, F → FF), then the end of the pair's address or zeros.
 let base = "4C 00 07 19 01 24 20"
-let tail = "00 0A 0A 52 FF FF AE 0E 40 00 00 00 16 1C 5B A2 11 24"
-func frame(_ state: String) -> String { "\\(base) \\(state) \\(tail)" }
+func frame(_ state: String, ending: String = "00 00 00") -> String {
+    let b = bytes(state)
+    let tenths: [UInt8] = [b[1] >> 4, b[1] & 0x0F, b[2] & 0x0F]
+    let levels: [String] = tenths.map { tenth in
+        if tenth == 0xF { return "FF" }
+        return String(format: "%02X", tenth >= 10 ? 100 : Int(tenth) * 10 + 2)
+    }
+    return "\\(base) \\(state) 00 0A 0A \\(levels.joined(separator: " ")) AE 0E 40 \\(ending) 16 1C 5B A2 11 24"
+}
 // Lid shut, the right bud in the case: the worn left bud's frame. 0x20 is set, but the frame is the
 // left bud's own (its 80 % matched system_profiler's left 82 %; 2026-11-14 00:16 and 00:22).
 let shutWorn = frame("22 F8 8F 11")
@@ -129,7 +150,47 @@ precondition(named.count == 1 && !named[0].drops && named[0].side == "R" && name
 AirPodsDropdown.shared.awaits = false
 precondition(replay([(walkedUp, 2)]).isEmpty, "With no such card up the same frames say nothing")
 
-print("PASS: a worn bud put back with the lid shut drops nothing; a bud from the case into an ear with the lid shut drops, as the left bud; a card dropped by the connection hears which bud is worn")
+// Whose frame it is. Another Pro 2 opening beside us (seen 2026-11-14): lid open, one bud out, levels a tenth from ours, so it passes the fingerprint (`matches` stands in
+// as true), and our pair had been quiet for over an hour, so no proof held (`proven` is nil).
+// Its tail is ciphertext.
+let stranger = UUID()
+let strangerOpening = "\\(base) 04 FA 95 31 00 00 3C 9D 17 E2 60 B4 C8 71 0F 5A D3 28 96 4B E1 7C 05"
+/// Frames from several peripherals at their own times, through one watcher.
+func hear(_ watcher: Watcher, _ steps: [(String, UUID, Double)]) -> [Told] {
+    AirPodsDropdown.shared.told = []
+    for (hex, id, t) in steps {
+        watcher.clock = Date(timeIntervalSince1970: t)
+        AirPodsDropdown.shared.at = t
+        watcher.handle(bytes(hex), from: id)
+    }
+    return AirPodsDropdown.shared.told
+}
+let shutBoth = frame("55 9A B4 19")
+let ownOpening = frame("55 9A B4 31")
+
+// A pair that has never read is told by fingerprint, as before: the stranger's opening drops.
+precondition(hear(Watcher(), [(strangerOpening, stranger, 0)]).filter(\\.drops).count == 1,
+             "Without a frame of ours ever read, the fingerprint still decides")
+// Once our pair's tail has read, a frame that doesn't read is not ours.
+let quiet = hear(Watcher(), [(shutBoth, pair, 0), (strangerOpening, stranger, 5040), (ownOpening, pair, 5100)])
+precondition(quiet.filter(\\.drops).map(\\.at) == [5100],
+             "A stranger's opening drops nothing once our pair has read; ours still does: \\(quiet)")
+// Levels that fit by chance don't make a frame ours when its address bytes are someone else's.
+let chance = hear(Watcher(), [(shutBoth, pair, 0), (frame("04 FA 95 31", ending: "7E 41 D9"), stranger, 60)])
+precondition(chance.isEmpty, "Another address in the tail is not ours: \\(chance)")
+// A pair that hasn't read for a week falls back to the fingerprint.
+let lapsed = hear(Watcher(), [(shutBoth, pair, 0), (strangerOpening, stranger, 8 * 86400)])
+precondition(lapsed.filter(\\.drops).count == 1, "After a week without reading, the fingerprint decides again: \\(lapsed)")
+// Two pairs of one model: the address in the tail names the pair, and binds its peripheral for
+// the frames that carry zeros.
+let two = Watcher()
+two.candidates.append(Watcher.Paired(address: "aa-bb-cc-44-55-66", productID: 0x2024))
+let second = hear(two, [(frame("55 9A B4 31", ending: "44 55 66"), pair, 0), (frame("55 9A B4 39"), pair, 2),
+                        (frame("55 9A B4 32"), pair, 20)])
+precondition(second.map(\\.address) == ["aa-bb-cc-44-55-66", "aa-bb-cc-44-55-66"] && two.readAt["aa-bb-cc-11-22-33"] == nil,
+             "The tail's address picks the pair: \\(second)")
+
+print("PASS: a worn bud put back with the lid shut drops nothing; a bud from the case into an ear with the lid shut drops, as the left bud; a card dropped by the connection hears which bud is worn; once our pair's tail has read a stranger's opening drops nothing, and a pair never read or not read for a week is told by fingerprint")
 """
 
 with tempfile.TemporaryDirectory(prefix="clangnotch-airpods-lid-checks-") as folder:

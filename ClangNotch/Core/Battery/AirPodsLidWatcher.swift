@@ -5,9 +5,15 @@ import IOBluetooth
 /// when the case closes. A case broadcasts a BLE "proximity" advertisement (Apple type 0x07)
 /// while it is open; its plain part carries the model, battery tenths and a lid byte.
 ///
-/// Whose case it is can't be proven: the encrypted half needs a key the Mac doesn't keep (none
-/// of the MobileBluetooth keychain keys decrypt it, measured 2026-11-09). So an advertisement
-/// counts as ours by fingerprint: the model of one of our paired, not-connected AirPods, its
+/// Whose case it is shows in the frame's last 16 bytes. They are encrypted with a key the
+/// AirPods give their owner's devices, and the Mac hands our own pairs' frames over already
+/// decrypted, a stranger's as sent (2026-11-14: 482 frames of our Pro and Max all read, none of
+/// 2,652 from other people's; none of the MobileBluetooth keychain keys decrypted them on
+/// 2026-11-09, which was tried on bytes that may have been plain already). A frame whose tail
+/// reads is ours (`claim`), and from then on only such frames count for that pair.
+///
+/// A pair whose tail has never read here (another model, another macOS, AirPods of another
+/// account) is told the old way, by fingerprint: the model of one of our paired AirPods, its
 /// left/right/case tenths matching what BatteryManager last saw for it, and close range.
 /// Other people's AirPods pass that too, so each peripheral keeps its own lid and ear state, and
 /// once the Mac has connected to a pair right after a peripheral showed an opening, only that
@@ -78,6 +84,15 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     private var owners: [String: UUID] = (UserDefaults.standard.dictionary(forKey: AirPodsLidWatcher.ownersKey)
         as? [String: String] ?? [:]).compactMapValues(UUID.init)
     private static let ownersKey = "airPodsPeripheralIDs"
+    /// When each pair's tail last read as ours, by address. Kept across launches, so a stranger
+    /// can't pass by fingerprint before our pair first speaks.
+    private var readAt: [String: Date] = UserDefaults.standard.dictionary(forKey: AirPodsLidWatcher.readAtKey)
+        as? [String: Date] ?? [:]
+    private static let readAtKey = "airPodsTailReadAt"
+    private var readSavedAt = Date.distantPast
+    /// A pair that hasn't read for this long is told by fingerprint again: should the Mac stop
+    /// decrypting its frames, the card would otherwise never drop for it.
+    private static let readLapse: TimeInterval = 7 * 86400
     /// When each proven pair last gave a sign of being here: a frame from its peripheral, or
     /// the Mac losing it after a spell of not listening.
     private var heard: [String: Date] = [:]
@@ -214,9 +229,11 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
         // BatteryManager last read them (used with the iPhone for an afternoon). Anyone else
         // passes by fingerprint, for a pair still unproven before one that has its peripheral.
         let fits: (Paired) -> Bool = { $0.productID == model && self.matches($0.address, left, right, caseTenths) }
-        guard let ours = candidates.first(where: { $0.productID == model && owners[$0.address] == id })
-                ?? candidates.first(where: { proven($0.address) == nil && fits($0) })
-                ?? candidates.first(where: fits)
+        let (read, guessed) = claim(b, model: model, from: id)
+        guard let ours = read
+                ?? guessed.first(where: { owners[$0.address] == id })
+                ?? guessed.first(where: { proven($0.address) == nil && fits($0) })
+                ?? guessed.first(where: fits)
         else { return }
 
         // Lid byte bit 3 is set while the lid is shut (32/33 open → 3B/3C shut → 34 open, measured
@@ -387,6 +404,57 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
 
     // MARK: - Whose frames
 
+    /// Whose frame this is: `read`, our pair, when its tail reads; otherwise `guessed`, the pairs
+    /// of its model still told by fingerprint, which are those whose tail hasn't read lately.
+    private func claim(_ b: [UInt8], model: UInt16, from id: UUID) -> (read: Paired?, guessed: [Paired]) {
+        let now = Date()
+        let mine = candidates.filter { $0.productID == model }
+        if Self.levelsRead(b) {
+            // Bytes 20…22 are the end of the pair's Bluetooth address (mostly in frames that
+            // carry the lid) or zeros. Zeros don't say which of two pairs of one model it is:
+            // then the pair this peripheral was already bound to.
+            let ending = Array(b[20...22])
+            let ours = mine.first { Self.ending(of: $0.address) == ending }
+                ?? (ending == [0, 0, 0] ? (mine.count == 1 ? mine.first : mine.first { owners[$0.address] == id }) : nil)
+            if let ours {
+                tailRead(ours.address, from: id, at: now)
+                return (ours, [])
+            }
+        }
+        return (nil, mine.filter { readAt[$0.address].map { now.timeIntervalSince($0) > Self.readLapse } ?? true })
+    }
+
+    /// The tail's bytes 14…16 are the two buds' and the case's levels in percent (0x80 while
+    /// charging, FF for one that isn't there), so their tens are the plain tenths of bytes 8 and
+    /// 9. A stranger's tail is ciphertext: with the address bytes as well, none passes by chance.
+    private static func levelsRead(_ b: [UInt8]) -> Bool {
+        guard b.count >= 23 else { return false }
+        let fine = b[14...16].map { $0 == 0xFF ? 0xFF : $0 & 0x7F }
+        guard fine.allSatisfy({ $0 == 0xFF || $0 <= 100 }) else { return false }
+        let plain = [b[8] >> 4, b[8] & 0x0F, b[9] & 0x0F].map { $0 == 0xF ? 0xF : min($0, 10) }
+        return fine.map { $0 == 0xFF ? 0xF : $0 / 10 }.sorted() == plain.sorted()
+    }
+
+    /// "aa-bb-cc-11-22-33" → 11 22 33.
+    private static func ending(of address: String) -> [UInt8] {
+        address.split(whereSeparator: { $0 == "-" || $0 == ":" }).suffix(3).compactMap { UInt8($0, radix: 16) }
+    }
+
+    /// A frame of the pair read: its peripheral is the pair's, with no connection to wait for.
+    private func tailRead(_ address: String, from id: UUID, at now: Date) {
+        // Written when a pair first reads, and hourly after: frames come several a second.
+        let first = readAt[address] == nil
+        readAt[address] = now
+        if first || now.timeIntervalSince(readSavedAt) > 3600 {
+            readSavedAt = now
+            UserDefaults.standard.set(readAt, forKey: Self.readAtKey)
+        }
+        heard[address] = now
+        guard owners[address] != id else { return }
+        owners[address] = id
+        UserDefaults.standard.set(owners.mapValues(\.uuidString), forKey: Self.ownersKey)
+    }
+
     private func remember(_ id: UUID, _ sighting: Sighting) {
         if sightings[id] == nil {
             // New peripherals pass by all day; one gone ten minutes has nothing left to say.
@@ -501,9 +569,10 @@ final class AirPodsLidWatcher: NSObject, CBCentralManagerDelegate {
     /// seconds after they come off (0x29), so the card didn't fold and putting them back on in
     /// that time dropped nothing. A 0 → 1 edge of 0x02 drops the card. Byte 11 is the colour code.
     private func handleHeadphones(_ b: [UInt8], model: UInt16, from id: UUID) {
-        // One Max of a model is ours; a second one nearby is told apart only by range, until
-        // the Mac has connected to ours.
-        guard b.count > 11, let ours = candidates.first(where: { $0.productID == model }) else { return }
+        // A Max whose tail has never read: one of a model is ours, and a second one nearby is
+        // told apart only by range, until the Mac has connected to ours.
+        let (read, guessed) = claim(b, model: model, from: id)
+        guard b.count > 11, let ours = read ?? guessed.first else { return }
         let address = ours.address
         let acting = acts(id, for: address)
         let worn = b[7] & 0x02 != 0
