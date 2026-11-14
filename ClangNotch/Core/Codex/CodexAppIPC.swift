@@ -25,9 +25,17 @@ enum CodexAppIPC {
         return "<send_user_message_question_reply>\n\(body)\n</send_user_message_question_reply>"
     }
 
-    /// Sends `text` as the user's next message in a thread the app holds. Blocks; call off the main thread.
-    static func startTurn(threadId: String, text: String,
-                          socketPath: String = NSHomeDirectory() + "/.codex/ipc/ipc.sock") -> Outcome {
+    /// Sends `text` as the user's message in a thread the app holds: into the turn that is
+    /// running, or as a new turn when none is. Blocks; call off the main thread.
+    ///
+    /// The running turn is tried first. Codex can ask and keep working, and a message sent as a
+    /// new turn while it works is folded into that turn by the app-server, but the app's window
+    /// has already drawn a turn of its own for it, which then never ends: the answer shows a
+    /// second time under Codex's reply with "생각 중" below it and the composer stuck on Stop
+    /// (GitHub issue #1; reproduced 2026-11-15 on the app 26.1106). The window answers a steer
+    /// for a thread whose turn has ended with an error at once, sending nothing.
+    static func sendMessage(threadId: String, text: String,
+                            socketPath: String = NSHomeDirectory() + "/.codex/ipc/ipc.sock") -> Outcome {
         let fd = connect(to: socketPath)
         guard fd >= 0 else { return .refused }
         defer { close(fd) }
@@ -38,18 +46,37 @@ enum CodexAppIPC {
               let welcome = response(to: hello, from: fd),
               let clientId = (welcome["result"] as? [String: Any])?["clientId"] as? String else { return .refused }
 
-        let request = UUID().uuidString
-        let turnStart: [String: Any] = [
-            "request": ["threadId": threadId,
-                        "input": [["type": "text", "text": text, "text_elements": [Any]()]],
-                        "clientUserMessageId": UUID().uuidString.lowercased()],
-            "context": [String: Any](),
-        ]
-        guard send(["type": "request", "requestId": request, "sourceClientId": clientId, "version": 2,
-                    "method": "thread-follower-start-turn",
-                    "params": ["conversationId": threadId, "turnStart": turnStart]], to: fd) else { return .refused }
-        guard let answer = response(to: request, from: fd) else { return .unknown }
-        return answer["resultType"] as? String == "success" ? .accepted : .refused
+        let messageId = UUID().uuidString.lowercased()
+        let input: [[String: Any]] = [["type": "text", "text": text, "text_elements": [Any]()]]
+        func request(_ method: String, version: Int, _ params: [String: Any]) -> (sent: Bool, answer: [String: Any]?) {
+            let id = UUID().uuidString
+            guard send(["type": "request", "requestId": id, "sourceClientId": clientId, "version": version,
+                        "method": method, "params": params], to: fd) else { return (false, nil) }
+            return (true, response(to: id, from: fd))
+        }
+
+        // `restoreMessage` is what the window would put back in its composer if the steer failed;
+        // it reads `context` from it, so that has to be there.
+        let steer = request("thread-follower-steer-turn", version: 1, [
+            "conversationId": threadId, "clientUserMessageId": messageId, "input": input,
+            "attachments": [Any](),
+            "restoreMessage": ["id": messageId, "text": text, "context": [String: Any]()],
+        ])
+        guard steer.sent else { return .refused }
+        guard let steered = steer.answer else { return .unknown }
+        if steered["resultType"] as? String == "success" { return .accepted }
+        // No window holds the thread: a new turn would be refused the same way, 10s later.
+        if (steered["error"] as? String)?.contains("no-client-found") == true { return .refused }
+
+        // No turn is running (or the app no longer takes this steer): a turn of its own.
+        let start = request("thread-follower-start-turn", version: 2, [
+            "conversationId": threadId,
+            "turnStart": ["request": ["threadId": threadId, "input": input, "clientUserMessageId": messageId],
+                          "context": [String: Any]()],
+        ])
+        guard start.sent else { return .refused }
+        guard let started = start.answer else { return .unknown }
+        return started["resultType"] as? String == "success" ? .accepted : .refused
     }
 
     private static func json(_ object: Any) -> String? {

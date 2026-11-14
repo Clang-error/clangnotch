@@ -94,7 +94,7 @@ final class CodexManager: ObservableObject {
         let send: @Sendable () -> CodexAppIPC.Outcome
         if request.isAsync {
             guard let text = CodexAppIPC.questionReply(callId: request.id, answers: picked) else { return }
-            send = { CodexAppIPC.startTurn(threadId: sessionId, text: text) }
+            send = { CodexAppIPC.sendMessage(threadId: sessionId, text: text) }
         } else {
             let labels = picked.map(\.answer)
             send = { CodexDaemonIPC.answerQuestion(threadId: sessionId, callId: request.id, labels: labels) }
