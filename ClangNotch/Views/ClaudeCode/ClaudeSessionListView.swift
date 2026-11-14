@@ -160,10 +160,34 @@ private struct UnifiedWorkspaceSessionRow: View {
     let onSelect: (SessionDetailTarget) -> Void
     @ObservedObject var manager: ClaudeCodeManager
     @ObservedObject var codexManager: CodexManager
+    @ObservedObject private var settings = AppSettings.shared
     @State private var hovering = false
+    /// Bumped when the session reaches the hard hat (아이콘 모자), to redraw the row.
+    @State private var hatClock = 0
 
     private var claudeActive: Bool {
         group.claude.contains { manager.sessionStates[$0.id]?.isActive == true }
+    }
+
+    /// 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기": the working session's hat, as on its
+    /// icon in the closed wing.
+    private var claudeHat: ClaudeIconHat? {
+        guard settings.experimentalClaudeIconHats else { return nil }
+        _ = hatClock
+        let now = Date()
+        return group.claude.compactMap { manager.sessionStates[$0.id] }
+            .filter(\.isActive)
+            .compactMap { ClaudeIconHat.wearing($0, now: now) }
+            .first
+    }
+
+    private var claudeHardhatDue: Date? {
+        guard settings.experimentalClaudeIconHats else { return nil }
+        let now = Date()
+        return group.claude.compactMap { manager.sessionStates[$0.id] }
+            .filter(\.isActive)
+            .compactMap { ClaudeIconHat.hardhatDue($0, now: now) }
+            .min()
     }
 
     private var codexActive: Bool {
@@ -284,7 +308,23 @@ private struct UnifiedWorkspaceSessionRow: View {
         } label: {
             HStack(spacing: 8) {
                 HStack(spacing: 2) {
-                    if !group.claude.isEmpty { sourceIcon("ClaudeIcon", glow: .orange, active: claudeActive) }
+                    if !group.claude.isEmpty {
+                        sourceIcon("ClaudeIcon", glow: .orange, active: claudeActive)
+                            .overlay {
+                                if let claudeHat {
+                                    ClaudeIconHatView(hat: claudeHat)
+                                        .transition(.scale(scale: 0.3).combined(with: .opacity))
+                                }
+                            }
+                            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: claudeHat)
+                            // A turn that only thinks changes nothing for minutes: sleep
+                            // once until it reaches the hard hat.
+                            .task(id: claudeHardhatDue) {
+                                guard let due = claudeHardhatDue else { return }
+                                try? await Task.sleep(for: .seconds(due.timeIntervalSinceNow + 0.2))
+                                if !Task.isCancelled { hatClock &+= 1 }
+                            }
+                    }
                     if !group.codex.isEmpty { sourceIcon("ChatGPTIcon", glow: .blue, active: codexActive) }
                 }
                 .frame(width: 26, alignment: .leading)
