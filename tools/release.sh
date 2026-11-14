@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds a notarized ClangNotch release at ~/Desktop/ClangNotch.dmg (or $OUT).
+# Builds a notarized ClangNotch release at ~/Desktop/ClangNotch/ClangNotch.dmg (or $OUT).
 #
 # Needs, once:
 #   - a "Developer ID Application" certificate in the keychain (Apple Developer Program;
@@ -14,7 +14,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${NOTARY_PROFILE:-clangnotch}"
-OUT="${OUT:-$HOME/Desktop/ClangNotch.dmg}"
+OUT="${OUT:-$HOME/Desktop/ClangNotch/ClangNotch.dmg}"
 
 identity_line=$(security find-identity -v -p codesigning | grep '"Developer ID Application: ' | head -1 || true)
 if [ -z "$identity_line" ]; then
@@ -100,6 +100,7 @@ xcrun stapler staple -q "$image"
 
 spctl --assess --type execute -vv "$app"
 spctl --assess --type open --context context:primary-signature -vv "$image"
+mkdir -p "$(dirname "$OUT")"
 mv -f "$image" "$OUT"
 version=$(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString)
 build=$(defaults read "$app/Contents/Info.plist" CFBundleVersion)
