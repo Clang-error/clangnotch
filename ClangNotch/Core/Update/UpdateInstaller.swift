@@ -56,7 +56,7 @@ enum UpdateInstaller {
 
     /// Downloads the release's disk image, checks the app in it and keeps the image as
     /// `stagedImage`. Blocking work; call it off the main thread.
-    static func prepare(from asset: URL, version: String, team: String) async throws {
+    static func prepare(from asset: URL, version: String, team: String, allowOlder: Bool = false) async throws {
         let fm = FileManager.default
         detachLeftovers()
         try? fm.removeItem(at: stagingFolder)
@@ -68,7 +68,7 @@ enum UpdateInstaller {
         }
         try fm.moveItem(at: download, to: stagedImage)
         do {
-            try withStagedApp { try verify($0, version: version, team: team) }
+            try withStagedApp { try verify($0, version: version, team: team, allowOlder: allowOlder) }
         } catch {
             try? fm.removeItem(at: stagedImage)
             throw error
@@ -85,9 +85,9 @@ enum UpdateInstaller {
     /// once this process has exited. Throws, with nothing replaced, when it doesn't check
     /// out. Returns false when the app was replaced but the helper didn't start: the new
     /// version then runs from the next launch. Blocking work; call it off the main thread.
-    static func install(version: String, team: String) throws -> Bool {
+    static func install(version: String, team: String, allowOlder: Bool = false) throws -> Bool {
         let target = Bundle.main.bundleURL
-        try putInPlace(at: target, version: version, team: team)
+        try putInPlace(at: target, version: version, team: team, allowOlder: allowOlder)
 
         let relaunch = Process()
         relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -99,28 +99,29 @@ enum UpdateInstaller {
     /// Copies the app out of the waiting image into a fresh folder of our own on `target`'s
     /// volume (swapping is atomic only within a volume, and nothing can be waiting at a path
     /// nobody knew in advance), checks that very copy, and swaps it in for `target`.
-    static func putInPlace(at target: URL, version: String, team: String) throws {
+    static func putInPlace(at target: URL, version: String, team: String, allowOlder: Bool = false) throws {
         let fm = FileManager.default
         let scratch = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true)
         defer { try? fm.removeItem(at: scratch) }
         let incoming = scratch.appendingPathComponent("ClangNotch.app")
         try withStagedApp { _ = try run("/usr/bin/ditto", [$0.path, incoming.path]) }
-        try verify(incoming, version: version, team: team)
+        try verify(incoming, version: version, team: team, allowOlder: allowOlder)
         _ = try fm.replaceItemAt(target, withItemAt: incoming)
         try? fm.removeItem(at: stagingFolder)
     }
 
     // MARK: - Checks
 
-    /// Everything that has to hold before an app may replace this one.
-    static func verify(_ app: URL, version: String, team: String) throws {
+    /// Everything that has to hold before an app may replace this one. `allowOlder` is only for
+    /// "정식으로 되돌리기": the latest release, asked for, may be lower than the running beta.
+    static func verify(_ app: URL, version: String, team: String, allowOlder: Bool = false) throws {
         guard let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")) as? [String: Any],
               info["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier else {
             throw Rejected(description: "not ClangNotch")
         }
         let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         guard let found = info["CFBundleShortVersionString"] as? String, found == version,
-              UpdateChecker.isNewer(found, than: current) else {
+              allowOlder || UpdateChecker.isNewer(found, than: current) else {
             throw Rejected(description: "version \(info["CFBundleShortVersionString"] ?? "?") is not the newer \(version)")
         }
         // A valid signature, all of it, by a Developer ID of the running app's team.

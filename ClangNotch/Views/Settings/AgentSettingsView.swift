@@ -581,6 +581,14 @@ struct AboutSettingsTab: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject private var updates = UpdateChecker.shared
     @State private var copied = false
+    /// 베타 받기 and 정식으로 되돌리기: the release found (its sheet is up), a look under way, or
+    /// what the last look said.
+    @State private var offer: UpdateChecker.Offer?
+    /// A beta newer than this copy, looked up when the page opens. Without one the 베타 버전 row
+    /// doesn't show: on the latest beta there's nothing to get (user, 2026-11-14).
+    @State private var newerBeta: UpdateChecker.Offer?
+    @State private var findingStable = false
+    @State private var stableMessage: String?
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -667,12 +675,154 @@ struct AboutSettingsTab: View {
                             .disabled(updates.isChecking)
                     }
                 }
+                // 베타 받기: only when a newer beta is out; what it brings, then whether to install it
+                // (a user's suggestion, 2026-11-14). A release comes later as a normal update.
+                if let beta = newerBeta {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("베타 버전", "Beta"))
+                            Text(L("\(beta.version)이 나왔습니다", "\(beta.version) is out"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(L("베타 받기", "Get Beta")) {
+                            updates.clearOfferInstall()
+                            offer = beta
+                        }
+                        .disabled(findingStable || updates.isDownloading || updates.isInstalling)
+                    }
+                }
+                // 정식으로 되돌리기: only while a beta runs; back to the latest release.
+                if UpdateChecker.runningBeta {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("정식 버전", "Release"))
+                            Text(findingStable ? L("확인 중…", "Checking…")
+                                 : stableMessage ?? L("베타를 그만 쓰고 최신 정식 버전으로 돌아갑니다", "Leave the beta for the latest release"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(L("정식으로 되돌리기", "Back to Release")) {
+                            findingStable = true
+                            stableMessage = nil
+                            Task {
+                                let result = await updates.findStable()
+                                findingStable = false
+                                switch result {
+                                case .found(let found):
+                                    updates.clearOfferInstall()
+                                    offer = found
+                                case .none, .failed:
+                                    stableMessage = L("확인하지 못함 · 인터넷 연결을 확인하세요", "Couldn't check · check your connection")
+                                }
+                            }
+                        }
+                        .disabled(findingStable || updates.isDownloading || updates.isInstalling)
+                    }
+                }
             } header: {
                 Text(L("업데이트", "Updates"))
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .sheet(item: $offer) { found in
+            OfferSheet(offer: found) { offer = nil }
+        }
+        .task {
+            if case .found(let beta) = await updates.findBeta() { newerBeta = beta }
+        }
+    }
+}
+
+/// 베타 받기's and 정식으로 되돌리기's question: the version, what it means, the beta's notes, and
+/// go ahead or not.
+private struct OfferSheet: View {
+    let offer: UpdateChecker.Offer
+    let close: () -> Void
+    @ObservedObject private var updates = UpdateChecker.shared
+    /// This copy can put an update in place itself; otherwise the release page is the way.
+    private let installsHere: Bool
+
+    init(offer: UpdateChecker.Offer, close: @escaping () -> Void) {
+        self.offer = offer
+        self.close = close
+        installsHere = offer.image != nil && UpdateInstaller.runningDeveloperIDTeam() != nil
+            && UpdateInstaller.canReplaceRunningApp()
+    }
+
+    private var back: Bool { offer.kind == .stable }
+    private var downloading: Bool { updates.offerInstall == .downloading }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 6) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                Text(back ? L("정식 \(offer.version)으로 되돌리기", "Back to \(offer.version)") : "ClangNotch \(offer.version)")
+                    .font(.title3.weight(.semibold))
+                Text(back
+                     ? L("베타 \(UpdateChecker.currentVersion)에서 정식 \(offer.version)으로 돌아갑니다. 베타에서만 있던 기능은 제거됩니다.",
+                         "From beta \(UpdateChecker.currentVersion) back to \(offer.version). What only the beta had is removed.")
+                     : L("시험판이라 문제가 있을 수 있습니다.",
+                         "A test version, so something may break."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 24)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 14)
+            if back {
+                Spacer(minLength: 0)
+            } else {
+                Text(L("이 베타에 들어간 내용", "What's in this beta"))
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                ScrollView {
+                    ReleaseNotesText(notes: offer.notes.isEmpty ? L("적힌 변경 사항이 없습니다.", "No notes were written for it.") : offer.notes)
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 8)
+                }
+            }
+            Divider()
+            HStack(spacing: 8) {
+                if case .failed(let message) = updates.offerInstall {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if downloading {
+                    ProgressView().controlSize(.small)
+                    Text(L("받는 중…", "Downloading…")).font(.caption)
+                }
+                Spacer()
+                Button(L("취소", "Cancel"), action: close)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(downloading)
+                if installsHere, updates.offerInstall == .idle || downloading {
+                    Button(back ? L("되돌리고 재시작", "Go Back and Restart") : L("설치하고 재시작", "Install and Restart")) {
+                        updates.installOffer(offer)
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(downloading)
+                } else {
+                    Button(L("릴리스 페이지에서 받기", "Get It on the Release Page")) {
+                        NSWorkspace.shared.open(offer.page)
+                        close()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(16)
+        }
+        .frame(width: 460, height: back ? 290 : 500)
     }
 }
 

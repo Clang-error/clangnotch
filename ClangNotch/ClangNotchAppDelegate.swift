@@ -22,6 +22,14 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        #if !DEBUG
+        // Another ClangNotch already running: the newer of the two stays (`SingleInstance`).
+        if MainActor.assumeIsolated({ SingleInstance.thisCopyShouldQuit() }) {
+            NSApp.terminate(nil)
+            return
+        }
+        #endif
+
         Task { @MainActor in
             UICoordinator.shared.setupUI()
         }

@@ -17,6 +17,12 @@ final class WhatsNew {
         UserDefaults.standard.set([version: notes], forKey: savedNotesKey)
     }
 
+    /// The version about to be put in place counts as seen: going back from a beta, its notes
+    /// aren't news.
+    static func markSeen(_ version: String) {
+        UserDefaults.standard.set(version, forKey: lastLaunchedKey)
+    }
+
     /// At launch. A first install only records its version; `--whats-new` shows it anyway.
     func showIfUpdated() {
         let current = UpdateChecker.currentVersion

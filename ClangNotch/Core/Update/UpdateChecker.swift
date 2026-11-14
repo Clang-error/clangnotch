@@ -161,7 +161,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             isInstalling = false
             switch outcome {
             case .success(true):
-                NSApp.terminate(nil)
+                Self.quitForRelaunch()
             case .success(false):
                 // In place, but nothing to reopen it: the new version runs from the next launch.
                 debugLog("[Update] \(version) installed; the relaunch helper didn't start")
@@ -174,6 +174,18 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
         }
     }
 
+    /// Quits so the relaunch helper can open the version just put in place. AppKit doesn't quit
+    /// while a window has a sheet attached: the beta's sheet in 설정 › 정보 kept the old copy running,
+    /// "받는 중…" and all, with the new one already in place (2026-11-14). Sheets are closed first,
+    /// and a quit that still hasn't happened after 5 s is forced, since the helper waits on it.
+    private static func quitForRelaunch() {
+        for window in NSApp.windows {
+            if let sheet = window.attachedSheet { window.endSheet(sheet) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { NSApp.terminate(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { exit(0) }
+    }
+
     /// The release's disk image (`ClangNotch.dmg`).
     private static func diskImage(in release: [String: Any]) -> URL? {
         (release["assets"] as? [[String: Any]])?
@@ -183,16 +195,125 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             .flatMap { $0.scheme == "https" ? $0 : nil }
     }
 
-    /// "1.10" > "1.9", "1.1" > "1.0.9"; missing parts count as 0.
+    /// "1.10" > "1.9", "1.4.1" > "1.4.1-beta.3" > "1.4.0" (`AppVersion`).
     nonisolated static func isNewer(_ a: String, than b: String) -> Bool {
-        let x = a.split(separator: ".").map { Int($0) ?? 0 }
-        let y = b.split(separator: ".").map { Int($0) ?? 0 }
-        for i in 0..<max(x.count, y.count) {
-            let l = i < x.count ? x[i] : 0, r = i < y.count ? y[i] : 0
-            if l != r { return l > r }
-        }
-        return false
+        AppVersion(a) > AppVersion(b)
     }
+
+    // MARK: - Beta and back
+
+    /// A release offered in 설정 › 정보: a beta newer than this copy ("베타 받기"), or, while a beta
+    /// runs, the latest release to go back to ("정식으로 되돌리기").
+    struct Offer: Identifiable {
+        enum Kind { case beta, stable }
+        let kind: Kind
+        let version: String
+        let notes: String
+        let image: URL?
+        let page: URL
+        var id: String { version }
+    }
+
+    enum OfferSearch {
+        case found(Offer)
+        case none
+        case failed
+    }
+
+    /// Fetching and putting an offer in place; `failed` keeps what went wrong for the sheet.
+    enum OfferInstall: Equatable {
+        case idle
+        case downloading
+        case failed(String)
+    }
+    @Published private(set) var offerInstall: OfferInstall = .idle
+
+    private static let releasesAPI = URL(string: "https://api.github.com/repos/Clang-error/clangnotch/releases?per_page=20")!
+
+    /// This copy is a beta, so "정식으로 되돌리기" applies.
+    static var runningBeta: Bool { AppVersion(currentVersion).isBeta }
+
+    /// The newest beta on GitHub (a pre-release, not a draft) that is newer than this copy. Nothing
+    /// is downloaded until it is installed.
+    func findBeta() async -> OfferSearch {
+        guard let releases = await Self.fetchJSON(Self.releasesAPI) as? [[String: Any]] else { return .failed }
+        let current = AppVersion(Self.currentVersion)
+        let betas: [(AppVersion, [String: Any])] = releases.compactMap { release in
+            guard release["prerelease"] as? Bool == true, release["draft"] as? Bool != true,
+                  let tag = release["tag_name"] as? String else { return nil }
+            let version = AppVersion(tag)
+            return version.isBeta && version > current ? (version, release) : nil
+        }
+        guard let (_, release) = betas.max(by: { $0.0 < $1.0 }) else { return .none }
+        return Self.offer(.beta, from: release).map(OfferSearch.found) ?? .failed
+    }
+
+    /// The release GitHub marks as the latest, to go back to from a beta.
+    func findStable() async -> OfferSearch {
+        guard let release = await Self.fetchJSON(Self.latestReleaseAPI) as? [String: Any] else { return .failed }
+        return Self.offer(.stable, from: release).map(OfferSearch.found) ?? .failed
+    }
+
+    private static func fetchJSON(_ url: URL) async -> Any? {
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return try? JSONSerialization.jsonObject(with: data)
+    }
+
+    private static func offer(_ kind: Offer.Kind, from release: [String: Any]) -> Offer? {
+        guard let tag = release["tag_name"] as? String else { return nil }
+        let page = (release["html_url"] as? String).flatMap(URL.init(string:))
+            ?? URL(string: "https://github.com/Clang-error/clangnotch/releases")!
+        return Offer(kind: kind, version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag,
+                     notes: release["body"] as? String ?? "", image: diskImage(in: release), page: page)
+    }
+
+    /// Downloads the offer, checks it as any update is checked (`UpdateInstaller.verify`; going back
+    /// to the latest release may go to a lower version, only that way and only when asked), puts it
+    /// in place and restarts. A copy that can't replace itself (a development build, one run from a
+    /// disk image) gets the release page instead.
+    func installOffer(_ offer: Offer) {
+        guard offerInstall != .downloading, !isDownloading, !isInstalling else { return }
+        guard let team = UpdateInstaller.runningDeveloperIDTeam(), UpdateInstaller.canReplaceRunningApp(),
+              let image = offer.image else {
+            NSWorkspace.shared.open(offer.page)
+            return
+        }
+        offerInstall = .downloading
+        let back = offer.kind == .stable
+        if back {
+            // Going back isn't news: no 새로운 점 for the older version after the restart.
+            WhatsNew.markSeen(offer.version)
+        } else if !offer.notes.isEmpty {
+            WhatsNew.save(offer.notes, for: offer.version)
+        }
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) { () -> Result<Bool, Error> in
+                do {
+                    try await UpdateInstaller.prepare(from: image, version: offer.version, team: team, allowOlder: back)
+                    return .success(try UpdateInstaller.install(version: offer.version, team: team, allowOlder: back))
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+            switch outcome {
+            case .success(true):
+                Self.quitForRelaunch()
+            case .success(false):
+                // In place, but nothing reopened it: it runs from the next launch.
+                offerInstall = .failed(L("설치했지만 다시 열지 못했습니다. ClangNotch를 다시 실행하세요.",
+                                         "Installed, but it couldn't reopen. Open ClangNotch again."))
+            case .failure(let error):
+                debugLog("[Update] \(offer.version) not installed: \(error)")
+                offerInstall = .failed(L("설치하지 못했습니다. 릴리스 페이지에서 받으세요.",
+                                         "Couldn't install it. Get it from the release page."))
+            }
+        }
+    }
+
+    func clearOfferInstall() { if offerInstall != .downloading { offerInstall = .idle } }
 
     /// One notification per version: when it is downloaded and ready, or, when it can't be
     /// installed from here, when it is out.
