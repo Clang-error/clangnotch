@@ -635,8 +635,12 @@ struct AboutSettingsTab: View {
 
             Section {
                 SettingToggle(L("업데이트 자동으로 받기", "Download updates automatically"),
-                              L("새 버전을 받아 두고 알림. 설치는 재시작 버튼을 누를 때만",
-                                "Downloads a new version and tells you. Installs only when you restart for it"),
+                              L(UpdateChecker.runningBeta
+                                    ? "새 버전을 받아 두고 알림. 설치는 재시작 버튼을 누를 때만. 베타를 쓰는 중이라 새 베타도 받음"
+                                    : "새 버전을 받아 두고 알림. 설치는 재시작 버튼을 누를 때만",
+                                UpdateChecker.runningBeta
+                                    ? "Downloads a new version and tells you. Installs only when you restart for it. On a beta, new betas too"
+                                    : "Downloads a new version and tells you. Installs only when you restart for it"),
                               isOn: $settings.checkForUpdates)
                     .onChange(of: settings.checkForUpdates) { _, _ in updates.syncWithSettings() }
                 if let version = updates.readyVersion {
@@ -677,7 +681,9 @@ struct AboutSettingsTab: View {
                 }
                 // 베타 받기: only when a newer beta is out; what it brings, then whether to install it
                 // (a user's suggestion, 2026-11-14). A release comes later as a normal update.
-                if let beta = newerBeta {
+                // Not when the update above is that same beta (a beta copy gets the next beta as
+                // an update): one row for it is enough.
+                if let beta = newerBeta, updates.availableVersion != beta.version, updates.readyVersion != beta.version {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(L("베타 버전", "Beta"))

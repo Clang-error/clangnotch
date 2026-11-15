@@ -5,6 +5,9 @@ import UserNotifications
 /// A newer one is downloaded and checked in the background (`UpdateInstaller`), then waits
 /// for "재시작해서 업데이트" in the notification or in 설정 › 정보. A copy that can't replace
 /// itself, or a release that doesn't check out, falls back to the release page.
+/// A copy that is itself a beta looks at the newest release of either kind, so the next beta
+/// reaches it the same way (2026-11-16: only for copies on a beta, and never installed unasked);
+/// a release copy is only ever told about releases.
 @MainActor
 final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = UpdateChecker()
@@ -78,13 +81,13 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
     private func check(manual: Bool = false) async {
         isChecking = true
         defer { isChecking = false }
-        var request = URLRequest(url: Self.latestReleaseAPI)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tag = json["tag_name"] as? String
-        else {
+        let found: [String: Any]?
+        if Self.runningBeta {
+            found = (await Self.fetchJSON(Self.releasesAPI) as? [[String: Any]]).flatMap(Self.newestRelease(in:))
+        } else {
+            found = await Self.fetchJSON(Self.latestReleaseAPI) as? [String: Any]
+        }
+        guard let json = found, let tag = json["tag_name"] as? String else {
             checkFailed = true
             upToDate = false
             return
@@ -193,6 +196,14 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             .flatMap { $0["browser_download_url"] as? String }
             .flatMap(URL.init(string:))
             .flatMap { $0.scheme == "https" ? $0 : nil }
+    }
+
+    /// The newest release in GitHub's list that isn't a draft, beta or not: what a beta copy
+    /// compares itself with.
+    nonisolated static func newestRelease(in releases: [[String: Any]]) -> [String: Any]? {
+        releases
+            .filter { $0["draft"] as? Bool != true && $0["tag_name"] is String }
+            .max { AppVersion($0["tag_name"] as? String ?? "") < AppVersion($1["tag_name"] as? String ?? "") }
     }
 
     /// "1.10" > "1.9", "1.4.1" > "1.4.1-beta.3" > "1.4.0" (`AppVersion`).
