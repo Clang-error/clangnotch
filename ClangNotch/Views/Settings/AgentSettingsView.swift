@@ -1353,6 +1353,31 @@ struct AgentsSettingsTab: View {
                 .disabled(!settings.notchSoundsEnabled)
                 Toggle(L("화면이 잠겨 있으면 소리 끄기", "Mute while the screen is locked"), isOn: $settings.muteSoundsWhenLocked)
                     .disabled(!settings.notchSoundsEnabled)
+                // Typed like the dropdown times (설정 › 노치): LabeledContent keeps one centred row.
+                VStack(alignment: .leading, spacing: 4) {
+                    LabeledContent(L("쉬는 세션이 목록에 남는 시간", "How long a quiet session stays listed")) {
+                        HStack(alignment: .center, spacing: 6) {
+                            let range = SessionRetention.minutesRange
+                            TextField("", value: Binding(get: { settings.sessionKeepMinutes },
+                                                         set: { settings.sessionKeepMinutes = min(range.upperBound, max(range.lowerBound, $0)) }),
+                                      format: .number)
+                                .labelsHidden()
+                                .textFieldStyle(.roundedBorder)
+                                .multilineTextAlignment(.trailing)
+                                .monospacedDigit()
+                                .frame(width: 46)
+                            Text(L("분", "min"))
+                                .foregroundColor(.secondary)
+                            Stepper("", value: $settings.sessionKeepMinutes, in: range)
+                                .labelsHidden()
+                        }
+                    }
+                    Text(L("마지막 활동 뒤 이 시간이 지나면 세션이 목록에서 빠짐(1~240분). 일하는 중이거나 답을 기다리는 세션은 남음. 세션을 우클릭해 고정하면 시간이 지나도 남음",
+                           "A session leaves the list this long after its last activity (1–240 min). Working or waiting sessions stay. Right-click a session to pin it and it stays whatever the time"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 SettingToggle(L("사용량 추정", "Usage forecast"),
                               L("지금 속도로 쓰면 리셋 때 몇 %일지 예측",
                                 "Predicts the % at reset at the current pace"),

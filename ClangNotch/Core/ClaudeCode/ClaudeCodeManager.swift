@@ -93,7 +93,9 @@ final class ClaudeCodeManager: ObservableObject {
     private var sessionScanTimer: Timer?
 
     /// Cap only idle recent sessions; working and waiting sessions are always retained.
-    private let maxRetainedSessions = 5
+    /// Quiet sessions kept at most, the newest first. Five cut a longer keep time short: with
+    /// eight sessions three still went early (2026-11-15). Pinned ones don't count.
+    private let maxRetainedSessions = 30
 
     /// Watcher on the top-level projects dir (detects new project folders)
     private var projectsDirWatcher: DispatchSourceFileSystemObject?
@@ -210,7 +212,8 @@ final class ClaudeCodeManager: ObservableObject {
         debugLog("[ClaudeCode] Scanning for sessions...")
 
         clearEndedSessions()
-        let recentThreshold = Date().addingTimeInterval(-300)
+        let recentThreshold = Date().addingTimeInterval(-SessionRetention.keepSeconds)
+        let pinned = SessionRetention.pinned
 
         // First try IDE lock files (for VS Code/Cursor extensions)
         if fm.fileExists(atPath: ideDir.path) {
@@ -292,6 +295,7 @@ final class ClaudeCodeManager: ObservableObject {
                         guard (modified > recentThreshold && lastEntryDate(of: jsonlFile, modified: modified) > recentThreshold)
                                 || born > Date().addingTimeInterval(-60)
                                 || sessionStates[session.id].map({ $0.isActive || $0.needsPermission || $0.isAwaitingInput }) == true
+                                || pinned.contains(session.id)
                         else { continue }
 
                         // Real path from the JSONL `cwd` field (the dir-name encoding is
@@ -312,7 +316,8 @@ final class ClaudeCodeManager: ObservableObject {
 
         sessions.append(contentsOf: remoteSessions.values)
 
-        // Keep working/waiting sessions and five minutes of idle activity.
+        // Keep working/waiting sessions, pinned ones, and quiet ones for the keep time
+        // (`SessionRetention`, five minutes unless set).
         var activity: [String: Date] = [:]
         for s in sessions { activity[s.id] = lastActivityDate(for: s) }
         let ranked = sessions.sorted { (activity[$0.id] ?? .distantPast) > (activity[$1.id] ?? .distantPast) }
@@ -321,6 +326,7 @@ final class ClaudeCodeManager: ObservableObject {
             if let state = sessionStates[session.id], state.isActive || state.needsPermission || state.isAwaitingInput {
                 return true
             }
+            if pinned.contains(session.id) { return true }
             guard (activity[session.id] ?? .distantPast) > recentThreshold,
                   retainedIdleCount < maxRetainedSessions else { return false }
             retainedIdleCount += 1

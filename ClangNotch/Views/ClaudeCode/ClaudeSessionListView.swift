@@ -291,6 +291,21 @@ private struct UnifiedWorkspaceSessionRow: View {
         (group.claude.map(\.id) + group.codex.map(\.id)).contains(where: NotchSounds.isMuted)
     }
 
+    /// 세션 고정: the row stays in the list whatever 쉬는 세션이 목록에 남는 시간 says
+    /// (`SessionRetention`). A row can hold a Claude and a Codex session; both are pinned.
+    private var sessionIDs: [String] { group.claude.map(\.id) + group.codex.map(\.id) }
+    private var pinnedIDs: Set<String> { Set(settings.pinnedSessionIDs.split(separator: "\n").map(String.init)) }
+    private var isPinned: Bool { sessionIDs.contains(where: pinnedIDs.contains) }
+
+    private func togglePin() {
+        var pinned = pinnedIDs
+        if isPinned { pinned.subtract(sessionIDs) } else { pinned.formUnion(sessionIDs) }
+        settings.pinnedSessionIDs = pinned.sorted().joined(separator: "\n")
+        // An unpinned row that is past its time goes now, not at the next scan.
+        manager.scanForSessions()
+        codexManager.scanForSessions()
+    }
+
     /// The session whose todos, context and tokens the open notch shows.
     private var isSelected: Bool {
         group.claude.contains { $0.id == manager.selectedSession?.id }
@@ -392,6 +407,12 @@ private struct UnifiedWorkspaceSessionRow: View {
                     }
                 }
                 Spacer(minLength: 0)
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .help(L("고정한 세션", "Pinned"))
+                }
                 if isMuted {
                     Image(systemName: "bell.slash.fill")
                         .font(.system(size: 11))
@@ -416,6 +437,8 @@ private struct UnifiedWorkspaceSessionRow: View {
         .onHover { hovering = $0 }
         .help(L("세션 진행 보기", "Show session progress"))
         .contextMenu {
+            Button(isPinned ? L("고정 해제", "Unpin") : L("세션 고정", "Pin Session")) { togglePin() }
+            Divider()
             ForEach(group.claude) { session in
                 if let id = manager.conversationId(for: session) {
                     Button(L("Claude 세션 ID 복사 (\(id.prefix(8)))", "Copy Claude Session ID (\(id.prefix(8)))")) { copyToPasteboard(id) }

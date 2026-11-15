@@ -293,8 +293,9 @@ final class CodexManager: ObservableObject {
         clearEndedSessions()
 
         // Codex stores sessions as: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
-        // Find recent session files (last 5 minutes)
-        let recentThreshold = Date().addingTimeInterval(-300)
+        // Find recent session files (the keep time, five minutes unless set) and pinned ones.
+        let recentThreshold = Date().addingTimeInterval(-SessionRetention.keepSeconds)
+        let pinned = SessionRetention.pinned
         let retainedFiles = Set(availableSessions.compactMap { session -> URL? in
             guard let state = sessionStates[session.id],
                   state.isActive || state.pendingInputRequest != nil else { return nil }
@@ -319,8 +320,13 @@ final class CodexManager: ObservableObject {
                 // A host's sessions may run under another account: its limits aren't this Mac's.
                 if needsRateLimits, !isRemote, modDate > rateLimitThreshold { rateLimitFiles.append(fileURL) }
 
-                // A quiet working session or unanswered question must not expire.
+                // A quiet working session or unanswered question must not expire, nor a pinned
+                // one: a rollout's name ends with its thread id, which finds it after a relaunch
+                // too. (Codex later packs old rollouts as .jsonl.zst, which are not read, so a
+                // pin holds only until then.)
+                let name = fileURL.deletingPathExtension().lastPathComponent
                 if retainedFiles.contains(fileURL)
+                    || pinned.contains(where: { name.hasSuffix($0) })
                     || (modDate > recentThreshold
                         && (latestCodexActivityDate(in: fileURL, modifiedAt: modDate) ?? .distantPast) > recentThreshold) {
                     // The same thread here and on a host (a synced home folder): this Mac's wins.
@@ -714,7 +720,7 @@ final class CodexManager: ObservableObject {
         }
         var activity: Date?
         defer { sessionActivityCache[file] = (modifiedAt, fileSize, activity) }
-        let recentThreshold = Date().addingTimeInterval(-300)
+        let recentThreshold = Date().addingTimeInterval(-SessionRetention.keepSeconds)
         var position = fileSize
         var pending = Data()
         while position > 0 {

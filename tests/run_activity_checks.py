@@ -117,6 +117,8 @@ if '    private func latestCodexActivityDate(' in codex:
 swift += '''}
 @main struct Checks {
     static func main() throws {
+        // A run that failed in the keep-time checks would leave its values in this binary's defaults.
+        for key in [SessionRetention.minutesKey, SessionRetention.pinnedKey] { UserDefaults.standard.removeObject(forKey: key) }
         // Every possible split, including the middle of a Korean UTF-8 character.
         let bytes = Data("{\\"text\\":\\"생각중\\"}\\n{\\"end\\":true}\\n".utf8)
         for split in 0...bytes.count {
@@ -470,6 +472,19 @@ swift += '''}
         restarted.scanForSessions()
         precondition(!restarted.availableSessions.contains { $0.id == "guardian" }, "A thread Codex starts for itself (the command reviewer) is not a session")
         try FileManager.default.removeItem(at: guardian)
+        // The keep time and pins (`SessionRetention`): "opened-old" last worked an hour ago.
+        UserDefaults.standard.set(120, forKey: SessionRetention.minutesKey)
+        discovery.scanForSessions()
+        precondition(discovery.availableSessions.contains { $0.id == "opened-old" }, "A longer keep time lists a session that went quiet an hour ago")
+        UserDefaults.standard.removeObject(forKey: SessionRetention.minutesKey)
+        discovery.scanForSessions()
+        precondition(!discovery.availableSessions.contains { $0.id == "opened-old" }, "The default five minutes drops it again")
+        UserDefaults.standard.set("Terminal:/x#y\\nopened-old", forKey: SessionRetention.pinnedKey)
+        discovery.scanForSessions()
+        precondition(discovery.availableSessions.contains { $0.id == "opened-old" }, "A pinned session stays whatever the time")
+        UserDefaults.standard.removeObject(forKey: SessionRetention.pinnedKey)
+        discovery.scanForSessions()
+        precondition(!discovery.availableSessions.contains { $0.id == "opened-old" }, "Unpinned, it goes")
         let retained = discovery.availableSessions.first { $0.id == "real" }!
         var running = CodexState()
         running.activeTools = [CodexToolExecution(id: "tool", toolName: "Bash", argument: nil, startTime: oldDate)]
@@ -567,5 +582,6 @@ with tempfile.TemporaryDirectory(prefix='clangnotch-activity-checks-') as folder
                     str(root/'ClangNotch/Models/CodexModels.swift'),
                     str(root/'ClangNotch/Models/JSONLLineBuffer.swift'),
                     str(root/'ClangNotch/Core/Codex/CodexAppIPC.swift'),
+                    str(root/'ClangNotch/Core/Settings/SessionRetention.swift'),
                     str(temp/'Checks.swift'), '-o', str(temp/'checks')], check=True)
     subprocess.run([str(temp/'checks'), *sys.argv[1:]], check=True)
