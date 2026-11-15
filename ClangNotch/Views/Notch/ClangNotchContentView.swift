@@ -1076,8 +1076,14 @@ struct ClangNotchContentView: View {
         let hasLeftWing = showLeftWing || showsTetherWings || showsMediaWings || showsBatteryWings
         let leftContentWidth = showsTetherWings ? tetherLeftWidth : showsMediaWings ? mediaArtSize
             : showsBatteryWings ? ClosedLowBatteryBadge.wingIconWidth : leftWingWidth
-        let leftSlot: CGFloat = hasLeftWing ? leftContentWidth + 8 : 0
-        let rightSlot: CGFloat = rightWingWidth > 0 ? rightWingWidth + 8 : 0
+        // Music alone on the wings sits as far from the surface's sides as from its top and
+        // bottom, as in the Dynamic Island (user's photo, 2026-11-15): the 앨범 그림 6 pt in, the
+        // 음파 막대 7. The header's own 14 pt and the usual 8 left the picture 16 pt in, adrift
+        // of the side while 6 pt from the top. (The side is 6 pt inside the frame.)
+        let leftEdgePadding: CGFloat = showsMediaWings ? -2 : 8
+        let rightEdgePadding: CGFloat = showsMediaWings && lowBattery == nil ? -1 : 8
+        let leftSlot: CGFloat = hasLeftWing ? leftContentWidth + leftEdgePadding : 0
+        let rightSlot: CGFloat = rightWingWidth > 0 ? rightWingWidth + rightEdgePadding : 0
         let wingWidth = max(leftSlot, rightSlot)
 
         // If nothing to show, just return the notch width
@@ -1201,7 +1207,7 @@ struct ClangNotchContentView: View {
                     // only the right-side stats hug the physical notch.
                     .foregroundColor(showsTetherWings ? errorBrightColor : nil)
                     .frame(width: leftContentWidth, alignment: .leading)
-                    .padding(.leading, 8)
+                    .padding(.leading, leftEdgePadding)
                 }
 
                 // Unused width belongs between the outer-aligned content and the
@@ -1330,7 +1336,7 @@ struct ClangNotchContentView: View {
                         .frame(width: mediaWingWidth, height: MediaWaveform.Style.wing.height)
                         .opacity(rightWingLayerOpacity)
                         .animation(WingFade.animation, value: rightWingLayerOpacity)
-                        .padding(.trailing, lowBattery == nil ? 8 : 6)
+                        .padding(.trailing, lowBattery == nil ? rightEdgePadding : 6)
                         .transition(.opacity)
                 }
                 if showsTetherIcon {

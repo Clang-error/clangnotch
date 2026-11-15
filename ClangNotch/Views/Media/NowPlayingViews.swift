@@ -5,7 +5,7 @@ import IOBluetooth
 import SwiftUI
 
 /// 음파 막대: bars that follow the sound of what plays (`NowPlayingLevels`), in the artwork's
-/// colour. Core Animation draws them, so the closed notch costs no SwiftUI redraws while they
+/// colour, lighter toward the top. Core Animation draws them, so the closed notch costs no SwiftUI redraws while they
 /// move (a SwiftUI `repeatForever` redrew at display rate: the 2026-10-04 usage-card CPU fix).
 /// With no levels (audio capture not allowed, or Bluetooth output with the mic in use) they
 /// bounce by themselves.
@@ -18,11 +18,13 @@ struct MediaWaveform: NSViewRepresentable {
 
         var width: CGFloat { CGFloat(bars) * barWidth + CGFloat(bars - 1) * spacing }
 
-        /// The right wing next to the artwork, as in the Dynamic Island.
-        static let wing = Style(bars: 5, barWidth: 1.8, spacing: 2.2, height: 14)
+        /// The right wing next to the artwork, as in the Dynamic Island: six bars set close, the
+        /// gaps narrower than the bars (the user's close-up of it, 2026-11-15; five bars 2.2 pt
+        /// apart read as loose).
+        static let wing = Style(bars: 6, barWidth: 1.8, spacing: 1.1, height: 15)
         /// At the right wing's edge while the agents or tethering hold the wings.
-        static let mini = Style(bars: 3, barWidth: 1.4, spacing: 1.6, height: 10)
-        static let card = Style(bars: 6, barWidth: 2.4, spacing: 2.6, height: 22)
+        static let mini = Style(bars: 3, barWidth: 1.4, spacing: 0.9, height: 10)
+        static let card = Style(bars: 6, barWidth: 2.4, spacing: 1.5, height: 22)
         /// Over the 노치 띠's artwork, in white on a darkened bottom (the user picked it from
         /// renders, 2026-11-12).
         static let onArtwork = Style(bars: 4, barWidth: 1.7, spacing: 1.3, height: 9)
@@ -38,18 +40,32 @@ struct MediaWaveform: NSViewRepresentable {
 
     func updateNSView(_ view: WaveformView, context: Context) {
         let ink: NSColor = scheme == .dark ? .white : .black
-        view.update(style: style, color: color ?? ink, playing: playing)
+        let base = color ?? ink
+        view.update(style: style, color: base, light: base.blended(withFraction: 0.62, of: ink) ?? base, playing: playing)
     }
 
     final class WaveformView: NSView {
         private var bars: [CALayer] = []
-        private var current: (style: Style, color: NSColor, playing: Bool)?
+        /// The bars' colour runs from light at the top to the artwork's colour at the bottom
+        /// across the whole waveform, so a short bar sits in the middle tone and only a tall one
+        /// reaches the light end (the user's photo of the Dynamic Island, 2026-11-15): one
+        /// gradient, and the bars are the shapes it shows through. Measured against flat bars on
+        /// the built-in display, four rounds of the music demo each way: WindowServer 40.2% vs
+        /// 41.4% of a core and GPU 36.2% vs 36.5%, inside the spread between like runs.
+        private let gradient = CAGradientLayer()
+        private let shapes = CALayer()
+        private var current: (style: Style, color: NSColor, light: NSColor, playing: Bool)?
         private var levels: [Float]?
         private var subscription: AnyCancellable?
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             wantsLayer = true
+            // Unit points: y runs up, so 1 is the top.
+            gradient.startPoint = CGPoint(x: 0.5, y: 1)
+            gradient.endPoint = CGPoint(x: 0.5, y: 0)
+            gradient.mask = shapes
+            layer?.addSublayer(gradient)
             subscription = NowPlayingLevels.shared.bands.sink { [weak self] levels in
                 self?.receive(levels)
             }
@@ -61,29 +77,37 @@ struct MediaWaveform: NSViewRepresentable {
             current.map { NSSize(width: $0.style.width, height: $0.style.height) } ?? .zero
         }
 
-        func update(style: Style, color: NSColor, playing: Bool) {
-            if let current, current.style == style, current.color == color, current.playing == playing { return }
+        func update(style: Style, color: NSColor, light: NSColor, playing: Bool) {
+            if let current, current.style == style, current.color == color, current.light == light,
+               current.playing == playing { return }
             let rebuild = current?.style != style
-            current = (style, color, playing)
+            current = (style, color, light, playing)
             if rebuild {
                 invalidateIntrinsicContentSize()
                 bars.forEach { $0.removeFromSuperlayer() }
                 bars = (0..<style.bars).map { _ in
                     let bar = CALayer()
                     bar.cornerRadius = style.barWidth / 2
-                    layer?.addSublayer(bar)
+                    bar.backgroundColor = NSColor.white.cgColor
+                    shapes.addSublayer(bar)
                     return bar
                 }
             }
             CATransaction.begin()
             CATransaction.setAnimationDuration(0.35)
-            for bar in bars { bar.backgroundColor = color.withAlphaComponent(0.92).cgColor }
+            gradient.colors = [light.withAlphaComponent(0.92).cgColor, color.withAlphaComponent(0.92).cgColor]
             CATransaction.commit()
             needsLayout = true
         }
 
-        /// How low a bar goes: down to about a dot, so a beat has room to jump.
+        /// How low a bar goes, as a share of the full height: down to a dot as wide as the bar,
+        /// so a beat has room to jump.
         private func rest(_ style: Style) -> CGFloat { max(style.barWidth / style.height, 0.12) }
+
+        /// A bar at `share` of the full height. Its height is what changes, not a scale, so its
+        /// round ends stay round: scaled, a low bar's ends were pressed flat and it read as a
+        /// pinched block (user's close-up, 2026-11-15).
+        private func height(_ share: CGFloat, _ style: Style) -> CGFloat { max(style.barWidth, style.height * share) }
 
         /// A bar's level: bars spread evenly from the lowest band to the highest, between two
         /// bands when they don't line up (five or three bars over six bands).
@@ -112,35 +136,37 @@ struct MediaWaveform: NSViewRepresentable {
             let floor = rest(current.style)
             for (index, bar) in bars.enumerated() {
                 let level = self.level(for: index, of: bars.count, in: new)
-                bar.transform = CATransform3DMakeScale(1, floor + (1 - floor) * level, 1)
+                bar.bounds.size.height = height(floor + (1 - floor) * level, current.style)
             }
             CATransaction.commit()
         }
 
         override func layout() {
             super.layout()
-            guard let (style, _, playing) = current else { return }
+            guard let (style, _, _, playing) = current else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
+            gradient.frame = bounds
+            shapes.frame = gradient.bounds
             let x0 = (bounds.width - style.width) / 2
             let floor = rest(style)
             for (index, bar) in bars.enumerated() {
-                bar.bounds = CGRect(x: 0, y: 0, width: style.barWidth, height: style.height)
+                bar.bounds.size.width = style.barWidth
                 bar.position = CGPoint(x: x0 + CGFloat(index) * (style.barWidth + style.spacing) + style.barWidth / 2,
                                        y: bounds.midY)
                 guard playing else {
                     bar.removeAllAnimations()
-                    bar.transform = CATransform3DMakeScale(1, floor, 1)
+                    bar.bounds.size.height = height(floor, style)
                     continue
                 }
                 // Levels move the bars directly; without them they bounce on their own.
                 guard levels == nil else { continue }
-                bar.transform = CATransform3DMakeScale(1, floor, 1)
+                bar.bounds.size.height = height(floor, style)
                 let middle = CGFloat(style.bars - 1) / 2
                 let reach = 1 - abs(CGFloat(index) - middle) / max(middle, 1) * 0.35
-                let bounce = CABasicAnimation(keyPath: "transform.scale.y")
-                bounce.fromValue = floor
-                bounce.toValue = reach
+                let bounce = CABasicAnimation(keyPath: "bounds.size.height")
+                bounce.fromValue = height(floor, style)
+                bounce.toValue = height(reach, style)
                 // Different periods so the bars never line up into one pulse.
                 bounce.duration = [0.42, 0.55, 0.37, 0.61, 0.48, 0.52][index % 6]
                 bounce.autoreverses = true

@@ -1,6 +1,6 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|ssh|tools|many|airpods|airpodslid|airpodslow|media|osd|lowbattery|tether|macbattery]`:
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|ssh|tools|many|airpods|airpodslid|airpodslow|media|osd|lowbattery|tether|macbattery] [--demo-art <file>]`:
 /// the notch runs on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard,
 /// volume, battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device, copied text or account balance from this Mac can end up in a video.
@@ -19,6 +19,15 @@ enum DemoMode {
         guard let index = args.firstIndex(of: "--demo-scene"), index + 1 < args.count else { return .both }
         return Scene(rawValue: args[index + 1]) ?? .both
     }
+
+    /// `--demo-art <file>`: that picture as the media scene's album cover instead of the made-up
+    /// one, to look at how a real cover's colours come out in the 음파 막대. Not for a recording
+    /// that goes anywhere.
+    static let artwork: NSImage? = {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "--demo-art"), index + 1 < args.count else { return nil }
+        return NSImage(contentsOfFile: args[index + 1])
+    }()
 }
 
 /// Plays one fixed 56-second script on a loop, so a recording can be timed against it.
@@ -154,7 +163,7 @@ final class DemoDriver {
             let card = AirPodsDropdown.media, monitor = NowPlayingMonitor.shared
             card.demoKeeps = true
             func track(_ title: String, _ artist: String, hue: CGFloat, length: TimeInterval, at elapsed: TimeInterval) -> NowPlaying {
-                let art = Self.demoArtwork(hue: hue)
+                let art = DemoMode.artwork ?? Self.demoArtwork(hue: hue)
                 var playing = NowPlaying(title: title, artist: artist, bundleID: "com.apple.Music", appName: "Music",
                                          isPlaying: true, artwork: art)
                 playing.accent = NowPlaying.accent(of: art)

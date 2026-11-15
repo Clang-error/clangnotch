@@ -96,7 +96,7 @@ enum ClosedLowBatteryBadge {
     static func width(showsIcon: Bool) -> CGFloat { showsIcon ? 40.5 : 29.5 }
 }
 enum MediaWaveform {
-    struct Style { let width: CGFloat; static let wing = Style(width: 17.8); static let mini = Style(width: 7.4) }
+    struct Style { let width: CGFloat; static let wing = Style(width: 16.3); static let mini = Style(width: 6.0) }
 }
 struct FixtureSession { let id: String }
 @MainActor final class ClosedWingFixture {
