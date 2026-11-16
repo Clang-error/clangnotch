@@ -34,6 +34,8 @@ checks = [
     ("PermissionRiskChecks", ["ClangNotch/Core/Permission/PermissionRisk.swift",
                               "ClangNotch/Core/Permission/PermissionText.swift"], L),
     ("NotchDropdownModelChecks", [], ""),
+    ("FuzzChecks", ["ClangNotch/Core/Hooks/HookHTTPServer.swift", "ClangNotch/Core/Permission/PermissionText.swift",
+                    "ClangNotch/Core/Permission/PermissionRisk.swift", "ClangNotch/Core/Update/AppVersion.swift"], L + LOG),
 ]
 
 with tempfile.TemporaryDirectory(prefix="clangnotch-standalone-checks-") as folder:
