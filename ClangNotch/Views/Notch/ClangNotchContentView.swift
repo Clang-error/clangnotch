@@ -688,8 +688,8 @@ struct ClangNotchContentView: View {
         .overlay(alignment: .top) {
             ClipboardOrbView(surfaceWidth: notchVM.notchSize.width, surfaceHeight: notchVM.closedNotchSize.height,
                              fromSurface: (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 || baseNotchActive,
-                             enabled: settings.clipboardOrb && settings.enableClipboardHistory
-                                && notchVM.notchState == .closed && ui.isVisible,
+                             enabled: notchVM.notchState == .closed && ui.isVisible,
+                             showsCopies: settings.clipboardOrb && settings.enableClipboardHistory,
                              direction: settings.clipboardOrbDirection,
                              style: settings.clipboardOrbStyle,
                              holdSeconds: settings.foldSecondsCopy)

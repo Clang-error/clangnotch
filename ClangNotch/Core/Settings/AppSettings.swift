@@ -160,6 +160,11 @@ public final class AppSettings: ObservableObject {
     // is (USB) plays when its UID is among the allowed ones, newline-separated.
     @AppStorage("experimentalTypingSoundsHeadphonesOnly") public var experimentalTypingSoundsHeadphonesOnly: Bool = false
     @AppStorage("experimentalTypingSoundsAllowedOutputs") public var experimentalTypingSoundsAllowedOutputs: String = ""
+    // "켜고 끄는 단축키": the key code (below 0: none), its `NSEvent.ModifierFlags`, and how
+    // it is written ("⌃⌥M"). Taken system-wide while set (`TypingSoundShortcut`).
+    @AppStorage("experimentalTypingSoundsShortcutKey") public var experimentalTypingSoundsShortcutKey: Int = -1
+    @AppStorage("experimentalTypingSoundsShortcutModifiers") public var experimentalTypingSoundsShortcutModifiers: Int = 0
+    @AppStorage("experimentalTypingSoundsShortcutLabel") public var experimentalTypingSoundsShortcutLabel: String = ""
     // "키보드 소리 크기" and "클릭 소리 크기": 0–2, 1 as recorded.
     @AppStorage("experimentalTypingSoundsKeyVolume") public var experimentalTypingSoundsKeyVolume: Double = 1
     @AppStorage("experimentalTypingSoundsMouseVolume") public var experimentalTypingSoundsMouseVolume: Double = 1

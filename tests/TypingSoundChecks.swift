@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Foundation
 
@@ -29,6 +30,16 @@ struct TypingSoundChecks {
         precondition(TypingSoundKind.modifierBit(forKey: 56) == 0x02 && TypingSoundKind.modifierBit(forKey: 60) == 0x04,
                      "left and right shift have their own bits")
         precondition(TypingSoundKind.modifierBit(forKey: 0) == nil, "a letter is no modifier")
+
+        // The shortcut as 설정 writes it, and what may be one.
+        precondition(TypingSoundShortcut.label(key: 46, modifiers: [.control, .option], characters: "m") == "⌃⌥M",
+                     "modifiers in the menus' order, the key in capitals")
+        precondition(TypingSoundShortcut.label(key: 49, modifiers: [.shift, .command], characters: " ") == "⇧⌘Space",
+                     "a key with a name of its own")
+        precondition(TypingSoundShortcut.modifiers(of: [.control, .capsLock, .function]) == [.control],
+                     "caps lock and fn are no part of a shortcut")
+        precondition(!TypingSoundShortcut.isUsable([]) && !TypingSoundShortcut.isUsable([.shift])
+                     && TypingSoundShortcut.isUsable([.shift, .option]), "a letter alone or with shift is typing")
 
         // "헤드폰·이어폰일 때만": Bluetooth and the headphone jack play, speakers and a display
         // don't, and a USB output only once the user has let it in.
@@ -122,6 +133,6 @@ struct TypingSoundChecks {
         mixer.trigger(.letter, at: 0)
         precondition(!mixer.isPlaying, "an emptied kind is silent")
 
-        print("PASS: key kinds, modifier bits, outputs for headphones only, overlap and clip, voice completion, gain, a level per kind, 32 voices, keys during the output's start, pack reload")
+        print("PASS: key kinds, modifier bits, the shortcut's label, outputs for headphones only, overlap and clip, voice completion, gain, a level per kind, 32 voices, keys during the output's start, pack reload")
     }
 }

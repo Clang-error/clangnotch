@@ -7,6 +7,9 @@ import SwiftUI
 /// black orb with the Done check in it and is drawn back in. Another copy while it is out redraws
 /// the check and keeps it out a little longer. Out of the side it may cover menu bar icons for that
 /// moment; it doesn't step aside for the cursor.
+///
+/// The same drop says 입력 효과음 was turned on or off by its shortcut (`TypingSounds.toggled`),
+/// with a speaker in place of the check, whether or not copies are shown.
 struct ClipboardOrbView: View {
     /// The closed surface it leaves from (wings included).
     let surfaceWidth: CGFloat
@@ -14,8 +17,10 @@ struct ClipboardOrbView: View {
     /// Something black to come out of: a camera housing, or the closed notch drawing its surface
     /// (wings). An external display with a quiet notch has neither.
     let fromSurface: Bool
-    /// Closed, on screen, and switched on.
+    /// Closed and on screen.
     let enabled: Bool
+    /// 복사하면 드롭다운으로 알리기 is on.
+    let showsCopies: Bool
     /// "down", "left" or "right" (`AppSettings.clipboardOrbDirection`).
     let direction: String
     /// "orb" (the check alone) or "pill" (check + 복사됨) (`AppSettings.clipboardOrbStyle`).
@@ -40,6 +45,8 @@ struct ClipboardOrbView: View {
     /// Detached or on its way back: a copy now redraws the check instead of dropping anew.
     @State private var isOut = false
     @State private var run: Task<Void, Never>?
+    /// What the drop that is out, or was last, says.
+    @State private var notice = OrbNotice.copied
 
     fileprivate static let blue = Color(red: 0.04, green: 0.52, blue: 1.0)
 
@@ -79,21 +86,26 @@ struct ClipboardOrbView: View {
             OrbDropLayer(time: dropTime,
                          pose: OrbPose(distance: distance, radius: radius, neck: neck, extra: extra, tall: tall),
                          attach: r.attach, direction: r.direction, fullDistance: r.distance, fullRadius: r.radius,
-                         style: style, showsCheck: showsCheck, checkID: checkID)
+                         style: style, notice: notice, showsCheck: showsCheck, checkID: checkID)
             .opacity(opacity)
             .onReceive(ClipboardManager.shared.copied) { _ in
+                guard enabled, showsCopies else { return }
+                play(r, .copied, fromOut: isOut)
+            }
+            .onReceive(TypingSounds.shared.toggled) { on in
                 guard enabled else { return }
-                play(r, fromOut: isOut)
+                play(r, .typingSounds(on: on), fromOut: isOut)
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func play(_ r: Route, fromOut: Bool) {
+    private func play(_ r: Route, _ notice: OrbNotice, fromOut: Bool) {
         run?.cancel()
+        self.notice = notice
         run = Task { @MainActor in
             let settle = Animation.spring(response: 0.3, dampingFraction: 0.62)
-            let pillExtra = style == "pill" ? OrbPill(radius: r.radius).extra : 0
+            let pillExtra = style == "pill" ? OrbPill(radius: r.radius, label: notice.label).extra : 0
             if reduceMotion {
                 // No drop or neck: it fades in where it settles and fades out again.
                 var still = Transaction()
@@ -166,20 +178,38 @@ struct ClipboardOrbView: View {
     }
 }
 
-/// The pill's measures for an orb of `radius`: the check where the orb had it, then 복사됨, with
-/// as much room after the word as before the check. A fixed width left a wide gap after it (user,
-/// 2026-11-14).
+/// What the drop shows: the Done check and 복사됨 for a copy, or a symbol and words of its own.
+struct OrbNotice: Equatable {
+    /// nil: the Done check.
+    var symbol: String?
+    /// The pill's words.
+    var label: String
+    /// Drawn grey instead of blue: something was turned off.
+    var dimmed = false
+
+    static let copied = OrbNotice(symbol: nil, label: L("복사됨", "Copied"))
+
+    static func typingSounds(on: Bool) -> OrbNotice {
+        OrbNotice(symbol: on ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                  label: on ? L("입력 효과음 켜짐", "Typing sounds on") : L("입력 효과음 꺼짐", "Typing sounds off"),
+                  dimmed: !on)
+    }
+}
+
+/// The pill's measures for an orb of `radius`: the check where the orb had it, then its words
+/// (복사됨), with as much room after them as before the check. A fixed width left a wide gap
+/// after it (user, 2026-11-14).
 struct OrbPill {
-    static let label = L("복사됨", "Copied")
     static let spacing: CGFloat = 5
     let radius: CGFloat
+    let label: String
 
     /// About half the orb: the check pops to 1.18x once drawn (`DoneCheckmarkView`).
     var checkSize: CGFloat { radius * 0.95 }
     var font: Font { .system(size: radius < 15 ? 11 : 12, weight: .semibold) }
     var textWidth: CGFloat {
         let nsFont = NSFont.systemFont(ofSize: radius < 15 ? 11 : 12, weight: .semibold)
-        return ceil((Self.label as NSString).size(withAttributes: [.font: nsFont]).width)
+        return ceil((label as NSString).size(withAttributes: [.font: nsFont]).width)
     }
     /// From the pill's end to the check's ring; the same room is left after the word, plus a little
     /// for the capsule's curve.
@@ -262,6 +292,7 @@ private struct OrbDropLayer: View, Animatable {
     let fullDistance: CGFloat
     let fullRadius: CGFloat
     let style: String
+    let notice: OrbNotice
     let showsCheck: Bool
     let checkID: Int
 
@@ -279,7 +310,7 @@ private struct OrbDropLayer: View, Animatable {
     }
 
     var body: some View {
-        let pill = OrbPill(radius: fullRadius)
+        let pill = OrbPill(radius: fullRadius, label: notice.label)
         let now = time >= 0
             ? OrbPose.dropping(at: time, distance: fullDistance, radius: fullRadius, pillExtra: style == "pill" ? pill.extra : 0)
             : pose
@@ -298,14 +329,23 @@ private struct OrbDropLayer: View, Animatable {
                 // where it was while the orb went back in (user's recording, 2026-11-14).
                 // About half the orb: the check pops to 1.18x once drawn, and at 1.2x the radius
                 // it all but filled the orb (user, 2026-11-14).
-                DoneCheckmarkView(color: ClipboardOrbView.blue, size: pill.checkSize)
-                    .id(checkID)
-                    .scaleEffect(max(now.radius / fullRadius, 0.01))
-                    .position(checkCentre)
+                Group {
+                    if let symbol = notice.symbol {
+                        Image(systemName: symbol)
+                            .font(.system(size: pill.checkSize * 0.78, weight: .semibold))
+                            .foregroundStyle(notice.dimmed ? Color.white.opacity(0.55) : ClipboardOrbView.blue)
+                            .frame(width: pill.checkSize, height: pill.checkSize)
+                    } else {
+                        DoneCheckmarkView(color: ClipboardOrbView.blue, size: pill.checkSize)
+                    }
+                }
+                .id(checkID)
+                .scaleEffect(max(now.radius / fullRadius, 0.01))
+                .position(checkCentre)
                 if style == "pill" {
                     // Shows over the second half of the growth, and is cut to the pill, so it
                     // never sits outside it.
-                    Text(OrbPill.label)
+                    Text(notice.label)
                         .font(pill.font)
                         .foregroundStyle(.white.opacity(0.92))
                         .fixedSize()

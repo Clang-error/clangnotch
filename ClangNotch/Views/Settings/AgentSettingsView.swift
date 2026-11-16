@@ -70,9 +70,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
-        case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "효과음", "입력", "소리", "크기", "헤드폰", "이어폰", "블루투스",
+        case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "효과음", "입력", "소리", "크기", "헤드폰", "이어폰", "블루투스", "단축키",
                                      "experimental", "question", "answer", "next step", "hat", "typing", "sound", "volume",
-                                     "headphones", "bluetooth"]
+                                     "headphones", "bluetooth", "shortcut"]
         }
     }
 
@@ -1525,10 +1525,14 @@ struct ExperimentalSettingsTab: View {
 
             Section {
                 SettingToggle(L("입력 효과음", "Typing sounds"),
-                              L("키보드와 마우스 버튼을 누를 때마다 소리를 냄. ⌃⌥M으로 잠시 끄고 켬",
-                                "A sound for every key and mouse button pressed. ⌃⌥M turns it off for a while and back on"),
+                              L("키보드와 마우스 버튼을 누를 때마다 소리를 냄",
+                                "A sound for every key and mouse button pressed"),
                               isOn: $settings.experimentalTypingSounds)
                     .onChange(of: settings.experimentalTypingSounds) { _, _ in typingSounds.syncWithSettings() }
+                // Stays while the switch is off: the shortcut is what turns it back on.
+                if settings.experimentalTypingSounds || settings.experimentalTypingSoundsShortcutKey >= 0 {
+                    TypingSoundShortcutRow(settings: settings)
+                }
                 if settings.experimentalTypingSounds {
                     Toggle(L("헤드폰·이어폰일 때만", "Only on headphones"),
                            isOn: $settings.experimentalTypingSoundsHeadphonesOnly)
@@ -1576,6 +1580,86 @@ struct ExperimentalSettingsTab: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .trailing)
+        }
+    }
+}
+
+/// 입력 효과음's "켜고 끄는 단축키": the button shows the shortcut and, pressed, takes the next
+/// key held with ⌃, ⌥ or ⌘ as the new one. Esc leaves it as it was; the x removes it.
+private struct TypingSoundShortcutRow: View {
+    @ObservedObject var settings: AppSettings
+    @State private var recording = false
+    @State private var monitor: Any?
+
+    var body: some View {
+        LabeledContent(L("켜고 끄는 단축키", "Shortcut to turn on and off")) {
+            HStack(spacing: 6) {
+                Button(recording ? L("키를 누르세요", "Press the keys")
+                       : settings.experimentalTypingSoundsShortcutKey < 0 ? L("지정", "Set")
+                       : settings.experimentalTypingSoundsShortcutLabel) {
+                    recording ? stop() : start()
+                }
+                if settings.experimentalTypingSoundsShortcutKey >= 0, !recording {
+                    Button {
+                        save(key: -1, modifiers: [], label: "")
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("단축키 지우기", "Remove the shortcut"))
+                }
+            }
+        }
+        .onDisappear { stop() }
+        // The settings window closed or left behind mid-recording: the monitor would go on
+        // taking keys from the app's other windows, and the next ⌘V would become the shortcut.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            if recording { stop() }
+        }
+    }
+
+    private func start() {
+        recording = true
+        TypingSounds.shared.releaseShortcut()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = TypingSoundShortcut.modifiers(of: event.modifierFlags)
+            if Int(event.keyCode) == TypingSoundShortcut.escapeKey, flags.isEmpty {
+                stop()
+            } else if TypingSoundShortcut.isUsable(flags) {
+                save(key: Int(event.keyCode), modifiers: flags,
+                     label: TypingSoundShortcut.label(key: Int(event.keyCode), modifiers: flags,
+                                                      characters: TypingSoundShortcut.character(forKey: Int(event.keyCode))
+                                                          ?? event.charactersIgnoringModifiers))
+            } else {
+                NSSound.beep()
+            }
+            return nil
+        }
+    }
+
+    /// Ends the recording, the key monitor with it, and takes the saved shortcut again.
+    private func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        recording = false
+        TypingSounds.shared.syncShortcut()
+    }
+
+    private func save(key: Int, modifiers: NSEvent.ModifierFlags, label: String) {
+        let before = (settings.experimentalTypingSoundsShortcutKey, settings.experimentalTypingSoundsShortcutModifiers,
+                      settings.experimentalTypingSoundsShortcutLabel)
+        settings.experimentalTypingSoundsShortcutKey = key
+        settings.experimentalTypingSoundsShortcutModifiers = Int(modifiers.rawValue)
+        settings.experimentalTypingSoundsShortcutLabel = label
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        recording = false
+        // A shortcut macOS won't give isn't shown as set.
+        if !TypingSounds.shared.syncShortcut() {
+            NSSound.beep()
+            (settings.experimentalTypingSoundsShortcutKey, settings.experimentalTypingSoundsShortcutModifiers,
+             settings.experimentalTypingSoundsShortcutLabel) = before
+            TypingSounds.shared.syncShortcut()
         }
     }
 }

@@ -1,6 +1,6 @@
 import AppKit
 import AudioToolbox
-import Carbon.HIToolbox
+import Combine
 import os
 
 /// 설정 › 실험 기능 › "입력 효과음": a sound for every key and mouse button that goes down,
@@ -8,8 +8,9 @@ import os
 /// file of the user's own in `packFolder` takes its kind's place. Read when the switch turns on.
 ///
 /// The keys are only listened to, on a thread of their own, so nothing here can hold typing
-/// up; which key it was decides the sound and is neither kept nor logged. ⌃⌥M silences the
-/// sounds until it is pressed again.
+/// up; which key it was decides the sound and is neither kept nor logged. A shortcut of the
+/// user's choosing turns the switch off and on (`TypingSoundShortcut`), and the 복사 방울
+/// says which.
 ///
 /// With "헤드폰·이어폰일 때만" on, the keys are listened to only while the sound goes to
 /// headphones (`TypingSoundOutputKind`), so nothing comes out of speakers or a monitor. Nor
@@ -33,15 +34,42 @@ final class TypingSounds: ObservableObject {
 
     private let mixer = TypingSoundMixer()
     private lazy var output = TypingSoundOutput(mixer: mixer)
-    /// Kept while the output isn't Bluetooth, tap removed, so ⌃⌥M's silence outlasts it.
+    /// Turned on or off by the shortcut, for the drop that says so (`ClipboardOrbView`).
+    let toggled = PassthroughSubject<Bool, Never>()
+
     private var input: TypingSoundInput?
+    private let shortcut = TypingSoundShortcut()
     private var outputListener: AudioObjectPropertyListenerBlock?
     /// The output whose mute and volume are listened to.
     private var levelWatch: (device: AudioObjectID, listener: AudioObjectPropertyListenerBlock)?
 
-    private init() {}
+    private init() {
+        shortcut.pressed = { [weak self] in self?.toggle() }
+    }
+
+    /// Takes the shortcut set in 설정, or lets it go. False when macOS won't give it. Not in a
+    /// demo copy: beside the installed one the key would turn the switch twice.
+    @discardableResult
+    func syncShortcut() -> Bool {
+        let settings = AppSettings.shared
+        return shortcut.register(key: DemoMode.isActive ? -1 : settings.experimentalTypingSoundsShortcutKey,
+                                 modifiers: UInt(settings.experimentalTypingSoundsShortcutModifiers))
+    }
+
+    /// While 설정 records a new one, the old one must reach it as keys.
+    func releaseShortcut() {
+        shortcut.register(key: -1, modifiers: 0)
+    }
+
+    private func toggle() {
+        let on = !AppSettings.shared.experimentalTypingSounds
+        AppSettings.shared.experimentalTypingSounds = on
+        syncWithSettings()
+        toggled.send(on)
+    }
 
     func syncWithSettings() {
+        syncShortcut()
         // A demo copy beside the installed one would sound every key twice.
         guard AppSettings.shared.experimentalTypingSounds, !DemoMode.isActive else {
             stop()
@@ -378,9 +406,6 @@ final class TypingSoundInput {
     private let output: TypingSoundOutput
     private var tap: CFMachPort?
     private var runLoop: CFRunLoop?
-    /// ⌃⌥M's switch. Only the tap's thread touches it.
-    private var muted = false
-
     init(mixer: TypingSoundMixer, output: TypingSoundOutput) {
         self.mixer = mixer
         self.output = output
@@ -432,12 +457,7 @@ final class TypingSoundInput {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
         case .keyDown:
-            let key = Int(event.getIntegerValueField(.keyboardEventKeycode))
-            if key == kVK_ANSI_M, event.flags.contains([.maskControl, .maskAlternate]) {
-                if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 { muted.toggle() }
-            } else {
-                play(.forKey(key))
-            }
+            play(.forKey(Int(event.getIntegerValueField(.keyboardEventKeycode))))
         case .flagsChanged:
             let key = Int(event.getIntegerValueField(.keyboardEventKeycode))
             if let bit = TypingSoundKind.modifierBit(forKey: key), event.flags.rawValue & bit != 0 {
@@ -451,7 +471,6 @@ final class TypingSoundInput {
     }
 
     private func play(_ kind: TypingSoundKind) {
-        guard !muted else { return }
         mixer.trigger(kind)
         output.touch()
     }
