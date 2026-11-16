@@ -823,11 +823,10 @@ struct ClangNotchContentView: View {
         }
     }
 
-    /// Widest a wing's tool name and its detail may get. Both wings take the wider one's width,
-    /// so a long name comes back twice: 124 and 96 made a bar across the menu bar with a long
-    /// command running (user, 2026-11-12). Longer text ends in "…".
+    /// Widest a wing's tool name may get. Both wings take the wider one's width, so a long name
+    /// comes back twice: 124 made a bar across the menu bar with a long command running (user,
+    /// 2026-11-12). Longer text ends in "…".
     private static let wingLabelCap: CGFloat = 96
-    private static let wingDetailCap: CGFloat = 72
 
     /// A closed wing's Claude icons. With 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기" on,
     /// each wears its session's hat (아이콘 모자).
@@ -998,17 +997,19 @@ struct ClangNotchContentView: View {
         let showsSimultaneousClaudeWing = isSimultaneousClaudeCodex && !isClaudeQuestionWait
             && (isCodexQuestionWait || !hasPermissionNeeded) && !showsDone
 
-        let thinkingModelName: String? = {
-            if isCodexActive {
-                return extractCodexModelName(codexManager.state.model)
-            }
-            return extractModelName(claudeCodeManager.state.model)
-        }()
-
         // A locked keyboard owns the right wing — while input is blocked, nothing else
         // there is worth reading.
         // "Answer" plus its dot is all the right wing carries while a question waits,
         // so it claims only that much rather than a tool row's full 120.
+        // 경과 시간: the turn the wing speaks for is the shown session's, else the working
+        // session's that started last.
+        let claudeTurnStart = claudeCodeManager.state.turnStartTime
+            ?? claudeCodeManager.sessionStates.values.compactMap(\.turnStartTime).max()
+        let codexTurnStart = codexManager.state.turnStartTime
+            ?? codexManager.sessionStates.values.compactMap(\.turnStartTime).max()
+        let thinkingTurnStart = isCodexActive ? codexTurnStart : claudeTurnStart
+        // The spinner alone, or the time, a gap and the spinner.
+        let runningWidth: (Date?) -> CGFloat = { $0 == nil ? 8 : ClosedElapsedLabel.width + 4 + 8 }
         let agentRightWingWidth: CGFloat = {
             if isKeyboardLocked {
                 return measuredTextWidth("Locked", 10, .semibold) + 18
@@ -1020,22 +1021,14 @@ struct ClangNotchContentView: View {
             }
             if showsQuestionOnRight || hasPermissionNeeded { return 58 }
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
-                if codexTool.isRunning {
-                    guard let argument = codexTool.argument else { return 8 }
-                    return 12 + min(Self.wingDetailCap, measuredTextWidth(String(argument.prefix(20)), 9, .regular))
-                }
+                if codexTool.isRunning { return runningWidth(codexTurnStart) }
                 return measuredMonoTextWidth(codexTool.formattedDuration, 9)
             }
             if let claudeTool = currentClaudeTool {
-                if claudeTool.isRunning {
-                    guard let description = claudeTool.description else { return 8 }
-                    return 12 + min(Self.wingDetailCap, measuredTextWidth(String(description.prefix(20)), 9, .regular))
-                }
+                if claudeTool.isRunning { return runningWidth(claudeTurnStart) }
                 return measuredMonoTextWidth(claudeTool.formattedDuration, 9)
             }
-            if isThinking {
-                return 12 + (thinkingModelName.map { measuredTextWidth($0, 9, .medium) } ?? 0)
-            }
+            if isThinking { return runningWidth(thinkingTurnStart) }
             return 0
         }()
         // Tethering at a saved place: with the agents quiet it takes both wings ("테더링" and
@@ -1266,15 +1259,10 @@ struct ClangNotchContentView: View {
                             // Codex tool info
                             HStack(spacing: 4) {
                                 if codexTool.isRunning {
+                                    if let codexTurnStart { ClosedElapsedLabel(since: codexTurnStart) }
                                     ProgressView()
                                         .scaleEffect(0.3)
                                         .frame(width: 8, height: 8)
-                                    if let arg = codexTool.argument {
-                                        Text(arg.prefix(20))
-                                            .font(.system(size: 9))
-                                            .foregroundColor(NotchPalette.ink.opacity(0.5))
-                                            .lineLimit(1)
-                                    }
                                 } else {
                                     Text(codexTool.formattedDuration)
                                         .font(.system(size: 9, design: .monospaced))
@@ -1287,15 +1275,10 @@ struct ClangNotchContentView: View {
                             // Claude Code tool info
                             HStack(spacing: 4) {
                                 if claudeTool.isRunning {
+                                    if let claudeTurnStart { ClosedElapsedLabel(since: claudeTurnStart) }
                                     ProgressView()
                                         .scaleEffect(0.3)
                                         .frame(width: 8, height: 8)
-                                    if let desc = claudeTool.description {
-                                        Text(desc.prefix(20))
-                                            .font(.system(size: 9))
-                                            .foregroundColor(NotchPalette.ink.opacity(0.5))
-                                            .lineLimit(1)
-                                    }
                                 } else {
                                     Text(claudeTool.formattedDuration)
                                         .font(.system(size: 9, design: .monospaced))
@@ -1306,14 +1289,10 @@ struct ClangNotchContentView: View {
                             }
                         } else if isThinking {
                             HStack(spacing: 4) {
+                                if let thinkingTurnStart { ClosedElapsedLabel(since: thinkingTurnStart) }
                                 ProgressView()
                                     .scaleEffect(0.3)
                                     .frame(width: 8, height: 8)
-                                if let modelName = thinkingModelName {
-                                    Text(modelName)
-                                        .font(.system(size: 9, weight: .medium))
-                                        .foregroundColor(NotchPalette.ink.opacity(0.5))
-                                }
                             }
                         } else if hasPermissionNeeded {
                             HStack(spacing: 4) {
@@ -1427,34 +1406,6 @@ struct ClangNotchContentView: View {
 
             closedLabelTransitionTask = nil
         }
-    }
-
-    /// Extract model name from full model ID (e.g., "opus" from "claude-opus-4-5-20251101")
-    private func extractModelName(_ modelId: String) -> String? {
-        let parts = modelId.lowercased().split(separator: "-")
-        // Look for known model names
-        if parts.contains("opus") { return "Opus" }
-        if parts.contains("sonnet") { return "Sonnet" }
-        if parts.contains("haiku") { return "Haiku" }
-        // Fallback: return second part if available (usually the model name)
-        if parts.count > 1 {
-            return String(parts[1]).capitalized
-        }
-        return nil
-    }
-
-    /// Extract model name from Codex model ID (e.g., "Sol" from "gpt-6.1-sol")
-    private func extractCodexModelName(_ modelId: String) -> String? {
-        let parts = modelId.lowercased().split(separator: "-")
-        // The family name is the last all-letter part; the version number is dropped.
-        if let name = parts.last(where: { $0 != "gpt" && $0.allSatisfy(\.isLetter) }) {
-            return name.capitalized
-        }
-        // Fallback: first part
-        if let first = parts.first {
-            return String(first).uppercased()
-        }
-        return nil
     }
 
     private var openHeader: some View {

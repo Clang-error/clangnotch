@@ -371,3 +371,35 @@ struct Breathing: ViewModifier {
         }
     }
 }
+
+/// 경과 시간: how long the turn has run, before the spinner at the right wing's outer end
+/// ("42s", "1m 05s", "1h 05m"), counted up once a second (user, 2026-11-16: a request to see
+/// how long a session has been thinking). It takes the place of the tool's description and
+/// the model's name, which the open notch still shows.
+struct ClosedElapsedLabel: View {
+    let since: Date
+
+    /// Room for "00m 00s" whatever the time, so the wing doesn't change width as it counts.
+    static let width: CGFloat = {
+        let font = NSFont.monospacedSystemFont(ofSize: 9, weight: .regular)
+        return ceil(("00m 00s" as NSString).size(withAttributes: [.font: font]).width)
+    }()
+
+    static func text(_ seconds: TimeInterval) -> String {
+        let whole = max(0, Int(seconds))
+        if whole < 60 { return "\(whole)s" }
+        if whole < 3600 { return "\(whole / 60)m \(String(format: "%02d", whole % 60))s" }
+        return "\(whole / 3600)h \(String(format: "%02d", whole % 3600 / 60))m"
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: since, by: 1)) { context in
+            Text(Self.text(context.date.timeIntervalSince(since)))
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(NotchPalette.ink.opacity(0.6))
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .frame(width: Self.width, alignment: .trailing)
+    }
+}

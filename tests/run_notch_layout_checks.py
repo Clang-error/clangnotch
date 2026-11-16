@@ -138,14 +138,12 @@ struct FixtureSession { let id: String }
     var doneFlash: DoneFlash?
     var claudeHasRealActivity: Bool { claudeCodeManager.state.isActive }
     var codexHasRealActivity: Bool { settings.showSourceCodex && codexManager.state.isActive }
-    func extractCodexModelName(_ value: String) -> String? { nil }
-    func extractModelName(_ value: String) -> String? { nil }
     func layout() -> (leftVisible: Bool, claudeOnRight: Bool, leftWidth: CGFloat, rightWidth: CGFloat, batteryWings: Bool) {
 '''
 # The wing caps, as the view has them.
 questions = questions.replace("    func layout() -> (leftVisible", "".join(
     line.replace("private static", "static") + "\n" for line in view.splitlines()
-    if "static let wingLabelCap" in line or "static let wingDetailCap" in line) + "    func layout() -> (leftVisible", 1)
+    if "static let wingLabelCap" in line) + "    func layout() -> (leftVisible", 1)
 # Run the exact closed-header decisions and width calculations, without its view rendering.
 questions += block("private var closedHeader:").split("{", 1)[1].split("        if !hasAnyContent {")[0]
 questions += '''
