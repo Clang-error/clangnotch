@@ -152,6 +152,17 @@ public final class AppSettings: ObservableObject {
     // 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기": the closed wings' Claude icons wear a hat
     // for what their session is doing (ClaudeIconHat). Off by default.
     @AppStorage("experimentalClaudeIconHats") public var experimentalClaudeIconHats: Bool = false
+    // 설정 › 실험 기능 › "입력 효과음": a sound for every key and mouse button that goes down
+    // (`TypingSounds`).
+    @AppStorage("experimentalTypingSounds") public var experimentalTypingSounds: Bool = false
+    // Under it, "헤드폰·이어폰일 때만": the sounds only while the sound output is Bluetooth or
+    // the headphone jack, none from speakers or a monitor. An output that doesn't tell what it
+    // is (USB) plays when its UID is among the allowed ones, newline-separated.
+    @AppStorage("experimentalTypingSoundsHeadphonesOnly") public var experimentalTypingSoundsHeadphonesOnly: Bool = false
+    @AppStorage("experimentalTypingSoundsAllowedOutputs") public var experimentalTypingSoundsAllowedOutputs: String = ""
+    // "키보드 소리 크기" and "클릭 소리 크기": 0–2, 1 as recorded.
+    @AppStorage("experimentalTypingSoundsKeyVolume") public var experimentalTypingSoundsKeyVolume: Double = 1
+    @AppStorage("experimentalTypingSoundsMouseVolume") public var experimentalTypingSoundsMouseVolume: Double = 1
     /// Done and attention sounds for the notch dropdowns; also the bell in the open header.
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.

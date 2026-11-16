@@ -70,7 +70,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
-        case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "experimental", "question", "answer", "next step", "hat"]
+        case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "효과음", "입력", "소리", "크기", "헤드폰", "이어폰", "블루투스",
+                                     "experimental", "question", "answer", "next step", "hat", "typing", "sound", "volume",
+                                     "headphones", "bluetooth"]
         }
     }
 
@@ -1484,6 +1486,7 @@ struct AgentsSettingsTab: View {
 /// that app updates, and try-outs like the 아이콘 모자. Each is off until turned on.
 struct ExperimentalSettingsTab: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject private var typingSounds = TypingSounds.shared
 
     var body: some View {
         Form {
@@ -1519,9 +1522,61 @@ struct ExperimentalSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                SettingToggle(L("입력 효과음", "Typing sounds"),
+                              L("키보드와 마우스 버튼을 누를 때마다 소리를 냄. ⌃⌥M으로 잠시 끄고 켬",
+                                "A sound for every key and mouse button pressed. ⌃⌥M turns it off for a while and back on"),
+                              isOn: $settings.experimentalTypingSounds)
+                    .onChange(of: settings.experimentalTypingSounds) { _, _ in typingSounds.syncWithSettings() }
+                if settings.experimentalTypingSounds {
+                    Toggle(L("헤드폰·이어폰일 때만", "Only on headphones"),
+                           isOn: $settings.experimentalTypingSoundsHeadphonesOnly)
+                        .onChange(of: settings.experimentalTypingSoundsHeadphonesOnly) { _, _ in typingSounds.syncWithSettings() }
+                    if let output = typingSounds.askedOutput {
+                        Toggle(L("\(output.name)에서도 소리 내기", "Also on \(output.name)"),
+                               isOn: Binding(get: { typingSounds.allows(output.uid) },
+                                             set: { typingSounds.allow(output.uid, $0) }))
+                    }
+                    typingVolume(L("키보드 소리 크기", "Key sound volume"), $settings.experimentalTypingSoundsKeyVolume, .letter)
+                    typingVolume(L("클릭 소리 크기", "Click sound volume"), $settings.experimentalTypingSoundsMouseVolume, .mouse)
+                    LabeledContent {
+                        Button(L("소리 팩 폴더 열기", "Open Sound Pack Folder")) { typingSounds.openPackFolder() }
+                    } label: {
+                        if typingSounds.status == .noPermission {
+                            Text(L("손쉬운 사용이나 입력 모니터링 권한이 필요함", "Needs Accessibility or Input Monitoring permission"))
+                                .font(.callout)
+                        }
+                    }
+                }
+            } header: {
+                Text(L("소리", "Sound"))
+            } footer: {
+                Text(L("소리 팩 폴더에 letter.wav, punctuation.wav, space.wav, special.wav, mouse.wav를 넣으면 그 소리는 기본 소리 대신 씀. 넣은 뒤 스위치를 껐다 켜면 읽음. 누른 키는 소리를 고르는 데만 쓰고 남기지 않음.",
+                       "A letter.wav, punctuation.wav, space.wav, special.wav or mouse.wav in the sound pack folder is used in place of the default sound. Turn the switch off and on to read them. The key pressed only picks the sound and is not kept."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+
+    /// A volume row: 0 to 200%, and the sound once at the new level when the slider is let go.
+    private func typingVolume(_ title: String, _ value: Binding<Double>, _ kind: TypingSoundKind) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+            Slider(value: value, in: 0...2) { editing in
+                if !editing { typingSounds.preview(kind) }
+            }
+            .onChange(of: value.wrappedValue) { _, _ in typingSounds.applyVolumes() }
+            Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
+            Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
+        }
     }
 }
 

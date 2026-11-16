@@ -180,6 +180,7 @@ final class SoftwareVolume {
         keyTarget = running && AppSettings.shared.enableSoftwareVolume ? Self.uncontrollableOutputUID() : nil
         AudioMixerManager.shared.mainVolumeChanged()
         let gain = multiplier
+        TypingSounds.shared.setGain(gain)
         guard gain < 0.99, let uid = keyTarget, let me = Self.ownProcessObject() else {
             if let session {
                 // After a switch to another output, apps take a moment to move over, and
