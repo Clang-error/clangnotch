@@ -23,12 +23,21 @@ final class WhatsNew {
         UserDefaults.standard.set(version, forKey: lastLaunchedKey)
     }
 
+    /// Whether settings from an earlier run were there when this launch began: read first thing
+    /// in `applicationDidFinishLaunching`, before this run writes any. 1.4.0 and older kept no
+    /// last version, so this is what tells an update from them apart from a first install.
+    nonisolated static let hadSettingsAtLaunch: Bool = {
+        guard let domain = Bundle.main.bundleIdentifier else { return false }
+        return !(UserDefaults.standard.persistentDomain(forName: domain) ?? [:]).isEmpty
+    }()
+
     /// At launch. A first install only records its version; `--whats-new` shows it anyway.
     func showIfUpdated() {
         let current = UpdateChecker.currentVersion
         let last = UserDefaults.standard.string(forKey: Self.lastLaunchedKey)
         UserDefaults.standard.set(current, forKey: Self.lastLaunchedKey)
-        guard CommandLine.arguments.contains("--whats-new") || (last != nil && last != current) else { return }
+        let updated = last.map { $0 != current } ?? Self.hadSettingsAtLaunch
+        guard CommandLine.arguments.contains("--whats-new") || updated else { return }
         Task {
             guard let notes = await Self.notes(for: current), !notes.isEmpty else { return }
             show(version: current, notes: notes)

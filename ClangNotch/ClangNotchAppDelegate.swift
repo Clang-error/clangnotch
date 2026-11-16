@@ -7,6 +7,10 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
     private var settingsNavigator: SettingsNavigator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Read before anything below writes a setting (`WhatsNew.showIfUpdated`), in release
+        // builds too: `debugLog` doesn't evaluate its message there.
+        let hadSettings = WhatsNew.hadSettingsAtLaunch
+        debugLog("[WhatsNew] settings from an earlier run: \(hadSettings)")
         NSApp.setActivationPolicy(.accessory)
 
         // ssh started this copy to ask the user something (`SSHHost`): it answers and exits.
@@ -54,7 +58,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor in
             SystemBannerCenterer.shared.syncWithSettings()
-            // 모니터 소리 줄이기 also runs with 볼륨·밝기 표시 바꾸기 off.
+            // 모니터 소리 줄이기 also runs with 볼륨, 밝기 표시 바꾸기 off.
             SoftwareVolume.shared.syncWithSettings()
             TypingSounds.shared.syncWithSettings()
             // Starts following the Accessibility setting, which the key taps above wait on.
