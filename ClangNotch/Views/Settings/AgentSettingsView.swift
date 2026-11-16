@@ -1573,7 +1573,7 @@ struct ExperimentalSettingsTab: View {
             } header: {
                 Text("Claude Code")
             } footer: {
-                Text(L("다른 앱의 내부 동작에 기대는 기능이라, 그 앱이 업데이트되면 안 될 수 있음.",
+                Text(L("다른 앱의 내부 동작에 의존하는 기능이라, 그 앱이 업데이트되면 안 될 수 있음.",
                        "These lean on other apps' internals and may stop working when those apps update."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
