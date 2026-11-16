@@ -419,7 +419,8 @@ final class TypingSoundInput {
     /// False when macOS refuses the tap (no permission). Already listening, it stays as it is.
     func start() -> Bool {
         guard tap == nil else { return true }
-        let types: [CGEventType] = [.keyDown, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        // No `.flagsChanged`: the modifiers make no sound.
+        let types: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         let mask = types.reduce(CGEventMask(0)) { $0 | 1 << $1.rawValue }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, eventsOfInterest: mask,
@@ -463,11 +464,6 @@ final class TypingSoundInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
         case .keyDown:
             play(.forKey(Int(event.getIntegerValueField(.keyboardEventKeycode))))
-        case .flagsChanged:
-            let key = Int(event.getIntegerValueField(.keyboardEventKeycode))
-            if let bit = TypingSoundKind.modifierBit(forKey: key), event.flags.rawValue & bit != 0 {
-                play(.forKey(key))
-            }
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             play(.mouse)
         default:

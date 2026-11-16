@@ -26,10 +26,6 @@ struct TypingSoundChecks {
                      && TypingSoundKind.forKey(36) == .special, "backspace, delete, return")
         precondition(TypingSoundKind.allCases.map(\.fileName) == ["letter", "punctuation", "space", "special", "mouse"],
                      "the file names")
-        // A modifier sounds on the press only: its own side's bit is set then.
-        precondition(TypingSoundKind.modifierBit(forKey: 56) == 0x02 && TypingSoundKind.modifierBit(forKey: 60) == 0x04,
-                     "left and right shift have their own bits")
-        precondition(TypingSoundKind.modifierBit(forKey: 0) == nil, "a letter is no modifier")
 
         // The shortcut as 설정 writes it, and what may be one.
         precondition(TypingSoundShortcut.label(key: 46, modifiers: [.control, .option], characters: "m") == "⌃⌥M",
@@ -133,6 +129,6 @@ struct TypingSoundChecks {
         mixer.trigger(.letter, at: 0)
         precondition(!mixer.isPlaying, "an emptied kind is silent")
 
-        print("PASS: key kinds, modifier bits, the shortcut's label, outputs for headphones only, overlap and clip, voice completion, gain, a level per kind, 32 voices, keys during the output's start, pack reload")
+        print("PASS: key kinds, the shortcut's label, outputs for headphones only, overlap and clip, voice completion, gain, a level per kind, 32 voices, keys during the output's start, pack reload")
     }
 }

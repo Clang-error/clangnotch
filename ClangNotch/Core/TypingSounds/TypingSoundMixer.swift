@@ -8,36 +8,19 @@ enum TypingSoundKind: Int, CaseIterable {
     var fileName: String { String(describing: self) }
 
     /// By macOS hardware key code. A key in no list sounds as a letter, the arrows among them.
+    /// The modifiers (⌘ ⌃ ⌥ ⇧ fn caps lock) aren't here: they make no sound, so a shortcut
+    /// sounds once, as its key, and not twice.
     static func forKey(_ code: Int) -> TypingSoundKind {
         switch code {
         case 49:
             return .space
         case 24, 27, 30, 33, 39, 41, 43, 44, 47, 50:
             return .punctuation
-        case 36, 42, 48, 51, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 76,
+        case 36, 42, 48, 51, 53, 76,
              96, 97, 98, 99, 100, 101, 103, 105, 106, 107, 109, 111, 113, 114, 117, 118, 120, 122:
             return .special
         default:
             return .letter
-        }
-    }
-
-    /// The bit of a flags-changed event that is set while the modifier key `code` is down: the
-    /// device-dependent bits, which tell left from right. A release clears it, so only the
-    /// press sounds.
-    static func modifierBit(forKey code: Int) -> UInt64? {
-        switch code {
-        case 59: return 0x01        // left control
-        case 56: return 0x02        // left shift
-        case 60: return 0x04        // right shift
-        case 55: return 0x08        // left command
-        case 54: return 0x10        // right command
-        case 58: return 0x20        // left option
-        case 61: return 0x40        // right option
-        case 62: return 0x2000      // right control
-        case 57: return 0x10000     // caps lock
-        case 63: return 0x800000    // fn
-        default: return nil
         }
     }
 }
