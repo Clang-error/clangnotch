@@ -670,13 +670,20 @@ struct AboutSettingsTab: View {
             Section {
                 SettingToggle(L("업데이트 자동으로 받기", "Download updates automatically"),
                               L(UpdateChecker.runningBeta
-                                    ? "새 버전을 받아 두고 알림. 설치는 재시작 버튼을 누를 때만. 베타를 쓰는 중이라 새 베타도 받음"
-                                    : "새 버전을 받아 두고 알림. 설치는 재시작 버튼을 누를 때만",
+                                    ? "새 버전을 받아 두고 알림. 베타를 쓰는 중이라 새 베타도 받음"
+                                    : "새 버전을 받아 두고 알림",
                                 UpdateChecker.runningBeta
-                                    ? "Downloads a new version and tells you. Installs only when you restart for it. On a beta, new betas too"
-                                    : "Downloads a new version and tells you. Installs only when you restart for it"),
+                                    ? "Downloads a new version and tells you. On a beta, new betas too"
+                                    : "Downloads a new version and tells you"),
                               isOn: $settings.checkForUpdates)
                     .onChange(of: settings.checkForUpdates) { _, _ in updates.syncWithSettings() }
+                if settings.checkForUpdates {
+                    SettingToggle(L("받은 업데이트 자동으로 설치", "Install downloaded updates automatically"),
+                                  L("에이전트가 쉬고 노치가 닫혀 있을 때 앱을 바꾸고 다시 켬. 끄면 재시작 버튼을 누를 때만 설치",
+                                    "Replaces the app and reopens it while your agents are idle and the notch is closed. Off, it installs only when you restart for it"),
+                                  isOn: $settings.autoInstallUpdates)
+                        .onChange(of: settings.autoInstallUpdates) { _, _ in updates.syncAutoInstall() }
+                }
                 if let version = updates.readyVersion {
                     HStack {
                         Text(L("새 버전 \(version) 준비됨", "Version \(version) is ready"))

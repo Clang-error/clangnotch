@@ -3,11 +3,14 @@ import UserNotifications
 
 /// "업데이트 자동으로 받기": asks GitHub for the latest release at launch and once a day.
 /// A newer one is downloaded and checked in the background (`UpdateInstaller`), then waits
-/// for "재시작해서 업데이트" in the notification or in 설정 › 정보. A copy that can't replace
-/// itself, or a release that doesn't check out, falls back to the release page.
+/// for "재시작해서 업데이트" in the notification, in 설정 -> 정보 or at the foot of the settings
+/// sidebar. With "받은 업데이트 자동으로 설치" on (the default since 2026-11-16) it doesn't wait
+/// for the button: it is put in place once nothing has been going on for a minute
+/// (`autoInstallIfQuiet`). A copy that can't replace itself, or a release that doesn't check
+/// out, falls back to the release page.
 /// A copy that is itself a beta looks at the newest release of either kind, so the next beta
-/// reaches it the same way (2026-11-16: only for copies on a beta, and never installed unasked);
-/// a release copy is only ever told about releases.
+/// reaches it the same way (2026-11-16: only for copies on a beta); a release copy is only
+/// ever told about releases.
 @MainActor
 final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = UpdateChecker()
@@ -21,7 +24,9 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
     /// The newer version, downloaded and checked, waiting for a restart.
-    @Published private(set) var readyVersion: String?
+    @Published private(set) var readyVersion: String? {
+        didSet { if readyVersion != oldValue { syncAutoInstall() } }
+    }
     @Published private(set) var isDownloading = false
     @Published private(set) var isInstalling = false
     /// For "지금 확인" in 설정 › 정보: a check under way, the last one finding nothing newer, or failing.
@@ -39,8 +44,47 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
     nonisolated private static let readyCategory = "clangnotch-update-ready"
     nonisolated private static let installAction = "install"
     private var timer: Timer?
+    private var autoInstallTimer: Timer?
+    /// Whether the last look, a minute ago, found nothing going on.
+    private var wasQuiet = false
 
     private override init() {}
+
+    /// "받은 업데이트 자동으로 설치": while an update waits, looks once a minute whether anything
+    /// is going on. Called when an update becomes ready and when the switch changes.
+    func syncAutoInstall() {
+        autoInstallTimer?.invalidate()
+        autoInstallTimer = nil
+        wasQuiet = false
+        guard readyVersion != nil, AppSettings.shared.autoInstallUpdates, !DemoMode.isActive else { return }
+        autoInstallTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+            Task { @MainActor in UpdateChecker.shared.autoInstallIfQuiet() }
+        }
+    }
+
+    /// Installs and relaunches when two looks in a row, a minute apart, found nothing going on,
+    /// so the app doesn't restart under a session that is working or waiting for an answer.
+    private func autoInstallIfQuiet() {
+        guard readyVersion != nil, AppSettings.shared.autoInstallUpdates, AppSettings.shared.checkForUpdates else {
+            syncAutoInstall()
+            return
+        }
+        let quiet = Self.nothingGoingOn
+        defer { wasQuiet = quiet }
+        guard quiet, wasQuiet, !isInstalling else { return }
+        install(automatic: true)
+    }
+
+    /// No agent working or waiting for an answer, the notch closed, and none of the app's
+    /// windows (settings, 새로운 점, a sign-in) up.
+    private static var nothingGoingOn: Bool {
+        let agents = ClaudeCodeManager.shared.hasAnySessionActivity || CodexManager.shared.hasAnySessionActivity
+            || !CodexManager.shared.pendingInputRequests.isEmpty
+        let notchClosed = AirPodsDropdown.shared.notchState == .closed
+        let windowUp = NSApp.windows.contains { $0.isVisible && $0.styleMask.contains(.titled) }
+        debugLog("[Update] automatic install look: agents busy \(agents), notch closed \(notchClosed), window up \(windowUp)")
+        return !agents && notchClosed && !windowUp
+    }
 
     #if DEBUG
     /// `--update-preview`: a made-up newer version with these notes, to look at 변경 사항.
@@ -152,9 +196,15 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
 
     /// "재시작해서 업데이트". If the staged app no longer checks out, the release page instead.
     /// With nothing ready yet (a notification from before a relaunch), 설정 › 정보.
-    func install() {
+    /// `automatic`: from 받은 업데이트 자동으로 설치, with nobody at the button. It then opens
+    /// nothing when it can't go on (no settings window, no release page).
+    func install(automatic: Bool = false) {
         guard let version = readyVersion, let team = UpdateInstaller.runningDeveloperIDTeam() else {
-            ClangNotchAppDelegate.shared?.showSettingsWindow(page: .about)
+            if automatic {
+                debugLog("[Update] automatic install: nothing to do in this copy (no update ready, or not a Developer ID copy)")
+            } else {
+                ClangNotchAppDelegate.shared?.showSettingsWindow(page: .about)
+            }
             return
         }
         guard !isInstalling else { return }
@@ -174,7 +224,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             case .failure(let error):
                 debugLog("[Update] install of \(version) stopped: \(error)")
                 readyVersion = nil
-                NSWorkspace.shared.open(releaseURL)
+                if !automatic { NSWorkspace.shared.open(releaseURL) }
             }
         }
     }
@@ -340,7 +390,9 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             let content = UNMutableNotificationContent()
             content.title = L("ClangNotch \(version)이 나왔습니다", "ClangNotch \(version) is out")
             if ready {
-                content.body = L("받아 두었습니다. 재시작하면 바뀝니다", "Downloaded. Restart to put it in place")
+                content.body = AppSettings.shared.autoInstallUpdates
+                    ? L("받아 두었습니다. 에이전트가 쉴 때 자동으로 설치합니다", "Downloaded. It installs by itself once your agents are idle")
+                    : L("받아 두었습니다. 재시작하면 바뀝니다", "Downloaded. Restart to put it in place")
                 content.categoryIdentifier = Self.readyCategory
             } else {
                 content.body = L("눌러서 받기", "Click to download")

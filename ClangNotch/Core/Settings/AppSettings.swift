@@ -227,6 +227,9 @@ public final class AppSettings: ObservableObject {
 
     /// Daily check of GitHub Releases for a newer version (`UpdateChecker`).
     @AppStorage("checkForUpdates") public var checkForUpdates: Bool = true
+    /// "받은 업데이트 자동으로 설치": a downloaded update is put in place by itself once nothing
+    /// is going on (`UpdateChecker.autoInstallIfQuiet`). On by default (user, 2026-11-16).
+    @AppStorage("autoInstallUpdates") public var autoInstallUpdates: Bool = true
     /// App copy language — settings window, notch and menu bar popover: "system" (default since
     /// 2026-11-13: Korean on a Korean system, English on any other), "ko" or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.

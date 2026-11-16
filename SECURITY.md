@@ -23,7 +23,7 @@ For judging whether something is in scope:
 - **Local receiver.** ClangNotch listens on `127.0.0.1:4318` for the hooks Claude Code and Codex post. It is bound to the loopback address only.
 - **Agent files.** It reads session files under `~/.claude` and `~/.codex`. Approving from the notch adds hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, backing up the originals first.
 - **SSH hosts.** A password you choose to save is kept in the Keychain. The helper that hands it to `ssh` answers only an `ssh` that ClangNotch itself started.
-- **Updates.** A new version is downloaded from this repository's releases over HTTPS and put in place only when you click Restart to Update, and only if its bundle identifier, version, Developer ID signature and notarization check out.
+- **Updates.** A new version is downloaded from this repository's releases over HTTPS and put in place when you click Restart to Update or, with "Install downloaded updates automatically" on (the default), by itself once your agents are idle and the notch is closed. Either way only if its bundle identifier, version, Developer ID signature and notarization check out.
 - **Network.** GitHub for update checks. With their features on: Anthropic for Claude usage (with Claude Code's own sign-in), Cloudflare for the speed test, T world for the SKT shared data balance, and the SSH hosts you add. Clipboard history and key presses stay on this Mac.
 
 ---
