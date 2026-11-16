@@ -17,6 +17,58 @@ final class HookHTTPServer {
         var reply: HookReply? = nil
     }
 
+    /// What a request's header allows. A permission request carries the tool's whole input
+    /// (a Write's file), so the body limit is generous; it only stops a runaway length.
+    enum HeaderVerdict: Equatable {
+        case accept(route: Route, contentLength: Int)
+        case reject
+    }
+    static let maxHeaderBytes = 64 * 1024
+    static let maxBodyBytes = 32 * 1024 * 1024
+
+    /// The hook curls send no Origin and name the loopback in Host. A browser page always sends
+    /// Origin, and a DNS-rebound page names its own host, so both are refused.
+    static func verdict(forHeader header: String) -> HeaderVerdict {
+        let lines = header.split(separator: "\r\n", omittingEmptySubsequences: false)
+        guard let requestLine = lines.first else { return .reject }
+        let parts = requestLine.split(separator: " ")
+        // The curls only POST; a GET is what an <img> or a link on a page would send.
+        guard parts.first == "POST" else { return .reject }
+        let route = parts.count >= 2 ? route(for: String(parts[1])) : .other
+        var contentLength = 0
+        for line in lines.dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let name = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            switch name {
+            case "content-length":
+                guard let length = Int(value), (0...maxBodyBytes).contains(length) else { return .reject }
+                contentLength = length
+            case "origin":
+                return .reject
+            case "host":
+                let hostName = value.split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
+                guard ["127.0.0.1", "localhost"].contains(hostName.lowercased()) else { return .reject }
+            default:
+                break
+            }
+        }
+        return .accept(route: route, contentLength: contentLength)
+    }
+
+    private static func route(for path: String) -> Route {
+        if path.hasSuffix("/claude-hook") {
+            return .claudeHook
+        }
+        if path.hasSuffix("/permission-hook") {
+            return .permissionHook
+        }
+        if path.hasSuffix("/next-step-hook") {
+            return .nextStepHook
+        }
+        return .other
+    }
+
     var onRequest: ((Request) -> Void)?
     var onError: ((String) -> Void)?
 
@@ -69,6 +121,8 @@ private final class HTTPConnectionHandler {
     private var contentLength: Int = 0
     private var route: HookHTTPServer.Route = .other
     private var didFinish = false
+    /// A refusal is on its way out; later bytes on the connection are ignored.
+    private var refused = false
     private var heldReply: HookReply?
 
     init(
@@ -112,10 +166,21 @@ private final class HTTPConnectionHandler {
     }
 
     private func processBuffer() {
+        guard !didFinish, !refused else { return }
         if !headerParsed {
-            guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else { return }
+            guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else {
+                if buffer.count > HookHTTPServer.maxHeaderBytes { refuse(status: 431) }
+                return
+            }
             let headerData = buffer.subdata(in: 0..<headerRange.lowerBound)
-            parseHeaders(headerData)
+            guard case .accept(let route, let contentLength) =
+                    HookHTTPServer.verdict(forHeader: String(decoding: headerData, as: UTF8.self)) else {
+                // A refused permission request gets no decision, so the agent asks in its own prompt.
+                refuse(status: 403)
+                return
+            }
+            self.route = route
+            self.contentLength = contentLength
             buffer.removeSubrange(0..<headerRange.upperBound)
             headerParsed = true
         }
@@ -145,23 +210,10 @@ private final class HTTPConnectionHandler {
         onComplete(self)
     }
 
-    private func parseHeaders(_ data: Data) {
-        let headerString = String(decoding: data, as: UTF8.self)
-        let lines = headerString.split(separator: "\r\n", omittingEmptySubsequences: false)
-        guard let requestLine = lines.first else { return }
-
-        let parts = requestLine.split(separator: " ")
-        if parts.count >= 2 {
-            route = Self.route(for: String(parts[1]))
-        }
-
-        for line in lines.dropFirst() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.lowercased().hasPrefix("content-length:") {
-                let value = trimmed.split(separator: ":").dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespaces)
-                contentLength = Int(value) ?? 0
-            }
-        }
+    private func refuse(status: Int) {
+        refused = true
+        buffer.removeAll()
+        sendResponseAndFinish(status: status)
     }
 
     private func sendResponseAndFinish(status: Int, body: Data? = nil) {
@@ -178,19 +230,6 @@ private final class HTTPConnectionHandler {
             }
             self?.finish()
         })
-    }
-
-    private static func route(for path: String) -> HookHTTPServer.Route {
-        if path.hasSuffix("/claude-hook") {
-            return .claudeHook
-        }
-        if path.hasSuffix("/permission-hook") {
-            return .permissionHook
-        }
-        if path.hasSuffix("/next-step-hook") {
-            return .nextStepHook
-        }
-        return .other
     }
 }
 

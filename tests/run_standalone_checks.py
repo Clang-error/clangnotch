@@ -29,6 +29,7 @@ checks = [
     ("WingFadeChecks", ["ClangNotch/Views/Notch/WingFade.swift"], ""),
     ("IdleLandingFadeChecks", ["ClangNotch/Views/Notch/IdleLandingFade.swift"], ""),
     ("AppVersionChecks", ["ClangNotch/Core/Update/AppVersion.swift"], ""),
+    ("HookHTTPServerChecks", ["ClangNotch/Core/Hooks/HookHTTPServer.swift"], LOG),
 ]
 
 with tempfile.TemporaryDirectory(prefix="clangnotch-standalone-checks-") as folder:
