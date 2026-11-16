@@ -48,6 +48,9 @@ report error 'Scripts: kill the one instance by its pid (pgrep -f "^/Application
 report warning 'repeatForever: fine for a fixed view; on a view whose SF Symbol name changes it redraws at display rate for good (the 30% CPU usage-card bug). Keep the symbol name fixed.' \
     "$(lines "ClangNotch" '\.repeatForever\(')"
 
+report warning 'notchVM.fold(): a dropdown that ends goes through restorePeek() or foldPeek(), which hand the notch to the next notice; a bare fold left notices that never came down (tests/NotchDropdownModelChecks.swift).' \
+    "$(lines "ClangNotch/Views" 'notchVM\.fold\(\)')"
+
 report warning 'print(: app logging goes through debugLog() so release builds stay quiet (a print inside an embedded script string is fine).' \
     "$(lines "ClangNotch" '^[[:space:]]*print\(')"
 

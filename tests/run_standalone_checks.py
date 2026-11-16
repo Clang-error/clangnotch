@@ -33,6 +33,7 @@ checks = [
     ("PermissionTextChecks", ["ClangNotch/Core/Permission/PermissionText.swift"], L),
     ("PermissionRiskChecks", ["ClangNotch/Core/Permission/PermissionRisk.swift",
                               "ClangNotch/Core/Permission/PermissionText.swift"], L),
+    ("NotchDropdownModelChecks", [], ""),
 ]
 
 with tempfile.TemporaryDirectory(prefix="clangnotch-standalone-checks-") as folder:

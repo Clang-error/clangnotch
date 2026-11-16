@@ -70,6 +70,8 @@ struct ClangNotchContentView: View {
     @State private var hatClock = 0
     @StateObject private var permissionCenter = PermissionRequestCenter.shared
     @State private var showPermissionNotice = false
+    /// A `foldPeek` whose clear hasn't run yet; the after-close look leaves the notch to it.
+    @State private var foldingPeek = false
     /// The request on screen, kept so the dropdown still shows it while folding away.
     @State private var shownPermission: PermissionRequestItem?
     /// The request whose 전체 보기 was pressed.
@@ -570,14 +572,16 @@ struct ClangNotchContentView: View {
                 }
             }
             .onChange(of: notchVM.notchState) { _, state in
-                // A request that came while the panel was open drops in once it closes.
-                // Waits out the close animation, like the speed notice, so the two don't fight.
+                // A request that came while the panel was open, or a Done that waited its turn,
+                // drops in once the notch closes. Waits out the close animation, like the speed
+                // notice, so the two don't fight; a fold still under way checks on its own.
                 if state == .closed { sessionDetail = nil }
-                guard state == .closed, !permissionCenter.queue.isEmpty else { return }
+                guard state == .closed else { return }
                 Task {
                     try? await Task.sleep(for: .milliseconds(400))
-                    guard notchVM.notchState == .closed else { return }
-                    handlePermissionQueue(permissionCenter.queue)
+                    guard notchVM.notchState == .closed, !foldingPeek,
+                          !permissionCenter.queue.isEmpty || pendingDoneNotice != nil else { return }
+                    restorePeek()
                 }
             }
     }
@@ -2426,6 +2430,10 @@ struct ClangNotchContentView: View {
                     // it, and it would sit there as an expanded rectangle indefinitely.
                     if notchVM.notchState == .open || notchVM.notchState == .peeking {
                         dismissQuestionNotice()
+                        // Moving away closes the tethering dropdown too; left set, it took the
+                        // re-drop's turn ahead of a Done that was waiting behind it.
+                        tetherNoticeTask?.cancel()
+                        tetherPlaceName = nil
                         notchVM.close()
                         updateInteractiveRegion()
                     }
@@ -2672,7 +2680,7 @@ struct ClangNotchContentView: View {
     private func dismissQuestionNotice() {
         showQuestionNotice = false
         questionExpanded = false
-        if notchVM.notchState == .peeking {
+        if notchVM.notchState != .open {
             restorePeek()
         }
     }
@@ -2853,7 +2861,8 @@ struct ClangNotchContentView: View {
             }
             showPermissionNotice = false
             shownPermission = nil
-            if notchVM.notchState == .peeking { restorePeek() }
+            // Closed too: a question that came behind it has no other way down.
+            if notchVM.notchState != .open { restorePeek() }
         }
     }
 
@@ -2865,11 +2874,20 @@ struct ClangNotchContentView: View {
 
     /// Folds the dropdown with its content still in it and clears that content once it's
     /// tucked away; clearing first left the dropdown empty for the whole close.
+    /// The clear is followed by `restorePeek()`: a notice that came during the fold (or one
+    /// the fold's notice was hiding) would otherwise never come down, and a dropdown re-dropped
+    /// for the notice being cleared would be left empty (both found by a model of these
+    /// handlers, 2026-11-17).
     private func foldPeek(then clear: @escaping () -> Void) {
+        foldingPeek = true
         notchVM.fold()
         Task {
             try? await Task.sleep(for: .seconds(dropdownFoldDuration))
-            await MainActor.run { clear() }
+            await MainActor.run {
+                clear()
+                foldingPeek = false
+                restorePeek()
+            }
         }
     }
 
@@ -2877,7 +2895,8 @@ struct ClangNotchContentView: View {
     /// or closes it. Every notice that goes away comes through here, so none of them can
     /// close the notch out from under another (or leave it stuck open, empty).
     private func restorePeek() {
-        if showPermissionNotice, !permissionCenter.queue.isEmpty {
+        // The queue, not showPermissionNotice: a request that came while the panel was open was never shown.
+        if !permissionCenter.queue.isEmpty {
             handlePermissionQueue(permissionCenter.queue)
         } else if showQuestionNotice, let request = claudeInputRequest {
             triggerClaudeInputNotice(request)
@@ -2954,7 +2973,7 @@ struct ClangNotchContentView: View {
             return
         }
         doneNotice = nil
-        if notchVM.notchState == .peeking { restorePeek() }
+        if notchVM.notchState != .open { restorePeek() }
     }
 
     /// "세션 이름 · 폴더", or just the folder while the session has no name.
