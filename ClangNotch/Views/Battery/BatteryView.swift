@@ -16,7 +16,8 @@ struct BatteryView: View {
                 } else {
                     ForEach(manager.devices) { device in
                         BatteryRow(device: device, pinned: headerIDs.contains(device.id),
-                                   closedRank: closedIDs.firstIndex(of: device.id))
+                                   closedRank: closedIDs.firstIndex(of: device.id),
+                                   energyMode: device.id == "mac" ? manager.macEnergyMode : nil)
                             .contextMenu {
                                 Button(headerIDs.contains(device.id) ? L("헤더에서 빼기", "Remove from header") : L("헤더에 표시", "Show in header")) {
                                     toggleHeader(device.id)
@@ -148,6 +149,8 @@ private struct BatteryRow: View {
     let pinned: Bool
     /// 닫힌 노치 경고 순위(0 = 1순위). 지정 안 했으면 nil.
     let closedRank: Int?
+    /// The Mac's row only: 자동, 저전력 or 고성능 after its name.
+    var energyMode: MacEnergyMode? = nil
 
     private let good = Color(red: 0.3, green: 0.85, blue: 0.55)
     private let warn = Color(red: 1.0, green: 0.78, blue: 0.3)
@@ -236,6 +239,23 @@ private struct BatteryRow: View {
                     .font(.system(size: 8))
                     .foregroundColor(color)
                     .transition(.scale(scale: 0.2).combined(with: .opacity))
+            }
+            if let energyMode {
+                // The same in both passes (on the track and on the fill), so its own dark capsule
+                // and colours, not the passes' ink.
+                HStack(spacing: 3) {
+                    Image(systemName: energyMode.symbol)
+                        .font(.system(size: 7.5, weight: .semibold))
+                    Text(energyMode.label)
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundColor(energyMode == .lowPower ? Color(red: 1.0, green: 0.8, blue: 0.2)
+                                 : energyMode == .highPower ? Color(red: 1.0, green: 0.55, blue: 0.2)
+                                 : Color(white: 0.8))
+                .padding(.horizontal, 6)
+                .frame(height: 14)
+                .background(Capsule().fill(Color.black.opacity(0.55)))
+                .fixedSize()
             }
             if pinned {
                 Image(systemName: "pin.fill")

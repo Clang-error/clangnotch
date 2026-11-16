@@ -33,6 +33,10 @@ final class BatteryManager: ObservableObject {
     static let shared = BatteryManager()
 
     @Published private(set) var devices: [BatteryDevice] = []
+    /// The Mac's energy mode, for its 기기 줄. Read only while the Battery tab shows: when it opens,
+    /// and on a power change after that (a new process each time, so not on every tick).
+    @Published private(set) var macEnergyMode: MacEnergyMode?
+    private var powerStateObserver: NSObjectProtocol?
     private var lastUpdated: Date?
     private var isRefreshing = false
 
@@ -131,6 +135,8 @@ final class BatteryManager: ObservableObject {
                 // 수집하는 사이 꺼졌으면 버린다.
                 if self.isMonitoring { self.mergeFast(found) }
                 self.isFastRefreshing = false
+                // The charger going in or out switches to that source's own mode.
+                self.refreshEnergyMode()
             }
         }
     }
@@ -175,7 +181,28 @@ final class BatteryManager: ObservableObject {
     private var tabVisible = false
 
     /// Battery 탭이 보일 때 — 촘촘히 갱신.
-    func start() { tabVisible = true; updatePolling() }
+    func start() {
+        tabVisible = true
+        updatePolling()
+        refreshEnergyMode()
+        // Low Power Mode switched on or off elsewhere while the tab is up.
+        if powerStateObserver == nil {
+            powerStateObserver = NotificationCenter.default.addObserver(
+                forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { _ in
+                    Task { @MainActor in BatteryManager.shared.refreshEnergyMode() }
+                }
+        }
+    }
+
+    private func refreshEnergyMode() {
+        guard isMonitoring, tabVisible, !DemoMode.isActive else { return }
+        Task.detached(priority: .utility) {
+            let mode = MacEnergyMode.read()
+            await MainActor.run {
+                if self.macEnergyMode != mode { self.macEnergyMode = mode }
+            }
+        }
+    }
 
     /// 탭이 닫혀도 감시는 멈추지 않고 주기만 늘린다.
     func stop() { tabVisible = false; updatePolling() }
