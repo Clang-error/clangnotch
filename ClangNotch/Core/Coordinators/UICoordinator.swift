@@ -106,9 +106,17 @@ public final class UICoordinator: ObservableObject {
                 self?.handleScreenChange()
             }
         }
+        // Another display picked in 설정: the same move, at once.
+        NotificationCenter.default.addObserver(forName: .notchDisplayChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleScreenChange()
+                NotchAppearance.shared.refreshWallpaper()
+            }
+        }
     }
 
     private func handleScreenChange() {
+        NotchDetector.refreshChosenDisplay()
         if notchPanel == nil {
             setupNotchPanel()
         } else {

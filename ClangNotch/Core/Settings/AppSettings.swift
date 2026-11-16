@@ -172,6 +172,9 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.
     @AppStorage("notchOpenDelay") public var notchOpenDelay: Double = 0.09
+    /// 설정 › 노치 › "표시할 디스플레이": "main" (the primary display) or a display's UUID
+    /// (`NotchDetector`, which reads the key itself).
+    @AppStorage("notchDisplay") public var notchDisplay: String = "main"
     /// Keep the notch over full-screen apps instead of hiding it there (Mission Control still hides it).
     @AppStorage("keepNotchInFullScreen") public var keepNotchInFullScreen: Bool = false
     /// 노치 색: "wallpaper", "auto", "light" or "dark" (`NotchAppearanceMode`).

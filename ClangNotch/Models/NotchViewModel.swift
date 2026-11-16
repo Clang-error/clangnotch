@@ -46,9 +46,14 @@ final class NotchViewModel: ObservableObject {
                 self?.recomputeNotchSize()
             }
         }
+        // Another display picked in 설정 has its own notch, or none.
+        NotificationCenter.default.addObserver(forName: .notchDisplayChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.recomputeNotchSize() }
+        }
     }
 
     private func recomputeNotchSize() {
+        NotchDetector.refreshChosenDisplay()
         let size = getClosedNotchSize()
         closedNotchSize = size
         if notchState == .closed {

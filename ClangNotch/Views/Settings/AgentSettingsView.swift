@@ -61,7 +61,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .about:    return ["버전", "업데이트", "version", "updates"]
         case .general:  return ["언어", "로그인", "메뉴 막대", "배터리 절약", "language", "login", "menu bar", "battery saver"]
         case .notch:    return ["노치 색", "라이트", "다크", "배경", "탭", "순서", "열기", "햅틱", "전체 화면", "표시", "메뉴바",
-                                "notch color", "light", "dark", "wallpaper", "tabs", "order", "opening", "haptic", "full screen", "visibility"]
+                                "notch color", "light", "dark", "wallpaper", "tabs", "order", "opening", "haptic", "full screen", "visibility",
+                                "디스플레이", "모니터", "화면", "display", "monitor"]
         case .features: return ["클립보드", "볼륨", "믹서", "sidecar", "배터리", "속도", "키보드", "밝기",
                                 "노치 탭", "조절창", "에어팟", "드롭다운", "헤드셋", "맥 배터리",
                                 "clipboard", "volume", "mixer", "battery", "speed", "keyboard", "brightness",
@@ -839,6 +840,7 @@ private struct OfferSheet: View {
 /// The notch itself: which tabs exist, in what order, and how it opens.
 struct NotchSettingsTab: View {
     @ObservedObject var settings: AppSettings
+    @State private var displays = NotchDetector.displays
 
     /// A dropdown's time: a bordered box to type the seconds in, and − / + beside it. Typed
     /// values outside 2…60 are brought back into range.
@@ -872,6 +874,30 @@ struct NotchSettingsTab: View {
                 }
             } header: {
                 Text(L("노치 색", "Notch color"))
+            }
+
+            Section {
+                Picker(L("표시할 디스플레이", "Display"), selection: $settings.notchDisplay) {
+                    Text(L("주 디스플레이", "Main display")).tag(NotchDetector.mainDisplay)
+                    // The main display is the row above; by name only once it was picked by name.
+                    ForEach(displays.filter { !$0.isMain || $0.uuid == settings.notchDisplay }, id: \.uuid) { display in
+                        Text(display.name).tag(display.uuid)
+                    }
+                    // The picked one unplugged: it stays picked, and the notch is on the main display.
+                    if settings.notchDisplay != NotchDetector.mainDisplay,
+                       !displays.contains(where: { $0.uuid == settings.notchDisplay }) {
+                        Text(L("연결 안 된 디스플레이", "Disconnected display")).tag(settings.notchDisplay)
+                    }
+                }
+                .onChange(of: settings.notchDisplay) { _, _ in NotchDetector.displayChoiceChanged() }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+                    displays = NotchDetector.displays
+                }
+                SettingToggle(L("전체 화면에서도 표시", "Show in full screen"),
+                              L("전체 화면 앱 위에도 노치 유지", "Keeps the notch over full-screen apps"),
+                              isOn: $settings.keepNotchInFullScreen)
+            } header: {
+                Text(L("표시", "Visibility"))
             }
 
             Section {
@@ -948,14 +974,6 @@ struct NotchSettingsTab: View {
                     .font(.caption).foregroundColor(.secondary)
             } header: {
                 Text(L("드롭다운 머무는 시간", "How long dropdowns stay"))
-            }
-
-            Section {
-                SettingToggle(L("전체 화면에서도 표시", "Show in full screen"),
-                              L("전체 화면 앱 위에도 노치 유지", "Keeps the notch over full-screen apps"),
-                              isOn: $settings.keepNotchInFullScreen)
-            } header: {
-                Text(L("표시", "Visibility"))
             }
         }
         .formStyle(.grouped)
