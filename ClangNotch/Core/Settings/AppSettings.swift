@@ -35,7 +35,7 @@ public final class AppSettings: ObservableObject {
     // Keyboard lock (CGEventTap-based system-wide keyboard block, needs Accessibility permission)
     @AppStorage("enableKeyboardLock") public var enableKeyboardLock: Bool = false
 
-    // "볼륨·밝기 표시 바꾸기": replace macOS volume/brightness banners with our 조절창 and
+    // "볼륨, 밝기 표시 바꾸기": replace macOS volume/brightness banners with our 조절창 and
     // center the other system banners (SystemBannerCenterer + SystemControlOSD, needs Accessibility)
     @AppStorage("centerSystemBanners") public var centerSystemBanners: Bool = true
     // "밝기 키는 다른 앱에 넘기기": with the HUD switch on, brightness keys still go on to macOS and
@@ -155,7 +155,7 @@ public final class AppSettings: ObservableObject {
     // 설정 › 실험 기능 › "입력 효과음": a sound for every key and mouse button that goes down
     // (`TypingSounds`).
     @AppStorage("experimentalTypingSounds") public var experimentalTypingSounds: Bool = false
-    // Under it, "헤드폰·이어폰일 때만": the sounds only while the sound output is Bluetooth or
+    // Under it, "헤드폰, 이어폰일 때만": the sounds only while the sound output is Bluetooth or
     // the headphone jack, none from speakers or a monitor. An output that doesn't tell what it
     // is (USB) plays when its UID is among the allowed ones, newline-separated.
     @AppStorage("experimentalTypingSoundsHeadphonesOnly") public var experimentalTypingSoundsHeadphonesOnly: Bool = false

@@ -558,7 +558,7 @@ struct AppGeneralSettingsTab: View {
                         LoginItem.setEnabled(newValue)
                     }
                 SettingToggle(L("메뉴 막대 아이콘 표시", "Show menu bar icon"),
-                              L("세션 수·키보드 잠금·설정을 메뉴 막대에서 열기", "Sessions, keyboard lock and settings from the menu bar"),
+                              L("세션 수, 키보드 잠금, 설정을 메뉴 막대에서 열기", "Sessions, keyboard lock and settings from the menu bar"),
                               isOn: $settings.showMenuBarItem)
             } header: {
                 Text(L("시작", "Startup"))
@@ -674,7 +674,7 @@ struct AboutSettingsTab: View {
                 if updates.availableVersion == nil && updates.readyVersion == nil {
                     HStack {
                         Text(updates.isChecking ? L("확인 중…", "Checking…")
-                             : updates.checkFailed ? L("확인하지 못함 · 인터넷 연결을 확인하세요", "Couldn't check · check your connection")
+                             : updates.checkFailed ? L("확인하지 못함. 인터넷 연결을 확인하세요", "Couldn't check. Check your connection")
                              : updates.upToDate ? L("최신 버전입니다", "You're up to date")
                              : L("새 버전 확인", "Check for a new version"))
                         Spacer()
@@ -724,7 +724,7 @@ struct AboutSettingsTab: View {
                                     updates.clearOfferInstall()
                                     offer = found
                                 case .none, .failed:
-                                    stableMessage = L("확인하지 못함 · 인터넷 연결을 확인하세요", "Couldn't check · check your connection")
+                                    stableMessage = L("확인하지 못함. 인터넷 연결을 확인하세요", "Couldn't check. Check your connection")
                                 }
                             }
                         }
@@ -963,7 +963,7 @@ struct NotchSettingsTab: View {
                 foldRow(L("완료", "Done"), $settings.foldSecondsDone)
                 foldRow(L("재생 중", "Now playing"), $settings.foldSecondsMedia)
                 foldRow(L("에어팟", "AirPods"), $settings.foldSecondsAirPods)
-                foldRow(L("에어팟 맥스·헤드셋, 뚜껑 닫힌 채 낀 에어팟", "AirPods Max, headsets, buds worn with the lid shut"),
+                foldRow(L("에어팟 맥스, 헤드셋, 뚜껑 닫힌 채 낀 에어팟", "AirPods Max, headsets, buds worn with the lid shut"),
                         $settings.foldSecondsHeadphones)
                 foldRow(L("맥 배터리 부족", "Mac low battery"), $settings.foldSecondsMac)
                 foldRow(L("테더링", "Tethering"), $settings.foldSecondsTether)
@@ -1052,7 +1052,7 @@ struct FeaturesSettingsTab: View {
                         if !on { SidecarManager.shared.stop() }
                     }
                 SettingToggle(L("배터리 잔량", "Battery levels"),
-                              L("Mac·블루투스 기기·iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
+                              L("Mac, 블루투스 기기, iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
                               isOn: $settings.enableBattery)
                     .onChange(of: settings.enableBattery) { _, on in
                         if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
@@ -1074,8 +1074,8 @@ struct FeaturesSettingsTab: View {
 
             // 조절창: the volume and brightness HUD and what goes with it.
             Section {
-                SettingToggle(L("볼륨·밝기 표시 바꾸기", "Replace volume and brightness HUD"),
-                              L("macOS 볼륨·밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운·제스처로 바꾼 소리는 macOS 표시도 함께 뜸",
+                SettingToggle(L("볼륨, 밝기 표시 바꾸기", "Replace volume and brightness HUD"),
+                              L("macOS 볼륨, 밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운, 제스처로 바꾼 소리는 macOS 표시도 함께 뜸",
                                 "A HUD under the menu bar instead of macOS's volume and brightness display. Volume changed on AirPods or AirPods Max (crown, gestures) still shows macOS's display too") + needsAccessibility,
                               isOn: $settings.centerSystemBanners)
                     .onChange(of: settings.centerSystemBanners) { _, on in
@@ -1092,7 +1092,7 @@ struct FeaturesSettingsTab: View {
                     .pickerStyle(.segmented)
                     .padding(.leading, 20)
                     SettingToggle(L("밝기 키는 다른 앱에 넘기기", "Leave brightness keys to other apps"),
-                                  L("MonitorControl·Lunar·BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기. 외부 모니터가 연결돼 있을 때만 넘김",
+                                  L("MonitorControl, Lunar, BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기. 외부 모니터가 연결돼 있을 때만 넘김",
                                     "On when MonitorControl, Lunar or BetterDisplay sets external displays too. Only while an external display is connected"),
                                   isOn: $settings.passBrightnessKeys)
                         .padding(.leading, 20)
@@ -1105,7 +1105,7 @@ struct FeaturesSettingsTab: View {
                 }
                 // Its own switch: it keeps the volume key tap up even with the HUD switch off.
                 SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
-                              L("HDMI·DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생",
+                              L("HDMI, DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생",
                                 "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter") + needsAccessibility,
                               isOn: $settings.enableSoftwareVolume)
                     .onChange(of: settings.enableSoftwareVolume) { _, on in
@@ -1135,7 +1135,7 @@ struct FeaturesSettingsTab: View {
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
                 }
-                SettingToggle(L("에어팟·헤드셋 배터리 부족 시 드롭다운", "Dropdown when AirPods or a headset run low"),
+                SettingToggle(L("에어팟, 헤드셋 배터리 부족 시 드롭다운", "Dropdown when AirPods or a headset run low"),
                               L("에어팟, 에어팟 맥스, 헤드셋이 20%, 10%가 되면 한 번씩. 30% 이상으로 충전될 때까지 다시 안 뜸",
                                 "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged back to 30%"),
                               isOn: $settings.airPodsLowBatteryDropdown)
@@ -1165,7 +1165,7 @@ struct FeaturesSettingsTab: View {
             }
             Section {
                 SettingToggle(L("지금 재생 표시", "Show what's playing"),
-                              L("음악·영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파. 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만. MacOS의 '지금 재생'을 읽음",
+                              L("음악, 영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파. 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만. MacOS의 '지금 재생'을 읽음",
                                 "While music or a video plays, the closed notch shows its artwork on the left and bars on the right. While the agents work or you tether, just small bars at the right edge. Reads macOS's Now Playing"),
                               isOn: $settings.enableNowPlaying)
                     .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
@@ -1206,7 +1206,7 @@ struct FeaturesSettingsTab: View {
     }
 }
 
-/// 권한 안내 줄: 키보드 잠금, 볼륨·밝기 표시 바꾸기 and 모니터 소리 줄이기 do nothing without
+/// 권한 안내 줄: 키보드 잠금, 볼륨, 밝기 표시 바꾸기 and 모니터 소리 줄이기 do nothing without
 /// Accessibility. After a signature change (a development build swapped for a release) the old
 /// entry can still show as on in System Settings without counting, hence the remove-and-add hint.
 private struct AccessibilityMissingRow: View {
@@ -1217,7 +1217,7 @@ private struct AccessibilityMissingRow: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text(L("손쉬운 사용 권한이 없어 아래 키보드 잠금·볼륨·밝기 표시 바꾸기·모니터 소리 줄이기가 동작하지 않습니다",
+                Text(L("손쉬운 사용 권한이 없어 아래 키보드 잠금과 볼륨, 밝기 표시 바꾸기와 모니터 소리 줄이기가 동작하지 않습니다",
                        "Without Accessibility, Keyboard lock, the volume and brightness HUD and monitor volume below do nothing"))
                 Text(L("이미 켜져 있는데도 이 줄이 보이면 목록에서 ClangNotch를 −로 지우고 다시 추가",
                        "If ClangNotch is already on there, remove it with − and add it again"))
@@ -1416,7 +1416,7 @@ struct AgentsSettingsTab: View {
                 Toggle(L("권한 대기 표시 (날개의 Needs OK)", "Show permission indicator (Needs OK on the wing)"), isOn: $settings.showPermissionIndicator)
                     .disabled(!claudeEnabled.wrappedValue && !codexEnabled.wrappedValue)
             } header: {
-                Text(L("공통 · Claude Code · Codex", "Shared · Claude Code · Codex"))
+                Text(L("공통, Claude Code, Codex", "Shared, Claude Code, Codex"))
             }
 
             Section {
@@ -1441,9 +1441,9 @@ struct AgentsSettingsTab: View {
                     RemoteHostsEditor(
                         hosts: $settings.remoteClaudeHosts, statuses: remote.statuses,
                         details: [
-                            L("리눅스, 맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함. 원래 파일은 settings.json.clangnotch-bak으로 남음. 작업 중·질문·권한 대기·완료를 모두 표시함. 선택지가 있는 질문은 노치에서 바로 답할 수 있음",
+                            L("리눅스, 맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함. 원래 파일은 settings.json.clangnotch-bak으로 남음. 작업 중, 질문, 권한 대기, 완료를 모두 표시함. 선택지가 있는 질문은 노치에서 바로 답할 수 있음",
                               "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json. The original is kept as settings.json.clangnotch-bak. Working, questions, approvals and Done all show, and a question with options can be answered from the notch"),
-                            L("윈도우 컴퓨터(또는 curl·jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴. 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음",
+                            L("윈도우 컴퓨터(또는 curl, jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴. 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음",
                               "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes. A question or an approval shows only as waiting, without its text"),
                             L("어느 환경인지는 연결할 때 확인해 상태에 표시함",
                               "The kind of computer is checked when connecting and shown in the state"),
@@ -1460,7 +1460,7 @@ struct AgentsSettingsTab: View {
             Section {
                 Toggle(L("사용", "Enabled"), isOn: codexEnabled)
                 SettingToggle(L("사용량 한도 표시", "Show usage limits"),
-                              L("Codex의 5시간·주간 한도를 사용량 카드에 표시. 세션 기록과 이 맥의 Codex에서 읽으며 따로 로그인 없음",
+                              L("Codex의 5시간, 주간 한도를 사용량 카드에 표시. 세션 기록과 이 맥의 Codex에서 읽으며 따로 로그인 없음",
                                 "Shows Codex's 5-hour and weekly limits, read from its session logs and the Codex on this Mac. No extra sign-in"),
                               isOn: $settings.showCodexUsage)
                     .disabled(!codexEnabled.wrappedValue)
@@ -1481,7 +1481,7 @@ struct AgentsSettingsTab: View {
                         details: [
                             L("리눅스, 맥, 윈도우 컴퓨터. 그 컴퓨터에는 아무것도 설치하거나 바꾸지 않고 Codex가 남기는 세션 기록만 읽어 옴",
                               "Linux, macOS and Windows. Installs and changes nothing there, only reads the session logs Codex writes"),
-                            L("작업 중·질문·완료가 표시됨. 권한 요청 알림과 노치에서 답하기는 안 됨",
+                            L("작업 중, 질문, 완료가 표시됨. 권한 요청 알림과 노치에서 답하기는 안 됨",
                               "Working, questions and Done show. No approval requests or answering from the notch"),
                             L("어느 환경인지는 연결할 때 확인함",
                               "The kind of computer is checked when connecting"),
@@ -1552,7 +1552,7 @@ struct ExperimentalSettingsTab: View {
                     TypingSoundShortcutRow(settings: settings)
                 }
                 if settings.experimentalTypingSounds {
-                    Toggle(L("헤드폰·이어폰일 때만", "Only on headphones"),
+                    Toggle(L("헤드폰, 이어폰일 때만", "Only on headphones"),
                            isOn: $settings.experimentalTypingSoundsHeadphonesOnly)
                         .onChange(of: settings.experimentalTypingSoundsHeadphonesOnly) { _, _ in typingSounds.syncWithSettings() }
                     if let output = typingSounds.askedOutput {

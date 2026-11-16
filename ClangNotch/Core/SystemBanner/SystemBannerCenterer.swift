@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// "볼륨·밝기 표시 바꾸기": takes over macOS system banners the moment they appear.
+/// "볼륨, 밝기 표시 바꾸기": takes over macOS system banners the moment they appear.
 /// Volume and brightness banners go off screen and ClangNotch's own 조절창
 /// (`SystemControlOSD`) shows instead; every other banner (AirPods, …) moves from the
 /// top-right corner to the horizontal center of its screen, just below the menu bar.

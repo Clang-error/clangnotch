@@ -1,6 +1,6 @@
 import CoreAudio
 
-/// What the sound output is, for 입력 효과음's "헤드폰·이어폰일 때만".
+/// What the sound output is, for 입력 효과음's "헤드폰, 이어폰일 때만".
 enum TypingSoundOutputKind {
     /// Bluetooth, or the Mac's headphone jack.
     case headphones

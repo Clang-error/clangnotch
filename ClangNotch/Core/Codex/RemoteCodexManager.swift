@@ -94,7 +94,7 @@ final class RemoteCodexManager: ObservableObject {
         case .connected(let skew):
             // A clock that far off would hide every session: the notch only shows recent work.
             statuses[host] = skew == 0 ? L("연결됨", "Connected")
-                : L("연결됨 · 호스트 시계 \(Int(abs(skew)))초 차이 보정", "Connected · host clock \(Int(abs(skew)))s off, corrected")
+                : L("연결됨, 호스트 시계 \(Int(abs(skew)))초 차이 보정", "Connected, host clock \(Int(abs(skew)))s off, corrected")
         case .agentRunning(let running):
             if running { hostsWithCodex.insert(host) } else { hostsWithCodex.remove(host) }
         case .sessionFile:

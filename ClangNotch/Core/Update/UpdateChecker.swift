@@ -338,7 +338,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             let content = UNMutableNotificationContent()
             content.title = L("ClangNotch \(version)이 나왔습니다", "ClangNotch \(version) is out")
             if ready {
-                content.body = L("받아 두었습니다 · 재시작하면 바뀝니다", "Downloaded · restart to put it in place")
+                content.body = L("받아 두었습니다. 재시작하면 바뀝니다", "Downloaded. Restart to put it in place")
                 content.categoryIdentifier = Self.readyCategory
             } else {
                 content.body = L("눌러서 받기", "Click to download")

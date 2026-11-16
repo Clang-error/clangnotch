@@ -12,7 +12,7 @@ import os
 /// user's choosing turns the switch off and on (`TypingSoundShortcut`), and the 복사 방울
 /// says which.
 ///
-/// With "헤드폰·이어폰일 때만" on, the keys are listened to only while the sound goes to
+/// With "헤드폰, 이어폰일 때만" on, the keys are listened to only while the sound goes to
 /// headphones (`TypingSoundOutputKind`), so nothing comes out of speakers or a monitor. Nor
 /// are they while the output is muted or turned all the way down: nothing would be heard, and
 /// the output would still be kept up for it.
@@ -23,7 +23,7 @@ final class TypingSounds: ObservableObject {
     /// `paused`: not listening, for the output it is on or because that is silent.
     enum Status { case off, on, noPack, noPermission, paused }
     @Published private(set) var status = Status.off
-    /// The sound output while it is one "헤드폰·이어폰일 때만" can't tell the kind of, a USB
+    /// The sound output while it is one "헤드폰, 이어폰일 때만" can't tell the kind of, a USB
     /// device say: 설정 then shows a switch to let it in.
     @Published private(set) var askedOutput: (uid: String, name: String)?
 
@@ -95,7 +95,7 @@ final class TypingSounds: ObservableObject {
     }
 
     /// Starts listening to the keys, or stops where nothing is to be heard: the output is
-    /// silent, or with "헤드폰·이어폰일 때만" on isn't headphones. The tap goes, and the output
+    /// silent, or with "헤드폰, 이어폰일 때만" on isn't headphones. The tap goes, and the output
     /// with it, so a sound in the air ends there.
     private func listen() {
         let headphonesOnly = AppSettings.shared.experimentalTypingSoundsHeadphonesOnly
@@ -186,7 +186,7 @@ final class TypingSounds: ObservableObject {
                 TypingSoundOutputKind(transport: AudioMixerManager.transportType(device), jack: jack))
     }
 
-    /// Whether the user let the output `uid` in under "헤드폰·이어폰일 때만".
+    /// Whether the user let the output `uid` in under "헤드폰, 이어폰일 때만".
     func allows(_ uid: String) -> Bool {
         AppSettings.shared.experimentalTypingSoundsAllowedOutputs.split(separator: "\n").contains { $0 == uid }
     }
