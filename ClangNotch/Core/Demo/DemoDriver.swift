@@ -1,6 +1,6 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|ssh|tools|many|airpods|airpodslid|airpodslow|media|osd|lowbattery|tether|macbattery|idle] [--demo-art <file>]`:
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|ssh|tools|many|airpods|airpodslid|airpodslow|media|osd|lowbattery|tether|macbattery|idle] [--demo-levels FILE] [--demo-art <file>]`:
 /// the notch runs on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard,
 /// volume, battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device, copied text or account balance from this Mac can end up in a video.
@@ -28,6 +28,20 @@ enum DemoMode {
         guard let index = args.firstIndex(of: "--demo-art"), index + 1 < args.count else { return nil }
         return NSImage(contentsOfFile: args[index + 1])
     }()
+
+    /// `--demo-levels <file>`: the media scene's 음파 막대 follow these levels, taken from a real
+    /// piece of music with the app's own analyzer (`docs/demo-pipeline/levels_main.swift`): six
+    /// Float32 a row, low to high, a row every `levelsPeriod`. Without it the bars bounce by
+    /// themselves, which reads as random next to music (user, 2026-11-16).
+    static let levels: [[Float]] = {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "--demo-levels"), index + 1 < args.count,
+              let data = FileManager.default.contents(atPath: args[index + 1]) else { return [] }
+        let floats = data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+        return stride(from: 0, to: floats.count - 5, by: 6).map { Array(floats[$0..<$0 + 6]) }
+    }()
+    /// The analyzer hands out levels every fifth 512-frame buffer at 48 kHz.
+    static let levelsPeriod = 2560.0 / 48_000
 }
 
 /// Plays one fixed 56-second script on a loop, so a recording can be timed against it.
@@ -177,21 +191,42 @@ final class DemoDriver {
                 playing.rate = 1
                 return playing
             }
+            // `--demo-levels`: the bars follow the file from `offset` seconds in, until the next call.
+            var feeder: Task<Void, Never>?
+            func feedLevels(from offset: TimeInterval?) {
+                feeder?.cancel()
+                let rows = DemoMode.levels
+                guard let offset, !rows.isEmpty else {
+                    NowPlayingLevels.shared.bands.send(nil)
+                    return
+                }
+                let began = Date()
+                feeder = Task {
+                    while !Task.isCancelled {
+                        let row = Int((Date().timeIntervalSince(began) + offset) / DemoMode.levelsPeriod)
+                        NowPlayingLevels.shared.bands.send(rows[row % rows.count])
+                        try? await Task.sleep(for: .seconds(DemoMode.levelsPeriod))
+                    }
+                }
+            }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 let first = track("Low Tide", "Marlow Keys", hue: 0.57, length: 214, at: 41)
                 monitor.demoApply(first)
                 card.demoShowMedia(first)
+                feedLevels(from: 8.3)
                 try? await Task.sleep(for: .seconds(5))
                 card.demoFold()
                 try? await Task.sleep(for: .seconds(6))
                 let second = track("Paper Lanterns", "June Okada", hue: 0.07, length: 187, at: 0)
                 monitor.demoApply(second)
                 card.demoShowMedia(second)
+                feedLevels(from: 16.6)
                 try? await Task.sleep(for: .seconds(13))
                 card.demoFold()
                 try? await Task.sleep(for: .seconds(8))
                 monitor.demoApply(nil)
+                feedLevels(from: nil)
                 try? await Task.sleep(for: .seconds(2))
             }
             return
