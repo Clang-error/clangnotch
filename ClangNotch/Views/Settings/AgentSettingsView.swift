@@ -396,7 +396,7 @@ private struct SettingsPageIcon: View {
     }
 }
 
-/// 설정 › 노치 › 노치 색: four picture tiles, each a small notch over a desktop.
+/// 설정 -> 노치 › 노치 색: four picture tiles, each a small notch over a desktop.
 private struct NotchAppearancePicker: View {
     @Binding var selection: String
 
@@ -1056,8 +1056,8 @@ struct FeaturesSettingsTab: View {
                     }
                 if settings.enableClipboardHistory {
                     SettingToggle(L("복사하면 드롭다운으로 알리기", "Show a dropdown when you copy"),
-                                  L("다른 앱에서 복사하면 닫힌 노치에서 작은 원이 떨어져 나와 체크를 보여 주고 \(settings.foldSecondsCopy)초 뒤 다시 들어감(시간은 설정 › 노치).",
-                                    "When you copy in another app, a small orb comes off the closed notch, shows a check and goes back in after \(settings.foldSecondsCopy) s (time in Settings › Notch)."),
+                                  L("다른 앱에서 복사하면 닫힌 노치에서 작은 원이 떨어져 나와 체크를 보여 주고 \(settings.foldSecondsCopy)초 뒤 다시 들어감(시간은 설정 -> 노치).",
+                                    "When you copy in another app, a small orb comes off the closed notch, shows a check and goes back in after \(settings.foldSecondsCopy) s (time in Settings -> Notch)."),
                                   isOn: $settings.clipboardOrb)
                         .padding(.leading, 20)
                     if settings.clipboardOrb {
@@ -1167,8 +1167,8 @@ struct FeaturesSettingsTab: View {
                 // Only means something with the card on: shown under it, indented.
                 if settings.enableAirPodsDropdown {
                     SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods dropdown by itself"),
-                                  L("\(settings.foldSecondsAirPods)초 뒤 저절로 접음. (에어팟 맥스, 블루투스 헤드셋, 뚜껑 닫힌 채 낀 에어팟은 \(settings.foldSecondsHeadphones)초 뒤 접힘). (시간은 설정 › 노치)",
-                                    "Folds after \(settings.foldSecondsAirPods) seconds. (AirPods Max, Bluetooth headsets and buds worn with the lid shut fold after \(settings.foldSecondsHeadphones) seconds). (Times in Settings › Notch)"),
+                                  L("\(settings.foldSecondsAirPods)초 뒤 저절로 접음. (에어팟 맥스, 블루투스 헤드셋, 뚜껑 닫힌 채 낀 에어팟은 \(settings.foldSecondsHeadphones)초 뒤 접힘). (시간은 설정 -> 노치)",
+                                    "Folds after \(settings.foldSecondsAirPods) seconds. (AirPods Max, Bluetooth headsets and buds worn with the lid shut fold after \(settings.foldSecondsHeadphones) seconds). (Times in Settings -> Notch)"),
                                   isOn: $settings.airPodsDropdownAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -1192,8 +1192,8 @@ struct FeaturesSettingsTab: View {
                     .disabled(!settings.enableBattery)
                 if settings.macLowBatteryDropdown {
                     SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's dropdown by itself"),
-                                  L("\(settings.foldSecondsMac)초 뒤 저절로 접음. (시간은 설정 › 노치)",
-                                    "Folds after \(settings.foldSecondsMac) seconds. (Time in Settings › Notch)"),
+                                  L("\(settings.foldSecondsMac)초 뒤 저절로 접음. (시간은 설정 -> 노치)",
+                                    "Folds after \(settings.foldSecondsMac) seconds. (Time in Settings -> Notch)"),
                                   isOn: $settings.macLowBatteryAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -1209,8 +1209,8 @@ struct FeaturesSettingsTab: View {
                     .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
                 if settings.enableNowPlaying {
                     SettingToggle(L("재생 시작 시 드롭다운", "Dropdown when something starts playing"),
-                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 플레이어 드롭다운. \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 › 노치). 같은 앱에서 곡을 넘기면 매번. 그 앱이 맨 앞이면 드롭다운이 내려오지 않음.",
-                                    "A player dropdown under the notch when something starts playing or the track changes. Folds after \(settings.foldSecondsMedia) seconds (time in Settings › Notch). Every track within the same app. It doesn't come down while its app is in front."),
+                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 플레이어 드롭다운. \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 -> 노치). 같은 앱에서 곡을 넘기면 매번. 그 앱이 맨 앞이면 드롭다운이 내려오지 않음.",
+                                    "A player dropdown under the notch when something starts playing or the track changes. Folds after \(settings.foldSecondsMedia) seconds (time in Settings -> Notch). Every track within the same app. It doesn't come down while its app is in front."),
                                   isOn: $settings.enableNowPlayingDropdown)
                         .padding(.leading, 20)
                     SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),
@@ -1417,7 +1417,7 @@ struct AgentsSettingsTab: View {
                 .disabled(!settings.notchSoundsEnabled)
                 Toggle(L("화면이 잠겨 있으면 소리 끄기", "Mute while the screen is locked"), isOn: $settings.muteSoundsWhenLocked)
                     .disabled(!settings.notchSoundsEnabled)
-                // Typed like the dropdown times (설정 › 노치): LabeledContent keeps one centred row.
+                // Typed like the dropdown times (설정 -> 노치): LabeledContent keeps one centred row.
                 VStack(alignment: .leading, spacing: 4) {
                     LabeledContent(L("쉬는 세션이 목록에 남는 시간", "How long a quiet session stays listed")) {
                         HStack(alignment: .center, spacing: 6) {

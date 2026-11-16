@@ -35,6 +35,7 @@ echo "Signing as: $identity"
 for check in "$ROOT"/tests/*.py; do
     python3 "$check" >/dev/null || { echo "Check failed: $check" >&2; exit 1; }
 done
+"$ROOT"/tools/check.sh --all >/dev/null || { "$ROOT"/tools/check.sh --all >&2; exit 1; }
 
 work=$(mktemp -d)
 # The app copies in here get registered with LaunchServices; take them out with the folder.
