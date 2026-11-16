@@ -30,7 +30,7 @@ ClangNotch sits in the notch and shows what your coding agents are doing: which 
 
 Download `ClangNotch.dmg` from [Releases](../../releases) and drag it into your Applications folder.
 
-The app is notarized by Apple, so it opens without a warning. From then on it downloads new versions itself and installs one when you click **Restart to Update** (Settings → About).
+The app is notarized by Apple, so it opens without a warning. From then on it downloads new versions itself and installs one when you click **Restart to Update** (Settings -> About). Settings -> About also offers the newest beta (**Get Beta**), and a copy that is a beta gets newer betas the same way.
 
 Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same shape at the top of the screen.
 
@@ -44,6 +44,7 @@ Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same s
 - Answer permission requests and `AskUserQuestion` questions from the notch. Codex questions show in the notch and are answered in Codex
 - A session waiting on you is announced again every 3, 5 or 10 minutes. The done and waiting sounds stay quiet while the screen is locked
 - Sessions grouped by folder. Click one for its session view with each step and the file changes, and jump from there to its terminal or app
+- Quiet sessions stay listed for a time you set (five minutes by default). Pin a session from its right-click menu and it stays
 - Subagents Claude starts show under their session. Codex sessions go by their thread names from the Codex app
 - A context bar at the top of the session view, with a note when the session is about to compact
 - 5-hour and weekly usage for Claude and Codex
@@ -89,35 +90,41 @@ Once enabled, the volume and brightness keys show ClangNotch's own slider instea
   <img src="assets/demo-osd.webp" width="60%" alt="Volume and brightness sliders under the notch">
 </p>
 
-When music or a video plays, the closed notch shows its artwork on the left and bars that move with the sound on the right. A player card drops when a track starts, with a scrubber, previous, play and next, and the output picker. Pin the card and it stays, wherever you drag it.
+When music or a video plays, the closed notch shows its artwork on the left and bars that move with the sound on the right. A player dropdown comes down when a track starts, with a scrubber, previous, play and next, and the output picker. Pin it and it stays, wherever you drag it.
 
 <p align="center">
-  <img src="assets/demo-media.webp" width="80%" alt="A player card dropping from the notch, artwork and sound bars in the closed notch, then the card pinned and dragged">
+  <img src="assets/demo-media.webp" width="80%" alt="The media dropdown coming down from the notch, artwork and sound bars in the closed notch, then the dropdown pinned and dragged">
 </p>
 
-Connect AirPods or a Bluetooth headset and a card drops from the notch with its battery. AirPods show the moment the case opens, and the card folds when the lid shuts. With one bud out of the case each bud gets its own battery, and with one bud in, only the bud you're wearing shows. AirPods Max show when you put them on and fold when you take them off.
+Connect AirPods or a Bluetooth headset and a dropdown comes down from the notch with its battery. AirPods show the moment the case opens, and it folds when the lid shuts. With one bud out of the case each bud gets its own battery, and with one bud in, only the bud you're wearing shows. AirPods Max show when you put them on and fold when you take them off.
 
 <p align="center">
-  <img src="assets/demo-airpods.webp" width="60%" alt="AirPods Pro: the case opens, one bud comes out, the lid shuts and the card folds; then an AirPods Max card">
+  <img src="assets/demo-airpods.webp" width="60%" alt="AirPods Pro: the case opens, one bud comes out, the lid shuts and the dropdown folds; then the AirPods Max dropdown">
 </p>
 
-When your Mac runs low, the same card drops at 20% and again at 10%, drawn as your Mac's model.
+When your Mac runs low, the same dropdown comes down at 20% and again at 10%, drawn as your Mac's model.
 
 <p align="center">
-  <img src="assets/demo-macbattery.webp" width="60%" alt="A MacBook Pro low battery card dropping from the notch at 20%, then at 10%">
+  <img src="assets/demo-macbattery.webp" width="60%" alt="A MacBook Pro low battery dropdown coming down from the notch at 20%, then at 10%">
 </p>
 
 **Notch and settings**
 
-- The closed notch's wings step aside when you point at one: it fades into the menu bar and the click goes to the menu bar under it
+- The closed notch's wings step aside when you point at one: it fades into the menu bar and the click goes to the menu bar under it. A small tab under the notch says where to point to open it
+- Pick the display the notch shows on: the main display or another connected one
 - Notch colour: follow the wallpaper, auto, light or dark, a colour taken from a wallpaper photo, or an eyedropper
 - Reorder or hide tabs
 - How long to wait before opening, haptics on open and on finish, show over full-screen apps
 - Battery saver mode with less glow on battery
 - Menu bar icon (session count, keyboard lock, settings)
-- Settings search, and Check Now in Settings → About
+- Settings search, and Check Now in Settings -> About
+- Light: about 2% of one CPU core while an agent works, under 1% when nothing runs (measured on an M5 Pro)
 
-The app's interface follows your system language: Korean on a Korean system, English on any other. To pick one yourself, use **Settings → General → Display language**.
+<p align="center">
+  <img src="assets/demo-wings.webp" width="60%" alt="Pointing at a closed wing: it fades to show the menu bar icons under it, and a tab under the notch says where to point to open">
+</p>
+
+The app's interface follows your system language: Korean on a Korean system, English on any other. To pick one yourself, use **Settings -> General -> Display language**.
 
 ## Permissions
 
