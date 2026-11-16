@@ -53,6 +53,15 @@ final class ClaudeCodeManager: ObservableObject {
     /// Grace period to keep notch visible after activity stops (seconds)
     private let activityGracePeriod: TimeInterval = 1.0
 
+    /// Working, or waiting on a person for a question or an approval: what holds back
+    /// 받은 업데이트 자동으로 설치. A next-step box (`isWrapUp`) doesn't count: its turn is over,
+    /// and it stays until the next message, so it kept the update from ever installing.
+    var isWorkingOrAsking: Bool {
+        !sessionsNeedingPermission.isEmpty || ([state] + Array(sessionStates.values)).contains { session in
+            session.isActive || session.needsPermission || session.pendingInputRequests.contains { !$0.isWrapUp }
+        }
+    }
+
     /// True if any session has activity (thinking, active tools, or needs permission)
     var hasAnySessionActivity: Bool {
         for sessionState in sessionStates.values {

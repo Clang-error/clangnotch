@@ -78,7 +78,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
     /// No agent working or waiting for an answer, the notch closed, and none of the app's
     /// windows (settings, 새로운 점, a sign-in) up.
     private static var nothingGoingOn: Bool {
-        let agents = ClaudeCodeManager.shared.hasAnySessionActivity || CodexManager.shared.hasAnySessionActivity
+        let agents = ClaudeCodeManager.shared.isWorkingOrAsking || CodexManager.shared.hasAnySessionActivity
             || !CodexManager.shared.pendingInputRequests.isEmpty
         let notchClosed = AirPodsDropdown.shared.notchState == .closed
         let windowUp = NSApp.windows.contains { $0.isVisible && $0.styleMask.contains(.titled) }
