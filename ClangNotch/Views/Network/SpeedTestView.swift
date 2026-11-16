@@ -300,7 +300,9 @@ struct SpeedPeekHeader: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(.leading, 12)
+            // 4, as in the tethering header: at 12 "Download" (54 pt after a 14 pt icon) ended
+            // 2.5 pt inside the physical notch; now 5.5 pt short of it.
+            .padding(.leading, 4)
 
             Spacer()
 

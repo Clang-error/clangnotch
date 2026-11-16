@@ -17,7 +17,10 @@ struct TetherPeekHeader: View {
                     .foregroundColor(NotchPalette.ink.opacity(0.8))
                 Spacer(minLength: 0)
             }
-            .padding(.leading, 12)
+            // 4, not 12: in English "Tethering" (52 pt after a 16 pt icon) ended
+            // 2.5 pt inside the physical notch and read as cut off (user, 2026-11-16). The row is
+            // 420 wide with 35 pt insets, so the word now ends 5.5 pt short of a 185 pt notch.
+            .padding(.leading, 4)
 
             Spacer()
 

@@ -1072,7 +1072,7 @@ struct ClangNotchContentView: View {
 
         // Both wings have to claim the same width, otherwise this centred row slides
         // sideways by half the difference and the shorter side's content ends up under
-        // the physical notch. The slots include each wing's 8pt edge padding.
+        // the physical notch. The slots include each wing's edge padding.
         let hasLeftWing = showLeftWing || showsTetherWings || showsMediaWings || showsBatteryWings
         let leftContentWidth = showsTetherWings ? tetherLeftWidth : showsMediaWings ? mediaArtSize
             : showsBatteryWings ? ClosedLowBatteryBadge.wingIconWidth : leftWingWidth
@@ -1080,8 +1080,11 @@ struct ClangNotchContentView: View {
         // bottom, as in the Dynamic Island (user's photo, 2026-11-15): the 앨범 그림 6 pt in, the
         // 음파 막대 7. The header's own 14 pt and the usual 8 left the picture 16 pt in, adrift
         // of the side while 6 pt from the top. (The side is 6 pt inside the frame.)
-        let leftEdgePadding: CGFloat = showsMediaWings ? -2 : 8
-        let rightEdgePadding: CGFloat = showsMediaWings && lowBattery == nil ? -1 : 8
+        // The other wings follow the same rule (2026-11-16): an agent's 12 pt icon sits 10 pt
+        // from the top and bottom, so 10 pt from the side, where the old 8 left it 16 pt in.
+        let wingEdgePadding: CGFloat = 2
+        let leftEdgePadding: CGFloat = showsMediaWings ? -2 : wingEdgePadding
+        let rightEdgePadding: CGFloat = showsMediaWings && lowBattery == nil ? -1 : wingEdgePadding
         let leftSlot: CGFloat = hasLeftWing ? leftContentWidth + leftEdgePadding : 0
         let rightSlot: CGFloat = rightWingWidth > 0 ? rightWingWidth + rightEdgePadding : 0
         let wingWidth = max(leftSlot, rightSlot)
@@ -1328,7 +1331,7 @@ struct ClangNotchContentView: View {
                         }
                     }
                     .frame(width: baseRightWingWidth, alignment: .trailing)
-                    .padding(.trailing, lowBattery == nil && !showsTetherIcon && !showsMediaMini ? 8 : 6)
+                    .padding(.trailing, lowBattery == nil && !showsTetherIcon && !showsMediaMini ? wingEdgePadding : 6)
                 }
                 if showsMediaWings {
                     MediaWaveform(style: .wing, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
@@ -1344,7 +1347,7 @@ struct ClangNotchContentView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(errorBrightColor)
                         .frame(width: 14)
-                        .padding(.trailing, lowBattery == nil && !showsMediaMini ? 8 : 6)
+                        .padding(.trailing, lowBattery == nil && !showsMediaMini ? wingEdgePadding : 6)
                 }
                 if showsMediaMini {
                     MediaWaveform(style: .mini, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
@@ -1352,13 +1355,13 @@ struct ClangNotchContentView: View {
                         .frame(width: MediaWaveform.Style.mini.width, height: MediaWaveform.Style.mini.height)
                         .opacity(rightWingLayerOpacity)
                         .animation(WingFade.animation, value: rightWingLayerOpacity)
-                        .padding(.trailing, lowBattery == nil ? 8 : 6)
+                        .padding(.trailing, lowBattery == nil ? wingEdgePadding : 6)
                         .transition(.opacity.combined(with: .scale(scale: 0.5, anchor: .trailing)))
                 }
                 if let lowBattery {
                     ClosedLowBatteryBadge(device: lowBattery, showsIcon: !showsBatteryWings)
                         .frame(width: ClosedLowBatteryBadge.width(showsIcon: !showsBatteryWings), alignment: .trailing)
-                        .padding(.trailing, 8)
+                        .padding(.trailing, wingEdgePadding)
                 }
             }
             .frame(width: totalWidth)
