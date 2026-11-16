@@ -2,11 +2,16 @@ import AppKit
 import SwiftUI
 
 final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
+    /// This delegate. `NSApp.delegate` is SwiftUI's own object (it only forwards selectors to
+    /// this one), so `NSApp.delegate as? ClangNotchAppDelegate` is always nil.
+    nonisolated(unsafe) static private(set) weak var shared: ClangNotchAppDelegate?
+
     private var settingsWindow: NSWindow?
     private var settingsToolbar: SettingsToolbarController?
     private var settingsNavigator: SettingsNavigator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.shared = self
         // Read before anything below writes a setting (`WhatsNew.showIfUpdated`), in release
         // builds too: `debugLog` doesn't evaluate its message there.
         let hadSettings = WhatsNew.hadSettingsAtLaunch
@@ -72,7 +77,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(4))   // after the real check has settled
                 if let notes = await WhatsNew.notes(for: UpdateChecker.currentVersion) {
-                    UpdateChecker.shared.preview(notes: notes)
+                    UpdateChecker.shared.preview(notes: notes, ready: arguments.contains("ready"))
                 }
             }
         }

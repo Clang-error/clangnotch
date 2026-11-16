@@ -235,6 +235,7 @@ private struct SettingsSidebar: View {
     let selection: SettingsPage
     @Binding var query: String
     let open: (SettingsPage) -> Void
+    @ObservedObject private var updates = UpdateChecker.shared
 
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -267,6 +268,10 @@ private struct SettingsSidebar: View {
                 }
             }
             Spacer(minLength: 0)
+            if let version = updates.readyVersion {
+                updateButton(version)
+                    .padding(.bottom, 10)
+            }
         }
         .padding(.horizontal, 10)
         .frame(width: settingsSidebarWidth)
@@ -318,6 +323,32 @@ private struct SettingsSidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// 사이드바 업데이트 버튼: at the foot of the sidebar while a newer version is downloaded and
+    /// waiting, on every page, for whoever doesn't find 설정 -> 정보 (user, 2026-11-16).
+    private func updateButton(_ version: String) -> some View {
+        Button { updates.install() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 17))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L("재시작해서 업데이트", "Restart to Update"))
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(L("새 버전 \(version) 준비됨", "Version \(version) is ready"))
+                        .font(.system(size: 10))
+                        .opacity(0.8)
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 44)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.accentColor))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(updates.isInstalling)
     }
 
     private func row(_ page: SettingsPage) -> some View {

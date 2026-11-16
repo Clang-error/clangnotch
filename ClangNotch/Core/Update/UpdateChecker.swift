@@ -44,9 +44,11 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
 
     #if DEBUG
     /// `--update-preview`: a made-up newer version with these notes, to look at 변경 사항.
-    func preview(notes: String) {
+    /// `--update-preview ready`: as if it were downloaded too, to look at the buttons that install.
+    func preview(notes: String, ready: Bool) {
         availableVersion = "9.9.9"
         availableNotes = notes
+        if ready { readyVersion = "9.9.9" }
     }
     #endif
 
@@ -152,7 +154,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
     /// With nothing ready yet (a notification from before a relaunch), 설정 › 정보.
     func install() {
         guard let version = readyVersion, let team = UpdateInstaller.runningDeveloperIDTeam() else {
-            (NSApp.delegate as? ClangNotchAppDelegate)?.showSettingsWindow(page: .about)
+            ClangNotchAppDelegate.shared?.showSettingsWindow(page: .about)
             return
         }
         guard !isInstalling else { return }
@@ -358,7 +360,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
             let checker = UpdateChecker.shared
             if action == Self.installAction {
                 checker.install()
-            } else if checker.readyVersion != nil, let delegate = NSApp.delegate as? ClangNotchAppDelegate {
+            } else if checker.readyVersion != nil, let delegate = ClangNotchAppDelegate.shared {
                 delegate.showSettingsWindow(page: .about)
             } else {
                 NSWorkspace.shared.open(checker.releaseURL)
