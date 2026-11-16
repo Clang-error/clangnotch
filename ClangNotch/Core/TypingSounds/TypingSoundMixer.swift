@@ -1,7 +1,7 @@
 import Foundation
 
-/// The five sounds. Each is read from the file of its name: `typing-letter.wav` … in the app,
-/// or `letter.wav` … in the user's sound pack folder.
+/// The five sounds. Each is read from the file of its name (`letter.wav` …) in the user's
+/// sound pack folder.
 enum TypingSoundKind: Int, CaseIterable {
     case letter, punctuation, space, special, mouse
 

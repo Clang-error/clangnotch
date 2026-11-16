@@ -4,8 +4,8 @@ import Combine
 import os
 
 /// 설정 › 실험 기능 › "입력 효과음": a sound for every key and mouse button that goes down,
-/// macOS's auto-repeat included. Five sounds come with the app (`typing-letter.wav` …); a
-/// file of the user's own in `packFolder` takes its kind's place. Read when the switch turns on.
+/// macOS's auto-repeat included, from sound files of the user's own. None ships with the app:
+/// up to five files in `packFolder`, read when the switch turns on.
 ///
 /// The keys are only listened to, on a thread of their own, so nothing here can hold typing
 /// up; which key it was decides the sound and is neither kept nor logged. A shortcut of the
@@ -21,14 +21,15 @@ final class TypingSounds: ObservableObject {
     static let shared = TypingSounds()
 
     /// `paused`: not listening, for the output it is on or because that is silent.
-    enum Status { case off, on, noPermission, paused }
+    enum Status { case off, on, noPack, noPermission, paused }
     @Published private(set) var status = Status.off
     /// The sound output while it is one "헤드폰·이어폰일 때만" can't tell the kind of, a USB
     /// device say: 설정 then shows a switch to let it in.
     @Published private(set) var askedOutput: (uid: String, name: String)?
 
-    /// `~/Library/Application Support/ClangNotch/TypingSounds`: `letter.wav`,
-    /// `punctuation.wav`, `space.wav`, `special.wav` or `mouse.wav` here replaces the app's.
+    /// `~/Library/Application Support/ClangNotch/TypingSounds`, holding `letter.wav`,
+    /// `punctuation.wav`, `space.wav`, `special.wav` and `mouse.wav`. A kind without its file
+    /// is silent.
     static let packFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("ClangNotch/TypingSounds", isDirectory: true)
 
@@ -76,12 +77,16 @@ final class TypingSounds: ObservableObject {
             status = .off
             return
         }
+        var loaded = 0
         for kind in TypingSoundKind.allCases {
-            var sound = Self.read(Self.packFolder.appendingPathComponent(kind.fileName + ".wav"))
-            if sound == nil, let file = Bundle.main.url(forResource: "typing-" + kind.fileName, withExtension: "wav") {
-                sound = Self.read(file)
-            }
+            let sound = Self.read(Self.packFolder.appendingPathComponent(kind.fileName + ".wav"))
             mixer.set(kind, left: sound?.left ?? [], right: sound?.right ?? [])
+            if sound != nil { loaded += 1 }
+        }
+        guard loaded > 0 else {
+            stop()
+            status = .noPack
+            return
         }
         mixer.gain = SoftwareVolume.shared.multiplier
         applyVolumes()
@@ -215,7 +220,7 @@ final class TypingSounds: ObservableObject {
     }
 
     private func outputChanged() {
-        // Without the permission there is nothing to start, and no reason to ask again.
+        // Without a sound or the permission there is nothing to start, and no reason to ask again.
         guard outputListener != nil, status == .on || status == .paused else { return }
         listen()
     }

@@ -1543,8 +1543,8 @@ struct ExperimentalSettingsTab: View {
 
             Section {
                 SettingToggle(L("입력 효과음", "Typing sounds"),
-                              L("키보드와 마우스 버튼을 누를 때마다 소리를 냄",
-                                "A sound for every key and mouse button pressed"),
+                              L("키보드와 마우스 버튼을 누를 때마다 소리 팩 폴더에 넣은 소리를 냄",
+                                "A sound from your sound pack folder for every key and mouse button pressed"),
                               isOn: $settings.experimentalTypingSounds)
                     .onChange(of: settings.experimentalTypingSounds) { _, _ in typingSounds.syncWithSettings() }
                 // Stays while the switch is off: the shortcut is what turns it back on.
@@ -1568,14 +1568,17 @@ struct ExperimentalSettingsTab: View {
                         if typingSounds.status == .noPermission {
                             Text(L("손쉬운 사용이나 입력 모니터링 권한이 필요함", "Needs Accessibility or Input Monitoring permission"))
                                 .font(.callout)
+                        } else if typingSounds.status == .noPack {
+                            Text(L("폴더에 소리 파일이 없음", "No sound files in the folder"))
+                                .font(.callout)
                         }
                     }
                 }
             } header: {
                 Text(L("소리", "Sound"))
             } footer: {
-                Text(L("소리 팩 폴더에 letter.wav, punctuation.wav, space.wav, special.wav, mouse.wav를 넣으면 그 소리는 기본 소리 대신 씀. 넣은 뒤 스위치를 껐다 켜면 읽음. 누른 키는 소리를 고르는 데만 쓰고 남기지 않음.",
-                       "A letter.wav, punctuation.wav, space.wav, special.wav or mouse.wav in the sound pack folder is used in place of the default sound. Turn the switch off and on to read them. The key pressed only picks the sound and is not kept."))
+                Text(L("소리는 앱에 들어 있지 않음. 소리 팩 폴더에 letter.wav, punctuation.wav, space.wav, special.wav, mouse.wav를 넣고 스위치를 껐다 켜면 읽음. 없는 종류는 소리가 안 남. 누른 키는 소리를 고르는 데만 쓰고 남기지 않음.",
+                       "No sounds come with the app. Put letter.wav, punctuation.wav, space.wav, special.wav and mouse.wav in the sound pack folder, then turn the switch off and on to read them. A kind without its file is silent. The key pressed only picks the sound and is not kept."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
