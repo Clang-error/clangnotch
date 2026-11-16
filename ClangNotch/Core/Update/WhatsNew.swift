@@ -137,6 +137,10 @@ struct ReleaseNotesText: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .textSelection(.enabled)
+        // The notes come from the release; a link in them opens only a GitHub page.
+        .environment(\.openURL, OpenURLAction { url in
+            url.scheme == "https" && url.host == "github.com" ? .systemAction : .discarded
+        })
     }
 
     private var lines: [String] {

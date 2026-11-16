@@ -144,7 +144,9 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
 
         let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         let current = Self.currentVersion
-        if let page = (json["html_url"] as? String).flatMap(URL.init(string:)) { releaseURL = page }
+        // Opened with NSWorkspace: only a GitHub page, never a file or another app's scheme.
+        if let page = (json["html_url"] as? String).flatMap(URL.init(string:)),
+           page.scheme == "https", page.host == "github.com" { releaseURL = page }
         guard Self.isNewer(latest, than: current) else {
             availableVersion = nil
             availableNotes = nil
