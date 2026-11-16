@@ -29,10 +29,32 @@ enum UsagePace {
     }
 
     /// Readings per window (its length and reset), kept only when the percentage moved.
+    /// A demo keeps its made-up windows to itself: saved, they pushed real ones out.
     private static var history: [String: [Reading]] = {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return [:] }
+        guard !DemoMode.isActive, let data = UserDefaults.standard.data(forKey: storageKey) else { return [:] }
         return (try? JSONDecoder().decode([String: [Reading]].self, from: data)) ?? [:]
     }()
+    /// Windows kept at most. Past it the one read longest ago goes, after those already reset.
+    private static let historyLimit = 16
+
+    /// Drops windows that have reset, then the ones read longest ago down to `historyLimit`.
+    /// It used to drop "any other" window once there were more than eight: with Claude's and
+    /// Codex's windows on screen that was often one still showing, which lost its readings (its
+    /// forecast fell back to the plain average), was added again on the next redraw and pushed
+    /// out the next one, each round encoding and saving the whole history (2026-11-16: three
+    /// weekly windows held one reading each next to a window that reset 18 hours earlier).
+    private static func prune(keeping key: String, now: Date) {
+        for other in history.keys where other != key {
+            // "<window>-<reset / 300>": gone once the reset is behind by a bucket.
+            guard let bucket = other.split(separator: "-").last.flatMap({ Double($0) }) else { continue }
+            if (bucket + 1) * 300 < now.timeIntervalSince1970 { history[other] = nil }
+        }
+        while history.count > historyLimit,
+              let oldest = history.filter({ $0.key != key })
+                .min(by: { ($0.value.last?.at ?? .distantPast) < ($1.value.last?.at ?? .distantPast) })?.key {
+            history[oldest] = nil
+        }
+    }
 
     /// Percent per second.
     private static func rate(percent: Double, resetsAt: Date, window: TimeInterval, elapsed: TimeInterval) -> Double {
@@ -47,8 +69,8 @@ enum UsagePace {
             readings.append(Reading(at: now, percent: percent))
             readings.removeAll { now.timeIntervalSince($0.at) > window }
             history[key] = readings
-            if history.count > 8, let stale = history.keys.first(where: { $0 != key }) { history[stale] = nil }
-            if let data = try? JSONEncoder().encode(history) {
+            prune(keeping: key, now: now)
+            if !DemoMode.isActive, let data = try? JSONEncoder().encode(history) {
                 UserDefaults.standard.set(data, forKey: storageKey)
             }
         }
