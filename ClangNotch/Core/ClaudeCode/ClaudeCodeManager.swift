@@ -169,6 +169,9 @@ final class ClaudeCodeManager: ObservableObject {
     private var seenLiveConversationIds: Set<String> = []
     /// Real `cwd` read from each transcript's head (it never changes for a file).
     private var cwdByFile: [String: String] = [:]
+    /// Transcripts whose head had no `cwd` yet, with their modification date then: the head is
+    /// read again only once the file has changed, not on every scan.
+    private var cwdMissByFile: [String: Date] = [:]
     /// Newest line timestamp per transcript, valid while the file's mtime is unchanged.
     private var lastEntryByFile: [String: (modified: Date, entry: Date)] = [:]
     /// A session must be this quiet before a missing registry record ends it, so a new or
@@ -249,8 +252,13 @@ final class ClaudeCodeManager: ObservableObject {
             debugLog("[ClaudeCode] Scanning projects dir for active terminal sessions...")
 
             do {
-                let projectDirs = try fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: [.contentModificationDateKey])
+                // Whether an entry is a folder comes with the listing; only a symbolic link
+                // still needs its own look (a stat per folder, every scan, was pure overhead).
+                let projectDirs = try fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
                     .filter { url in
+                        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                        if values?.isDirectory == true { return true }
+                        guard values?.isSymbolicLink != false else { return false }
                         var isDir: ObjCBool = false
                         return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
                     }
@@ -275,14 +283,15 @@ final class ClaudeCodeManager: ObservableObject {
                     let workspacePath = projectDir.lastPathComponent
                         .replacingOccurrences(of: "-", with: "/")
 
-                    for jsonlFile in findActiveSessionFiles(in: projectDir) {
-                        let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
+                    for transcript in transcripts(in: projectDir) {
+                        let jsonlFile = transcript.url
+                        let sessionId = transcript.id
                         var session = ClaudeSession(
                             pid: 0,  // Terminal sessions don't have a single PID
                             workspaceFolders: ["\(workspacePath)#\(sessionId)"],
                             ideName: "Terminal"
                         )
-                        let modified = (try? jsonlFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                        let modified = transcript.modified
                         // Continued elsewhere: its row is the session it continued in, unless
                         // it has been written again since.
                         if let ended = continuedTranscripts[jsonlFile.path] {
@@ -291,7 +300,7 @@ final class ClaudeCodeManager: ObservableObject {
                         }
                         // A file created moments ago may have no dated line yet: watch it from the
                         // start, so the first prompt is read live.
-                        let born = (try? jsonlFile.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
+                        let born = transcript.born
                         guard (modified > recentThreshold && lastEntryDate(of: jsonlFile, modified: modified) > recentThreshold)
                                 || born > Date().addingTimeInterval(-60)
                                 || sessionStates[session.id].map({ $0.isActive || $0.needsPermission || $0.isAwaitingInput }) == true
@@ -301,9 +310,16 @@ final class ClaudeCodeManager: ObservableObject {
                         // Real path from the JSONL `cwd` field (the dir-name encoding is
                         // lossy: e.g. "-Users-clang-error" can't tell "_" from "/"). A new
                         // file may not have its first `cwd` line yet, so only hits are cached.
-                        if let cwd = cwdByFile[jsonlFile.path] ?? extractCwd(from: jsonlFile) {
-                            cwdByFile[jsonlFile.path] = cwd
+                        if let cwd = cwdByFile[jsonlFile.path] {
                             session.cwd = cwd
+                        } else if cwdMissByFile[jsonlFile.path] != modified {
+                            if let cwd = extractCwd(from: jsonlFile) {
+                                cwdByFile[jsonlFile.path] = cwd
+                                cwdMissByFile[jsonlFile.path] = nil
+                                session.cwd = cwd
+                            } else {
+                                cwdMissByFile[jsonlFile.path] = modified
+                            }
                         }
                         debugLog("[ClaudeCode] Terminal session: \(session.displayName) [id: \(sessionId.prefix(8))...]")
                         sessions.append(session)
@@ -2026,34 +2042,39 @@ final class ClaudeCodeManager: ObservableObject {
         return nil
     }
 
+    /// A transcript in a project folder with the two dates the scan needs.
+    private struct Transcript {
+        let url: URL
+        /// The file's name without ".jsonl": the conversation id.
+        let id: String
+        let modified: Date
+        let born: Date
+    }
+
+    /// The folder's transcripts, newest first. The dates come with the listing and are read
+    /// once per file: sorting by a date fetched inside the comparison, plus a creation date
+    /// looked up per file afterwards, was most of a scan (77 folders, 438 files, every 3 s
+    /// while something works; measured 2026-11-16).
+    private func transcripts(in projectDir: URL) -> [Transcript] {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
+        guard let allFiles = try? FileManager.default.contentsOfDirectory(
+            at: projectDir, includingPropertiesForKeys: Array(keys)) else { return [] }
+        return allFiles
+            .compactMap { url -> Transcript? in
+                // "<id>.jsonl", not a subagent's "agent-…": read off the name once, since taking
+                // a URL apart for each of 438 files showed in the scan too.
+                let name = url.lastPathComponent
+                guard name.count > 6, name.hasSuffix(".jsonl"), !name.hasPrefix("agent-") else { return nil }
+                let values = try? url.resourceValues(forKeys: keys)
+                return Transcript(url: url, id: String(name.dropLast(6)),
+                                  modified: values?.contentModificationDate ?? .distantPast,
+                                  born: values?.creationDate ?? .distantPast)
+            }
+            .sorted { $0.modified > $1.modified }
+    }
+
     private func findActiveSessionFiles(in projectDir: URL) -> [URL] {
-        let fm = FileManager.default
-
-        guard fm.fileExists(atPath: projectDir.path) else {
-            debugLog("[ClaudeCode] findActiveSessionFiles: directory does not exist: \(projectDir.path)")
-            return []
-        }
-
-        do {
-            let allFiles = try fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: [.contentModificationDateKey])
-            debugLog("[ClaudeCode] findActiveSessionFiles: \(allFiles.count) files in \(projectDir.lastPathComponent)")
-
-            let files = allFiles
-                .filter { $0.pathExtension == "jsonl" && !$0.lastPathComponent.hasPrefix("agent-") }
-                .sorted { url1, url2 in
-                    let date1 = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-                    let date2 = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-                    return date1 > date2
-                }
-
-            debugLog("[ClaudeCode] findActiveSessionFiles: \(files.count) JSONL files found")
-
-            // Return all recent files, not just the first one
-            return files
-        } catch {
-            debugLog("[ClaudeCode] findActiveSessionFiles: error: \(error)")
-            return []
-        }
+        transcripts(in: projectDir).map(\.url)
     }
 }
 

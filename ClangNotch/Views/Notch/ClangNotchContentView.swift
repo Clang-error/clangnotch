@@ -1621,12 +1621,10 @@ struct ClangNotchContentView: View {
             let glow = overviewGlow
             HStack(spacing: 6) {
                 StatusDot(active: overviewHasActivity, color: glow.color, secondary: glow.secondary)
-                Text(!overviewHasActivity ? L("대기 중", "Quiet")
-                     : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working"))
-                    // Glow first: its gradient sits closest to the text and wins while working.
-                    // The grey only reaches the text when idle (a style set before the glow
-                    // used to dim the glow colours too).
-                    .modifier(glow)
+                // Lit by the glow while working; the grey only reaches the text when idle.
+                SweptText(text: !overviewHasActivity ? L("대기 중", "Quiet")
+                          : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working"),
+                          glow: glow)
                     .foregroundStyle(NotchPalette.ink.opacity(0.55))
             }
             .padding(.horizontal, 10)
