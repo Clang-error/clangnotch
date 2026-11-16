@@ -72,6 +72,8 @@ struct ClangNotchContentView: View {
     @State private var showPermissionNotice = false
     /// The request on screen, kept so the dropdown still shows it while folding away.
     @State private var shownPermission: PermissionRequestItem?
+    /// The request whose 전체 보기 was pressed.
+    @State private var expandedPermission: UUID?
     /// The session the 세션 화면 shows, opened from a 세션 줄.
     @State private var sessionDetail: SessionDetailTarget?
     @State private var doneNotice: DoneNotice?
@@ -2784,10 +2786,16 @@ struct ClangNotchContentView: View {
         agent == .codex ? codexGlowColor : claudeGlowColor
     }
 
-    private func permissionDropdown(_ item: PermissionRequestItem) -> some View {
+    private func permissionDropdown(_ item: PermissionRequestItem, expanded: Bool? = nil) -> some View {
         PermissionDropdownView(
             item: item, position: 1, total: permissionCenter.queue.count, accent: agentAccent(item.agent),
-            inTerminal: item.sessionId.flatMap { sessionDestination(item.agent == .codex ? .codex : .claude, $0) }?.isTerminal ?? true
+            inTerminal: item.sessionId.flatMap { sessionDestination(item.agent == .codex ? .codex : .claude, $0) }?.isTerminal ?? true,
+            expanded: expanded ?? (expandedPermission == item.id),
+            onExpand: {
+                expandedPermission = item.id
+                notchVM.peek(duration: nil, additionalHeight: peekHeight(for: permissionDropdown(item, expanded: true), width: permissionNotchWidth),
+                             width: permissionNotchWidth)
+            }
         ) { decision in
             permissionCenter.decide(item.id, decision)
             // "In terminal" also brings that terminal forward, where the prompt will be.

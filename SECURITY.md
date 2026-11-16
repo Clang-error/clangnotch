@@ -20,7 +20,7 @@ The latest release and the latest beta. A fix goes into the next release; older 
 
 For judging whether something is in scope:
 
-- **Local receiver.** ClangNotch listens on `127.0.0.1:4318` for the hooks Claude Code and Codex post. It is bound to the loopback address only.
+- **Local receiver.** ClangNotch listens on `127.0.0.1:4318` for the hooks Claude Code and Codex post. It is bound to the loopback address only and refuses requests a browser page could make (any with an `Origin` header, or a `Host` other than `127.0.0.1` or `localhost`). Any program running as you can still post to it. The notch's approval dropdown spells out invisible characters, and for a command too long to show at once Allow stays off until it has been opened and scrolled to the end; a very long one can only be answered in the agent's own prompt. File edits show their paths, not their contents.
 - **Agent files.** It reads session files under `~/.claude` and `~/.codex`. Approving from the notch adds hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, backing up the originals first.
 - **SSH hosts.** A password you choose to save is kept in the Keychain. The helper that hands it to `ssh` answers only an `ssh` that ClangNotch itself started.
 - **Updates.** A new version is downloaded from this repository's releases over HTTPS and put in place when you click Restart to Update or, with "Install downloaded updates automatically" on (the default), by itself once your agents are idle and the notch is closed. Either way only if its bundle identifier, version, Developer ID signature and notarization check out.

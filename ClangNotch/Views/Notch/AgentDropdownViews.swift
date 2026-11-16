@@ -115,6 +115,13 @@ private struct DismissPillOption: View {
     }
 }
 
+/// Where the bottom of the 권한 드롭다운's opened text sits in its scroll box.
+private struct PermissionEndKey: PreferenceKey {
+    static let space = "permissionText"
+    static let defaultValue: CGFloat = .infinity
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = min(value, nextValue()) }
+}
+
 /// 권한 드롭다운: one tool approval at a time, oldest first, with the time left before the
 /// request goes back to the agent's own dialog.
 struct PermissionDropdownView: View {
@@ -124,8 +131,18 @@ struct PermissionDropdownView: View {
     let accent: Color
     /// Where the agent's own prompt shows: its terminal, or a GUI app.
     var inTerminal = true
+    /// 전체 보기 was pressed: the whole text shows, and 허용 works once it is read to the end.
+    var expanded = false
+    var onExpand: () -> Void = {}
     let onDecide: (PermissionRequestCenter.Decision) -> Void
     @State private var timeLeft: CGFloat = 1
+    @State private var seenEnd = false
+
+    /// Shorter under the risk banner, so the dropdown stays under `maximumPeekHeight`.
+    private var expandedHeight: CGFloat { item.risks.isEmpty ? 150 : 90 }
+    private var text: PermissionText { item.text }
+    private var canAllow: Bool { item.risks.isEmpty && (text.isWhole || (expanded && seenEnd && !text.isTooLong)) }
+    private static let warning = Color(red: 1, green: 0.42, blue: 0.36)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -147,17 +164,13 @@ struct PermissionDropdownView: View {
             }
             .popIn()
 
+            if !item.risks.isEmpty { riskBanner }
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.toolName)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(accent)
-                if !item.detail.isEmpty {
-                    Text(item.detail)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(NotchPalette.ink.opacity(0.88))
-                        .lineLimit(3)
-                        .truncationMode(.middle)
-                }
+                if !text.full.isEmpty { detailText }
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -177,7 +190,14 @@ struct PermissionDropdownView: View {
                 .help(L("노치에서 답하지 않고 에이전트의 승인 창으로 넘기기", "Leave this one to the agent's own approval prompt"))
                 Spacer(minLength: 0)
                 DropdownButton(title: L("거부", "Deny"), tint: NotchPalette.ink.opacity(0.85)) { onDecide(.deny) }
-                DropdownButton(title: L("허용", "Allow"), tint: accent, filled: true) { onDecide(.allow) }
+                DropdownButton(title: L("허용", "Allow"), tint: accent, filled: true) { if canAllow { onDecide(.allow) } }
+                    .disabled(!canAllow)
+                    .opacity(canAllow ? 1 : 0.35)
+                    .help(canAllow ? "" : !item.risks.isEmpty
+                          ? L("위험 표시가 뜬 요청은 터미널에서 확인해 주세요", "Check a flagged request in the terminal")
+                          : text.isTooLong
+                          ? L("명령이 너무 길어 노치에서는 허용할 수 없습니다 (보안)", "The command is too long to allow from the notch (security)")
+                          : L("전체 보기로 끝까지 본 뒤 허용할 수 있습니다", "Show all of it, to the end, before allowing"))
                     .newHighlight(cornerRadius: 12, delay: 0.25)
             }
             .popIn(delay: 0.07)
@@ -195,6 +215,97 @@ struct PermissionDropdownView: View {
         }
         .padding(.top, 10)
         .id(item.id)
+    }
+
+    /// Why this one can't be allowed here, in plain words.
+    private var riskBanner: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(item.risks, id: \.self) { risk in
+                Label(risk.reason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Self.warning)
+            }
+            Text(L("노치에서는 허용할 수 없습니다. 터미널에서 확인해 주세요.",
+                   "Can't be allowed from the notch. Check it in the terminal."))
+                .font(.system(size: 10))
+                .foregroundColor(NotchPalette.ink.opacity(0.6))
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Self.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .popIn(delay: 0.02)
+    }
+
+    @ViewBuilder
+    private var detailText: some View {
+        let font = Font.system(size: 11, design: .monospaced)
+        let ink = NotchPalette.ink.opacity(0.88)
+        if text.isWhole {
+            // No line limit: wrapping grows the box instead of hiding anything.
+            Text(text.full)
+                .font(font)
+                .foregroundColor(ink)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if expanded && !text.isTooLong {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(Array(text.lines.enumerated()), id: \.offset) { number, line in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("\(number + 1)")
+                                .foregroundColor(NotchPalette.ink.opacity(0.35))
+                                .frame(width: 24, alignment: .trailing)
+                            Text(line.isEmpty ? " " : line)
+                                .foregroundColor(ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(font)
+                    }
+                    // Its bottom inside the box means the last line has been seen.
+                    Color.clear.frame(height: 1)
+                        .background(GeometryReader { proxy in
+                            Color.clear.preference(key: PermissionEndKey.self,
+                                                   value: proxy.frame(in: .named(PermissionEndKey.space)).maxY)
+                        })
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.visible)
+            .coordinateSpace(name: PermissionEndKey.space)
+            .frame(height: expandedHeight)
+            .onPreferenceChange(PermissionEndKey.self) { bottom in
+                if bottom <= expandedHeight + 1 { seenEnd = true }
+            }
+            // Kept in place once read, so the dropdown's measured height still fits.
+            Text(L("↓ 끝까지 내려 보면 허용할 수 있습니다", "↓ Scroll to the end to allow"))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(NotchPalette.ink.opacity(0.5))
+                .opacity(seenEnd ? 0 : 1)
+        } else {
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(Array(text.preview.enumerated()), id: \.offset) { _, line in
+                    Text(line.isEmpty ? " " : line)
+                        .font(font)
+                        .foregroundColor(ink)
+                        .lineLimit(1)
+                }
+                if text.isTooLong {
+                    Text(L("… 너무 길어 노치에서는 허용할 수 없음(보안) · 터미널에서 확인", "… Too long to allow here (security) · check in the terminal"))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
+                        .padding(.top, 2)
+                } else {
+                    Button(action: onExpand) {
+                        Text(L("… \(text.lines.count > 1 ? "\(text.lines.count)줄" : "\(text.full.count)자") · 전체 보기",
+                               "… \(text.lines.count > 1 ? "\(text.lines.count) lines" : "\(text.full.count) chars") · Show all"))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(accent)
+                            .padding(.top, 2)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 

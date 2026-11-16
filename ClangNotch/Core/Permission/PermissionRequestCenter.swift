@@ -11,8 +11,10 @@ struct PermissionRequestItem: Identifiable, Equatable {
     let sessionId: String?
     let projectName: String
     let toolName: String
-    /// The command, file or URL being asked about.
-    let detail: String
+    /// The command, file or URL being asked about, as the 권한 드롭다운 shows it.
+    let text: PermissionText
+    /// Signs of danger; any of them keeps 허용 off in the notch.
+    let risks: [PermissionRisk]
     let receivedAt: Date
 }
 
@@ -112,12 +114,14 @@ final class PermissionRequestCenter: ObservableObject {
         case .codex: CodexManager.shared.availableSessions.first { $0.jsonlFile.path == transcript }?.id
         }
         let cwd = json["cwd"] as? String ?? ""
+        let detail = Self.detail(of: json["tool_input"] as? [String: Any] ?? [:], toolName: toolName)
         let item = PermissionRequestItem(
             agent: agent,
             sessionId: sessionId,
             projectName: cwd.isEmpty ? "" : URL(fileURLWithPath: cwd).lastPathComponent,
             toolName: toolName,
-            detail: Self.detail(of: json["tool_input"] as? [String: Any] ?? [:]),
+            text: PermissionText(detail),
+            risks: PermissionRisk.found(in: detail, toolName: toolName),
             receivedAt: Date()
         )
         queue.append(item)
@@ -332,22 +336,38 @@ final class PermissionRequestCenter: ObservableObject {
         }
     }
 
-    private static func detail(of input: [String: Any]) -> String {
-        if let command = input["command"] as? String {
+    private static func detail(of input: [String: Any], toolName: String) -> String {
+        // An MCP tool's fields mean whatever its server says: show them all (below).
+        let builtIn = !toolName.hasPrefix("mcp__")
+        if builtIn, let command = input["command"] as? String {
             // Codex sends apply_patch as the patch itself; its file lines say what changes.
-            let files = command.split(separator: "\n").compactMap { line -> String? in
-                for prefix in ["*** Add File: ", "*** Update File: ", "*** Delete File: "] where line.hasPrefix(prefix) {
-                    return URL(fileURLWithPath: String(line.dropFirst(prefix.count))).lastPathComponent
+            // Only for apply_patch: a Bash command carrying those lines in a heredoc would
+            // otherwise show as a file name and hide what actually runs. Whole paths, and a
+            // move's destination, so `config` can't stand for `~/.ssh/config`.
+            var files: [String] = []
+            if toolName == "apply_patch" {
+                for line in command.split(separator: "\n") {
+                    if line.hasPrefix("*** Move to: "), let last = files.popLast() {
+                        files.append("\(last) -> \(line.dropFirst("*** Move to: ".count))")
+                    }
+                    for prefix in ["*** Add File: ", "*** Update File: ", "*** Delete File: "] where line.hasPrefix(prefix) {
+                        files.append(String(line.dropFirst(prefix.count)))
+                    }
                 }
-                return nil
             }
-            if !files.isEmpty { return files.joined(separator: ", ") }
-            return command.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !files.isEmpty { return files.joined(separator: "\n") }
+            return command
         }
-        for key in ["file_path", "notebook_path", "path", "url", "query", "pattern"] {
-            if let value = input[key] as? String { return value }
+        if builtIn {
+            for key in ["file_path", "notebook_path", "path", "url", "query", "pattern"] {
+                if let value = input[key] as? String { return value }
+            }
         }
-        return input.values.compactMap { $0 as? String }.first ?? ""
+        // Any other tool: its one string, or the whole input, so no field goes unseen.
+        if input.count == 1, let only = input.values.first as? String { return only }
+        guard !input.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: input, options: [.sortedKeys, .withoutEscapingSlashes]) else { return "" }
+        return String(decoding: data, as: UTF8.self)
     }
 }
 
