@@ -311,8 +311,11 @@ final class CodexManager: ObservableObject {
             )
 
             while let fileURL = enumerator?.nextObject() as? URL {
-                guard fileURL.pathExtension == "jsonl",
-                      fileURL.lastPathComponent.hasPrefix("rollout-") else {
+                // "rollout-….jsonl", read off the name once: every 10 s this goes through every
+                // rollout there is (2,026 files here), and taking each URL apart three times
+                // over was a good part of the scan (2026-11-16).
+                let fileName = fileURL.lastPathComponent
+                guard fileName.hasSuffix(".jsonl"), fileName.hasPrefix("rollout-") else {
                     continue
                 }
 
@@ -324,7 +327,7 @@ final class CodexManager: ObservableObject {
                 // one: a rollout's name ends with its thread id, which finds it after a relaunch
                 // too. (Codex later packs old rollouts as .jsonl.zst, which are not read, so a
                 // pin holds only until then.)
-                let name = fileURL.deletingPathExtension().lastPathComponent
+                let name = fileName.dropLast(6)
                 if retainedFiles.contains(fileURL)
                     || pinned.contains(where: { name.hasSuffix($0) })
                     || (modDate > recentThreshold
