@@ -1,13 +1,13 @@
 import AppKit
 
-/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|ssh|tools|many|airpods|airpodslid|airpodslow|media|osd|lowbattery|tether|macbattery] [--demo-art <file>]`:
+/// `open ClangNotch.app --args --demo [--demo-scene claude|codex|both|ssh|tools|many|airpods|airpodslid|airpodslow|media|osd|lowbattery|tether|macbattery|idle] [--demo-art <file>]`:
 /// the notch runs on made-up Claude Code and Codex sessions (or, for `tools`, made-up clipboard,
 /// volume, battery, Sidecar and display data) for screen recordings. Nothing real is read, so no
 /// project name, path, device, copied text or account balance from this Mac can end up in a video.
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, ssh, tools, many, airpods, airpodslid, airpodslow, media, osd, lowbattery, tether, macbattery }
+    enum Scene: String { case claude, codex, both, ssh, tools, many, airpods, airpodslid, airpodslow, media, osd, lowbattery, tether, macbattery, idle }
 
     /// Every scene's clock starts this long after launch, once the startup glow (3 s and a 0.3 s
     /// fade) is gone: started at launch, the first dropdown came down inside the glow and the two
@@ -71,6 +71,10 @@ final class DemoDriver {
     }
 
     private func play() async {
+        // idle: nothing at all, the bare notch, for measuring what the interface alone costs.
+        // A demo runs none of the app's own monitors (clipboard, batteries, sessions), so this is
+        // a floor, not what the app uses when it is quiet.
+        if DemoMode.scene == .idle { return }
         if DemoMode.scene == .tools {
             applyTools()
             // A copy in another app at 0.6 s, before the recording's cursor opens the notch: the
@@ -352,7 +356,7 @@ final class DemoDriver {
                           ("Not yet", "Leave it on the branch for now")])
             return [desktop, lumen]
         case .codex: return [atlas, prism]
-        case .tools, .airpods, .airpodslid, .airpodslow, .media, .osd, .lowbattery, .tether, .macbattery: return []
+        case .tools, .airpods, .airpodslid, .airpodslow, .media, .osd, .lowbattery, .tether, .macbattery, .idle: return []
 
         case .ssh:
             // One session on this Mac and one on an SSH host: the remote one shows "SSH · host"
