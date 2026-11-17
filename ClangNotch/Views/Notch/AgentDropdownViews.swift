@@ -137,11 +137,16 @@ struct PermissionDropdownView: View {
     let onDecide: (PermissionRequestCenter.Decision) -> Void
     @State private var timeLeft: CGFloat = 1
     @State private var seenEnd = false
+    /// 설정 -> 보안 can let a flagged or unread command through for someone who knows the risk.
+    @ObservedObject private var settings = AppSettings.shared
 
     /// Shorter under the risk banner, so the dropdown stays under `maximumPeekHeight`.
     private var expandedHeight: CGFloat { item.risks.isEmpty ? 150 : 90 }
     private var text: PermissionText { item.text }
-    private var canAllow: Bool { item.risks.isEmpty && (text.isWhole || (expanded && seenEnd && !text.isTooLong)) }
+    private var blockedByRisk: Bool { !item.risks.isEmpty && !settings.permissionAllowFlagged }
+    private var canAllow: Bool {
+        !blockedByRisk && (text.isWhole || settings.permissionAllowUnread || (expanded && seenEnd && !text.isTooLong))
+    }
     private static let warning = Color(red: 1, green: 0.42, blue: 0.36)
 
     var body: some View {
@@ -193,7 +198,7 @@ struct PermissionDropdownView: View {
                 DropdownButton(title: L("허용", "Allow"), tint: accent, filled: true) { if canAllow { onDecide(.allow) } }
                     .disabled(!canAllow)
                     .opacity(canAllow ? 1 : 0.35)
-                    .help(canAllow ? "" : !item.risks.isEmpty
+                    .help(canAllow ? "" : blockedByRisk
                           ? L("위험 표시가 뜬 요청은 터미널에서 확인해 주세요", "Check a flagged request in the terminal")
                           : text.isTooLong
                           ? L("명령이 너무 길어 노치에서는 허용할 수 없습니다 (보안)", "The command is too long to allow from the notch (security)")
@@ -225,10 +230,12 @@ struct PermissionDropdownView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Self.warning)
             }
-            Text(L("노치에서는 허용할 수 없습니다. 터미널에서 확인해 주세요.",
-                   "Can't be allowed from the notch. Check it in the terminal."))
-                .font(.system(size: 10))
-                .foregroundColor(NotchPalette.ink.opacity(0.6))
+            if !settings.permissionAllowFlagged {
+                Text(L("노치에서는 허용할 수 없습니다. 터미널에서 확인해 주세요.",
+                       "Can't be allowed from the notch. Check it in the terminal."))
+                    .font(.system(size: 10))
+                    .foregroundColor(NotchPalette.ink.opacity(0.6))
+            }
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -279,7 +286,7 @@ struct PermissionDropdownView: View {
             Text(L("↓ 끝까지 내려 보면 허용할 수 있습니다", "↓ Scroll to the end to allow"))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(NotchPalette.ink.opacity(0.5))
-                .opacity(seenEnd ? 0 : 1)
+                .opacity(seenEnd || settings.permissionAllowUnread ? 0 : 1)
         } else {
             VStack(alignment: .leading, spacing: 1) {
                 ForEach(Array(text.preview.enumerated()), id: \.offset) { _, line in
@@ -288,7 +295,9 @@ struct PermissionDropdownView: View {
                         .foregroundColor(ink)
                         .lineLimit(1)
                 }
-                if text.isTooLong {
+                if text.isTooLong, settings.permissionAllowUnread {
+                    EmptyView()
+                } else if text.isTooLong {
                     Text(L("… 너무 길어 노치에서는 허용할 수 없음(보안) · 터미널에서 확인", "… Too long to allow here (security) · check in the terminal"))
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(NotchPalette.ink.opacity(0.5))

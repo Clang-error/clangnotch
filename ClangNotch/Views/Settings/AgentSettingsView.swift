@@ -12,12 +12,12 @@ private let toolbarItemsStart: CGFloat = 96
 private let navControlWidth: CGFloat = 73
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case about, general, notch, features, network, agents, experimental
+    case about, general, notch, features, network, agents, security, experimental
 
     var id: String { rawValue }
 
     /// Sidebar groups, top to bottom; 정보 is the card above them.
-    static let groups: [[SettingsPage]] = [[.general, .notch], [.features, .network], [.agents], [.experimental]]
+    static let groups: [[SettingsPage]] = [[.general, .notch], [.features, .network], [.agents, .security], [.experimental]]
 
     var title: String {
         switch self {
@@ -27,6 +27,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .features: return L("기능", "Features")
         case .network:  return L("네트워크", "Network")
         case .agents:   return L("에이전트", "Agents")
+        case .security: return L("보안", "Security")
         case .experimental: return L("실험 기능", "Experimental")
         }
     }
@@ -39,6 +40,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .features: return "square.grid.2x2.fill"
         case .network:  return "wifi"
         case .agents:   return "sparkles"
+        case .security: return "lock.shield.fill"
         case .experimental: return "flask.fill"
         }
     }
@@ -51,6 +53,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .features: return .blue
         case .network:  return .teal
         case .agents:   return .orange
+        case .security: return .red
         case .experimental: return .purple
         }
     }
@@ -71,6 +74,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
+        case .security: return ["보안", "권한", "허용", "위험", "승인", "security", "permission", "allow", "danger", "approve"]
         case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "효과음", "입력", "소리", "크기", "헤드폰", "이어폰", "블루투스", "단축키",
                                      "experimental", "question", "answer", "next step", "hat", "typing", "sound", "volume",
                                      "headphones", "bluetooth", "shortcut"]
@@ -224,6 +228,7 @@ public struct AgentSettingsView: View {
         case .features: FeaturesSettingsTab(settings: settings)
         case .network:  NetworkSettingsTab(settings: settings)
         case .agents:   AgentsSettingsTab(settings: settings)
+        case .security: SecuritySettingsTab(settings: settings)
         case .experimental: ExperimentalSettingsTab(settings: settings)
         }
     }
@@ -1540,6 +1545,34 @@ struct AgentsSettingsTab: View {
 
 /// 설정 › 실험 기능: things that lean on another app's internals and may stop working after
 /// that app updates, and try-outs like the 아이콘 모자. Each is off until turned on.
+/// 설정 -> 보안: what the 권한 드롭다운 lets through.
+struct SecuritySettingsTab: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section {
+                SettingToggle(L("위험 표시가 떠도 허용", "Allow despite a danger sign"),
+                              L("받은 스크립트 실행, 관리자 권한(sudo), 비밀 정보 접근 같은 위험 표시가 떠도 노치에서 허용할 수 있음.",
+                                "Allow from the notch even when it flags a downloaded script, administrator rights (sudo) or secrets."),
+                              isOn: $settings.permissionAllowFlagged)
+                SettingToggle(L("긴 명령도 펼치지 않고 허용", "Allow long commands without opening them"),
+                              L("3줄이나 180자를 넘는 명령을 전체 보기로 끝까지 보지 않아도 허용할 수 있음.",
+                                "Allow a command longer than 3 lines or 180 characters without reading it to the end in Show all."),
+                              isOn: $settings.permissionAllowUnread)
+            } header: {
+                Text(L("노치에서 허용", "Allowing from the notch"))
+            } footer: {
+                Text(L("기본 노치 동작은 위험해 보이거나 다 보이지 않는 명령은 다 읽은 뒤에 허용, 또는 터미널에서 허용하게 됩니다. 설정을 허용한 뒤 발생하는 명령의 결과는 사용자 책임입니다.",
+                       "By default the notch allows a command that looks dangerous or doesn't show in full only once it has been read, or in the terminal. What a command does after you turn these on is your own responsibility."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
 struct ExperimentalSettingsTab: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject private var typingSounds = TypingSounds.shared

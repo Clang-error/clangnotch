@@ -149,6 +149,11 @@ public final class AppSettings: ObservableObject {
     // the turn and wakes the session with the pick (NextStepHooks). Off by default; the hook is
     // in ~/.claude/settings.json only while this is on.
     @AppStorage("experimentalClaudeNextStepAnswers") public var experimentalClaudeNextStepAnswers: Bool = false
+    // 설정 -> 보안: the 권한 드롭다운 keeps 허용 off for a request with a danger sign, and for a
+    // command that doesn't fit until it is opened and read to its end (2026-11-16). Some users
+    // found that in the way; these let someone who knows the risk allow anyway. Off by default.
+    @AppStorage("permissionAllowFlagged") public var permissionAllowFlagged: Bool = false
+    @AppStorage("permissionAllowUnread") public var permissionAllowUnread: Bool = false
     // 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기": the closed wings' Claude icons wear a hat
     // for what their session is doing (ClaudeIconHat). Off by default.
     @AppStorage("experimentalClaudeIconHats") public var experimentalClaudeIconHats: Bool = false
