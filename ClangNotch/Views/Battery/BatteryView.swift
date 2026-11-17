@@ -37,6 +37,7 @@ struct BatteryView: View {
                                     }
                                 }
                             }
+                        if device.live, device.onlyOverUSB == true { usbOnlyHint(device) }
                     }
                 }
             }
@@ -80,6 +81,30 @@ struct BatteryView: View {
         .padding(.vertical, 8)
         .background(Color(red: 0.95, green: 0.35, blue: 0.35).opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 6)
+    }
+
+    /// Under an iPhone or iPad that only shows over USB: what to turn on in Finder so it shows
+    /// without the cable (a user read the feature as "only while plugged in", 2026-11-17).
+    private func usbOnlyHint(_ device: BatteryDevice) -> some View {
+        let model = device.symbol == "ipad" ? "iPad" : "iPhone"
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "wifi")
+                .font(.system(size: 11))
+                .foregroundColor(NotchPalette.ink.opacity(0.6))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("USB 연결 없이도 보려면", "To see it without a USB connection"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(NotchPalette.ink.opacity(0.85))
+                Text(L("Finder에서 이 \(model)을 고르고 'Wi-Fi에 연결되어 있을 때 이 \(model) 보기'를 켜세요",
+                       "Select this \(model) in Finder and turn on 'Show this \(model) when on Wi-Fi'"))
+                    .font(.system(size: 11))
+                    .foregroundColor(NotchPalette.ink.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 4)
     }
 
     /// 아이폰 도구 줄: shown until libimobiledevice is installed.

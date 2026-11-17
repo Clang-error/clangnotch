@@ -26,6 +26,9 @@ struct BatteryDevice: Identifiable, Equatable, Codable {
     let parts: [BatteryPart]
     /// 맥 본체만: 충전 중이면 완충까지, 아니면 바닥날 때까지 남은 분. 계산 중이면 nil.
     var minutesLeft: Int? = nil
+    /// iPhone·iPad seen over USB but not over Wi-Fi: Finder's "show when on Wi-Fi" is off, so
+    /// it disappears with the cable. Optional so values saved before it still decode.
+    var onlyOverUSB: Bool? = nil
 }
 
 @MainActor
@@ -668,7 +671,8 @@ private enum Collector {
                 symbol: identity.symbol,
                 percent: percent,
                 charging: battery["BatteryIsCharging"] == "true",
-                live: true, seenAt: Date(), parts: []
+                live: true, seenAt: Date(), parts: [],
+                onlyOverUSB: usb.contains(udid) && !net.contains(udid)
             )
         }
     }
