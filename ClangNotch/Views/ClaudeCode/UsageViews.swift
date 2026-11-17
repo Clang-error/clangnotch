@@ -267,7 +267,7 @@ struct ClaudeUsageNotchSection: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header: title on the left, next-poll countdown on the right.
             HStack(spacing: 4) {
-                Text(L("Claude 사용량", "Claude usage"))
+                Text("Claude")
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(0.8)
                     .foregroundColor(NotchPalette.ink.opacity(0.4))

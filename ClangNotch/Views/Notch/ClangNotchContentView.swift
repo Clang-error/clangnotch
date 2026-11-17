@@ -1647,7 +1647,7 @@ struct ClangNotchContentView: View {
                         ClaudeUsageNotchSection()
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(L("Claude 사용량", "Claude usage"))
+                            Text("Claude")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(NotchPalette.ink.opacity(0.55))
                             Text(L("사용량 조회가 꺼져 있습니다. 설정에서 켜면 5시간·7일 사용량을 확인할 수 있습니다.", "Usage tracking is off. Turn it on in Settings to see 5-hour and 7-day usage."))
@@ -1670,7 +1670,7 @@ struct ClangNotchContentView: View {
                         CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(L("Codex 사용량", "Codex usage"))
+                            Text("Codex")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(NotchPalette.ink.opacity(0.55))
                             Text(L("아직 사용량 데이터가 없습니다. Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "No usage data yet. It appears once a Codex session reports its limits."))
@@ -2019,7 +2019,7 @@ struct ClangNotchContentView: View {
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(L("Codex 사용량", "Codex usage"))
+                    Text("Codex")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
                         .foregroundColor(NotchPalette.ink.opacity(0.4))
