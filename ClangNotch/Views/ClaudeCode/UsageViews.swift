@@ -274,15 +274,13 @@ struct ClaudeUsageNotchSection: View {
                 if showPlan, let plan = usageManager.planLabel {
                     PlanBadge(text: plan, tint: Color(red: 0.9, green: 0.4, blue: 0.1))
                 }
-                if usageManager.usageData.limitReached {
-                    // A window can sit well under 100% while a different one
-                    // is what's actually blocking, so say so outright.
-                    Text(L("한도 도달", "Limit reached"))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.red)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.red.opacity(0.18), in: Capsule())
+                // A window can sit well under 100% while a different one is what's actually
+                // blocking, so say so outright, and whether it is the account or one model.
+                if usageManager.usageData.accountLimitReached {
+                    limitBadge(L("한도 도달", "Limit reached"), tint: .red)
+                } else if !usageManager.usageData.spentModels.isEmpty {
+                    let models = usageManager.usageData.spentModels.joined(separator: ", ")
+                    limitBadge(L("\(models) 한도 도달", "\(models) limit reached"), tint: .orange)
                 }
                 Spacer(minLength: 0)
                 nextPollCountdown
@@ -304,6 +302,15 @@ struct ClaudeUsageNotchSection: View {
 
             content
         }
+    }
+
+    private func limitBadge(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(tint)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.18), in: Capsule())
     }
 
     /// Live "time until next poll" shown at the header's right edge. The interval is

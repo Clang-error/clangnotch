@@ -82,11 +82,18 @@ struct ClaudeUsageData: Equatable {
     let sonnet: LimitData?
     let fable: LimitData?
 
-    /// True when any window is spent. The endpoint carries no explicit "blocked"
-    /// flag, and a low 5-hour reading says nothing about a spent weekly or
-    /// per-model cap — which is the one actually turning requests away.
-    var limitReached: Bool {
-        [fiveHour, sevenDay, opus, sonnet, fable].contains { ($0?.percentage ?? 0) >= 100 }
+    /// The 5-hour or weekly window is spent: every model is turned away. The endpoint carries
+    /// no explicit "blocked" flag, and a low 5-hour reading says nothing about a spent weekly cap.
+    var accountLimitReached: Bool {
+        [fiveHour, sevenDay].contains { ($0?.percentage ?? 0) >= 100 }
+    }
+
+    /// Models whose own weekly cap is spent while the account still has room: only those are
+    /// turned away. Shown apart, since one plain "limit reached" read as everything being blocked.
+    var spentModels: [String] {
+        [("Opus", opus), ("Sonnet", sonnet), ("Fable", fable)]
+            .filter { ($0.1?.percentage ?? 0) >= 100 }
+            .map(\.0)
     }
 
     static let empty = ClaudeUsageData(
