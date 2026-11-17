@@ -64,13 +64,19 @@ final class ClipboardManager: ObservableObject {
         // Skip transient / concealed (password manager) items
         let types = pasteboard.types ?? []
         let typeStrings = types.map(\.rawValue)
-        // A password copied is still a copy: the orb says so, and the history leaves it out.
         // A transient item is an app's own passing data, not something the user copied.
-        if !typeStrings.contains("org.nspasteboard.TransientType") { copied.send() }
-        if typeStrings.contains("org.nspasteboard.ConcealedType") ||
-           typeStrings.contains("org.nspasteboard.TransientType") { return }
+        if typeStrings.contains("org.nspasteboard.TransientType") { return }
+        // A password copied is still a copy: the orb says so, and the history leaves it out.
+        if typeStrings.contains("org.nspasteboard.ConcealedType") {
+            copied.send()
+            return
+        }
 
+        // Only what the history can keep (files, an image, text) shows the orb: an app's own
+        // format, such as Premiere's copied effect settings, kept it saying "copied" over
+        // nothing (user report, 2026-11-17).
         guard let item = readItem(types: types) else { return }
+        copied.send()
 
         // Deduplicate against the most recent item
         if let first = items.first, first.text == item.text, first.files == item.files, item.imageFile == nil {
