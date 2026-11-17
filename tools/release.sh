@@ -105,4 +105,8 @@ mkdir -p "$(dirname "$OUT")"
 mv -f "$image" "$OUT"
 version=$(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString)
 build=$(defaults read "$app/Contents/Info.plist" CFBundleVersion)
+# Kept so a user's crash or hang report can be read back to functions (issue #3 had only offsets).
+symbols="$HOME/Library/Developer/ClangNotch-dSYMs/$version-$build"
+mkdir -p "$symbols" && cp -R "$work/ClangNotch.xcarchive/dSYMs/." "$symbols/"
+echo "Symbols: $symbols"
 echo "Ready: $OUT ($version, build $build)"

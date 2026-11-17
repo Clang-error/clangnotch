@@ -712,8 +712,8 @@ final class CodexManager: ObservableObject {
         )
     }
 
-    /// File writes from opening/settings/importing a conversation are not Codex work.
-    /// Walk complete records backwards so a large tail record cannot hide the latest turn.
+    /// File writes from opening/settings/importing a conversation are not Codex work
+    /// (`CodexActivityScan`; cached per file size and modification time).
     private func latestCodexActivityDate(in file: URL, modifiedAt: Date) -> Date? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
@@ -721,40 +721,9 @@ final class CodexManager: ObservableObject {
         if let cached = sessionActivityCache[file], cached.modifiedAt == modifiedAt, cached.fileSize == fileSize {
             return cached.activity
         }
-        var activity: Date?
-        defer { sessionActivityCache[file] = (modifiedAt, fileSize, activity) }
-        let recentThreshold = Date().addingTimeInterval(-SessionRetention.keepSeconds)
-        var position = fileSize
-        var pending = Data()
-        while position > 0 {
-            let start = position > 64 * 1024 ? position - 64 * 1024 : 0
-            handle.seek(toFileOffset: start)
-            var data = handle.readData(ofLength: Int(position - start))
-            data.append(pending)
-            let lines = data.split(separator: 0x0A, omittingEmptySubsequences: false)
-            pending = start > 0 ? Data(lines.first ?? Data()) : Data()
-            let completeLines = start > 0 ? lines.dropFirst() : lines[...]
-            for line in completeLines.reversed() {
-                guard let json = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
-                      let payload = json["payload"] as? [String: Any],
-                      let type = json["type"] as? String,
-                      let eventType = payload["type"] as? String else { continue }
-                let isTurn = type == "event_msg"
-                    && ["task_started", "task_complete", "turn_aborted", "agent_reasoning"].contains(eventType)
-                    && !(payload["turn_id"] as? String ?? "").hasPrefix("external-import-turn-")
-                let isToolOrReasoning = type == "response_item"
-                    && ["function_call", "custom_tool_call", "function_call_output", "custom_tool_call_output", "reasoning"].contains(eventType)
-                let isResponse = type == "response_item" && eventType == "message"
-                    && payload["role"] as? String == "assistant"
-                    && ["commentary", "final_answer"].contains(payload["phase"] as? String ?? "")
-                guard isTurn || isToolOrReasoning || isResponse,
-                      let timestamp = json["timestamp"] as? String,
-                      let date = Self.iso8601Formatter.date(from: timestamp) ?? Self.plainISO8601Formatter.date(from: timestamp) else { continue }
-                activity = max(activity ?? .distantPast, date)
-                if date > recentThreshold { return activity }
-            }
-            position = start
-        }
+        let recent = Date().addingTimeInterval(-SessionRetention.keepSeconds)
+        let activity = CodexActivityScan.latestActivity(in: handle, fileSize: fileSize, recentAfter: recent)
+        sessionActivityCache[file] = (modifiedAt, fileSize, activity)
         return activity
     }
 
@@ -970,9 +939,15 @@ final class CodexManager: ObservableObject {
     // MARK: - JSONL Parsing
 
     private func parseJSONLLine(_ line: String, sessionId: String) {
-        guard let data = line.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
+        let json: [String: Any]
+        if line.utf8.count > CodexActivityScan.fullLineLimit {
+            // A huge tool output (46 MB in #3) only needs its start: parsing it whole stalled the notch.
+            guard let compact = CodexActivityScan.compactRecord(head: String(line.prefix(CodexActivityScan.headSize))) else { return }
+            json = compact
+        } else {
+            guard let data = line.data(using: .utf8),
+                  let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            json = parsed
         }
 
         guard var sessionState = sessionStates[sessionId] else { return }

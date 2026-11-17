@@ -34,6 +34,7 @@ checks = [
     ("PermissionRiskChecks", ["ClangNotch/Core/Permission/PermissionRisk.swift",
                               "ClangNotch/Core/Permission/PermissionText.swift"], L),
     ("NotchDropdownModelChecks", [], ""),
+    ("CodexActivityScanChecks", ["ClangNotch/Models/CodexActivityScan.swift", "ClangNotch/Models/JSONLLineBuffer.swift"], ""),
     ("FuzzChecks", ["ClangNotch/Core/Hooks/HookHTTPServer.swift", "ClangNotch/Core/Permission/PermissionText.swift",
                     "ClangNotch/Core/Permission/PermissionRisk.swift", "ClangNotch/Core/Update/AppVersion.swift"], L + LOG),
 ]

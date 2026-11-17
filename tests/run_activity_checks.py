@@ -581,6 +581,7 @@ with tempfile.TemporaryDirectory(prefix='clangnotch-activity-checks-') as folder
                     str(root/'ClangNotch/Models/ClaudeCodeModels.swift'),
                     str(root/'ClangNotch/Models/CodexModels.swift'),
                     str(root/'ClangNotch/Models/JSONLLineBuffer.swift'),
+                    str(root/'ClangNotch/Models/CodexActivityScan.swift'),
                     str(root/'ClangNotch/Core/Codex/CodexAppIPC.swift'),
                     str(root/'ClangNotch/Core/Settings/SessionRetention.swift'),
                     str(temp/'Checks.swift'), '-o', str(temp/'checks')], check=True)
