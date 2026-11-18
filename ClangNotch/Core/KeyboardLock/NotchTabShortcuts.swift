@@ -4,6 +4,9 @@ import Carbon.HIToolbox
 extension Notification.Name {
     /// userInfo["index"]: Int — position in the visible tab strip.
     static let notchSelectTab = Notification.Name("notchSelectTab")
+    /// userInfo["held"]: Bool — ⌘ alone went down or came up while the notch is open; the 탭
+    /// 막대 shows each tab's ⌘ number meanwhile.
+    static let notchCommandHeld = Notification.Name("notchCommandHeld")
 }
 
 /// ⌘1–⌘7 switch tabs while the notch is open. The panel can never become key, so the
@@ -15,6 +18,8 @@ final class NotchTabShortcuts {
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    /// The tap runs on the main run loop, so this is only touched on the main thread.
+    private var commandHeld = false
 
     private init() {}
 
@@ -34,7 +39,7 @@ final class NotchTabShortcuts {
     ]
 
     private func startTap() -> Bool {
-        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue) | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -47,6 +52,18 @@ final class NotchTabShortcuts {
                     if let refcon {
                         let shortcuts = Unmanaged<NotchTabShortcuts>.fromOpaque(refcon).takeUnretainedValue()
                         if let tap = shortcuts.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+                    }
+                    return Unmanaged.passUnretained(event)
+                }
+                if type == .flagsChanged, let refcon {
+                    // ⌘ by itself, for the numbers under the tabs; the event goes on untouched.
+                    let held = event.flags.intersection([.maskCommand, .maskShift, .maskControl, .maskAlternate]) == .maskCommand
+                    let shortcuts = Unmanaged<NotchTabShortcuts>.fromOpaque(refcon).takeUnretainedValue()
+                    if held != shortcuts.commandHeld {
+                        shortcuts.commandHeld = held
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(name: .notchCommandHeld, object: nil, userInfo: ["held": held])
+                        }
                     }
                     return Unmanaged.passUnretained(event)
                 }
@@ -75,6 +92,10 @@ final class NotchTabShortcuts {
     }
 
     private func stopTap() {
+        if commandHeld {
+            commandHeld = false
+            NotificationCenter.default.post(name: .notchCommandHeld, object: nil, userInfo: ["held": false])
+        }
         if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false); CFMachPortInvalidate(tap) }
         if let source = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         eventTap = nil

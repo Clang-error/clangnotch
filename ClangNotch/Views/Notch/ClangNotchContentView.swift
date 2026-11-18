@@ -65,6 +65,8 @@ struct ClangNotchContentView: View {
     @State private var claudeInputRequest: ClaudeInputRequest?
     /// Which question of the dropdown's shows (one at a time), for the wing header's "질문 1/2".
     @State private var questionStep = 0
+    /// ⌘ alone is held with the notch open: the 탭 막대 shows each tab's ⌘ number.
+    @State private var commandHeld = false
     /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
     @State private var doneFlash: DoneFlash?
     @State private var doneFlashTask: Task<Void, Never>?
@@ -1536,6 +1538,9 @@ struct ClangNotchContentView: View {
     /// the picked one in its capsule with its name.
     private var modeSwitcher: some View {
         modeChips(matchID: "selectedChip-dock")
+            .onReceive(NotificationCenter.default.publisher(for: .notchCommandHeld)) { note in
+                commandHeld = note.userInfo?["held"] as? Bool ?? false
+            }
             .padding(5)
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(NotchPalette.ink.opacity(0.06)))
             .fixedSize(horizontal: false, vertical: true)
@@ -1548,10 +1553,11 @@ struct ClangNotchContentView: View {
     /// Each `ViewThatFits` branch gets its own capsule id, in case both get measured at once.
     private func modeChips(matchID: String) -> some View {
         HStack(spacing: 0) {
-            ForEach(visibleModes) { mode in
+            ForEach(Array(visibleModes.enumerated()), id: \.element) { index, mode in
                 NotchNavigationButton(mode: mode, selected: activeMode == mode,
                                       needsAttention: mode == .ai && attentionCount > 0,
-                                      namespace: chipNamespace, matchID: matchID) {
+                                      namespace: chipNamespace, matchID: matchID,
+                                      shortcut: commandHeld && index < 7 ? index + 1 : nil) {
                     withAnimation(modeSwitchAnimation) {
                         expandedMode = mode
                     }

@@ -117,6 +117,8 @@ struct NotchNavigationButton: View {
     /// Shared by all chips so the selected capsule slides from tab to tab.
     let namespace: Namespace.ID
     var matchID = "selectedChip"
+    /// Its ⌘ number, shown under the icon while ⌘ is held (nil: none, or not held).
+    var shortcut: Int? = nil
     let action: () -> Void
     @State private var hovering = false
 
@@ -139,8 +141,21 @@ struct NotchNavigationButton: View {
                 }
             }
             .foregroundStyle(selected ? NotchPalette.ink : NotchPalette.ink.opacity(hovering ? 0.85 : 0.5))
+            // Lifted while the number shows under it, inside the same height.
+            .offset(y: shortcut == nil ? 0 : -5)
             .padding(.horizontal, 10)
             .frame(height: 37)
+            .overlay(alignment: .bottom) {
+                if let shortcut {
+                    Text("⌘\(shortcut)")
+                        .font(.system(size: 9, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(NotchPalette.ink.opacity(0.6))
+                        .padding(.bottom, 2)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: shortcut)
             .background {
                 if selected {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
