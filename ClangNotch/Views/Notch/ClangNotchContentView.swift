@@ -63,6 +63,8 @@ struct ClangNotchContentView: View {
     @State private var questionDismissOpen = false
     @State private var codexInputRequest: CodexInputRequest?
     @State private var claudeInputRequest: ClaudeInputRequest?
+    /// Which question of the dropdown's shows (one at a time), for the wing header's "질문 1/2".
+    @State private var questionStep = 0
     /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
     @State private var doneFlash: DoneFlash?
     @State private var doneFlashTask: Task<Void, Never>?
@@ -1808,15 +1810,41 @@ struct ClangNotchContentView: View {
     }
 
     @ViewBuilder
+    /// Each side of the camera in the dropdown's first row (`WingHeader`): the row is the notch's
+    /// width less its insets, the camera sits in its middle, 8 pt clear of either side.
+    private var wingSide: CGFloat {
+        (notchVM.notchSize.width - 2 * expandedNotchInset - notchVM.closedNotchSize.width) / 2 - 8
+    }
+
     private var peekHeader: some View {
         Group {
-            if showPermissionNotice || showQuestionNotice {
+            if showPermissionNotice, let item = permissionCenter.queue.first ?? shownPermission {
+                PermissionPeekHeader(item: item, position: 1, total: permissionCenter.queue.count,
+                                     accent: agentAccent(item.agent), side: wingSide) {
+                    permissionCenter.decide(item.id, .terminal)
+                }
+            } else if showQuestionNotice {
+                let wrapUp = claudeInputRequest?.isWrapUp == true
+                let count = (codexInputRequest?.questions ?? claudeInputRequest?.questions ?? []).count
+                AskPeekHeader(agent: codexInputRequest == nil ? .claude : .codex,
+                              title: wrapUp ? L("다음 단계", "Next step")
+                                  : count > 1 ? L("질문 \(min(questionStep, count - 1) + 1)/\(count)", "Question \(min(questionStep, count - 1) + 1)/\(count)")
+                                  : L("질문", "Question"),
+                              accent: questionNoticeColor, side: wingSide, dismissOpen: $questionDismissOpen,
+                              scale: wrapUp ? 1 : questionScale,
+                              onDismiss: { dismissQuestionNotice() }, onClear: { clearQuestionNotice() })
+            } else if showPermissionNotice {
                 Color.clear
             } else if showSpeedNotice {
                 SpeedPeekHeader(manager: speedTest)
             } else if let tetherPlaceName {
                 TetherPeekHeader(placeName: tetherPlaceName)
-            } else if doneNotice == nil, mediaNotice != nil {
+            } else if let doneNotice {
+                DonePeekHeader(agent: doneNotice.source == .codex ? .codex : .claude,
+                               elapsed: doneNotice.turn.elapsed, accent: doneBlue, side: wingSide) {
+                    dismissDoneNotice()
+                }
+            } else if mediaNotice != nil {
                 // The attached player's close button, in the free space right of the camera, on
                 // the notch's own colour, while the cursor is on the notch (user, 2026-11-18).
                 HStack {
@@ -1903,48 +1931,31 @@ struct ClangNotchContentView: View {
     /// Type size in the 질문 드롭다운: larger once it is enlarged, so the extra room reads.
     private var questionScale: CGFloat { questionExpanded ? 1.4 : 1 }
 
+    /// Who asked and where from, as the 다음 단계 드롭다운 and 완료 드롭다운 say it: the session's
+    /// name and folder, behind the SSH mark and host for a remote one. "질문" and the 닫기 알약 are in
+    /// the wing header (`AskPeekHeader`).
     private var questionHeader: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(questionNoticeColor)
-                .frame(width: 12 * questionScale, height: 12 * questionScale)
-                .shadow(color: questionNoticeColor.opacity(0.6), radius: 4)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Waiting for Your Answer")
-                    .font(.system(size: 13 * questionScale, weight: .semibold))
-                    .foregroundColor(NotchPalette.ink)
-
-                // Who asked and where from, as the 다음 단계 드롭다운 and 완료 드롭다운 say it:
-                // the session's name and folder, behind the SSH mark and host for a remote one.
-                HStack(spacing: 4) {
-                    Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
-                    if let origin = askingSessionOrigin {
-                        if let host = origin.host {
-                            Text("·")
-                            // `SessionAppDestination.ssh`'s mark.
-                            Image(systemName: "network")
-                                .font(.system(size: 10 * questionScale, weight: .semibold))
-                            Text(host)
-                        }
-                        if !origin.label.isEmpty {
-                            Text("·")
-                            Text(origin.label)
-                                .truncationMode(.middle)
-                        }
-                    }
+        HStack(spacing: 4) {
+            Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
+            if let origin = askingSessionOrigin {
+                if let host = origin.host {
+                    Text("·")
+                    // `SessionAppDestination.ssh`'s mark.
+                    Image(systemName: "network")
+                        .font(.system(size: 10 * questionScale, weight: .semibold))
+                    Text(host)
                 }
-                .font(.system(size: 11 * questionScale))
-                .foregroundColor(NotchPalette.ink.opacity(0.7))
-                .lineLimit(1)
+                if !origin.label.isEmpty {
+                    Text("·")
+                    Text(origin.label)
+                        .truncationMode(.middle)
+                }
             }
-
-            Spacer()
-
-            // The go button sits at the bottom, as in the 완료 드롭다운 (`QuestionOptionsView`).
-            DismissPill(expanded: $questionDismissOpen, scale: questionScale,
-                        onCollapse: { dismissQuestionNotice() }, onClear: { clearQuestionNotice() })
+            Spacer(minLength: 0)
         }
+        .font(.system(size: 11.5 * questionScale))
+        .foregroundColor(NotchPalette.ink.opacity(0.5))
+        .lineLimit(1)
     }
 
     /// Where the question in the 질문 드롭다운 comes from: the asking session's name and folder,
@@ -2017,14 +2028,15 @@ struct ClangNotchContentView: View {
     }
 
     private var plainQuestionContent: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             questionHeader
 
             if let request = codexInputRequest {
                 ScrollView(.vertical) {
                     QuestionOptionsView(questions: request.questions, sourceName: "Codex", accentColor: .blue,
                                         onSubmit: codexQuestionAnswer, goTitle: askingSessionOpenTitle,
-                                        onGo: { goToAskingSession() }, scale: questionScale)
+                                        onGo: { goToAskingSession() }, scale: questionScale,
+                                        onStep: { questionStep = $0 })
                         .id(request.id)
                         .background(ThinScrollers())
                 }
@@ -2032,13 +2044,14 @@ struct ClangNotchContentView: View {
                 ScrollView(.vertical) {
                     QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
                                         onSubmit: claudeQuestionAnswer, goTitle: askingSessionOpenTitle,
-                                        onGo: { goToAskingSession() }, scale: questionScale)
+                                        onGo: { goToAskingSession() }, scale: questionScale,
+                                        onStep: { questionStep = $0 })
                         .id(request.id)
                         .background(ThinScrollers())
                 }
             }
         }
-        .padding(.top, 10)
+        .padding(.top, 4)
     }
 
     /// The 질문 드롭다운's 크기 손잡이, for Claude and Codex questions alike. The 다음 단계
@@ -2207,12 +2220,13 @@ struct ClangNotchContentView: View {
         var onGo: (() -> Void)? = nil
         /// The enlarged 질문 드롭다운 draws everything this much bigger.
         var scale: CGFloat = 1
+        /// Which question shows, for the wing header's "질문 1/2".
+        var onStep: ((Int) -> Void)? = nil
         @State private var picks: [Int: Set<Int>] = [:]
-
-        /// One single-choice question needs no Send: the tap is the answer.
-        private var answersOnTap: Bool {
-            questions.count == 1 && questions.first?.multiSelect == false
-        }
+        /// Answerable questions come one at a time (user, 2026-11-18): a pick shows for a moment,
+        /// then the next one comes; ‹ 이전 goes back with the earlier pick still marked.
+        @State private var step = 0
+        @State private var advancing = false
 
         private var canSend: Bool {
             questions.indices.allSatisfy { picks[$0]?.isEmpty == false }
@@ -2220,31 +2234,23 @@ struct ClangNotchContentView: View {
 
         var body: some View {
             VStack(alignment: .leading, spacing: 10 * scale) {
-                ForEach(Array(questions.enumerated()), id: \.offset) { index, question in
-                    VStack(alignment: .leading, spacing: 5 * scale) {
-                        Text(question.multiSelect ? L("\(question.header) · 복수 선택", "\(question.header) · multiple choice") : question.header)
-                            .font(.system(size: 10 * scale, weight: .semibold))
-                            .foregroundColor(accentColor)
-                        Text(question.question)
-                            .font(.system(size: 11 * scale, weight: .medium))
-                            .foregroundColor(NotchPalette.ink)
-                        ForEach(Array(question.options.enumerated()), id: \.offset) { optionIndex, option in
-                            if onSubmit != nil {
-                                optionButton(option, picked: picks[index]?.contains(optionIndex) == true,
-                                             multiSelect: question.multiSelect) {
-                                    pick(optionIndex, in: index, multiSelect: question.multiSelect)
-                                }
-                                .popIn(.rise, delay: Double(min(optionIndex, 6)) * 0.035)
-                            } else {
-                                HStack(alignment: .top, spacing: 5) {
-                                    Circle()
-                                        .fill(NotchPalette.ink.opacity(0.5))
-                                        .frame(width: 4, height: 4)
-                                        .padding(.top, 5)
-                                    optionText(option)
-                                }
-                            }
+                if onSubmit != nil, !questions.isEmpty {
+                    // All laid out, one shown: the dropdown is sized once for the tallest, and the
+                    // next question can't push the buttons out of sight. It switches at once, the
+                    // pick having shown; a crossfade showed both for a moment.
+                    ZStack(alignment: .topLeading) {
+                        ForEach(Array(questions.enumerated()), id: \.offset) { index, question in
+                            questionBlock(question, index: index)
+                                .opacity(index == step ? 1 : 0)
+                                .allowsHitTesting(index == step)
+                                .accessibilityHidden(index != step)
                         }
+                    }
+                } else {
+                    // Only to read (the answer is given in the agent): all of them, set apart.
+                    ForEach(Array(questions.enumerated()), id: \.offset) { index, question in
+                        if index > 0 { Rectangle().fill(NotchPalette.ink.opacity(0.1)).frame(height: 1) }
+                        questionBlock(question, index: index)
                     }
                 }
 
@@ -2253,58 +2259,114 @@ struct ClangNotchContentView: View {
                         .font(.system(size: 11 * scale))
                         .foregroundColor(NotchPalette.ink.opacity(0.7))
                 }
-                HStack {
-                    if let onOpen {
-                        Button(action: onOpen) {
-                            Label(openTitle ?? L("\(sourceName)에서 응답", "Answer in \(sourceName)"),
-                                  systemImage: "arrow.up.right.square")
-                                .font(.system(size: 11 * scale, weight: .semibold))
-                                .foregroundColor(accentColor)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(NotchPalette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    } else if onGo != nil {
-                        // The go button beside it does the going; this only says where to answer.
-                        Text(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
-                                             : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"))
-                            .font(.system(size: 10 * scale, weight: .medium))
-                            .foregroundColor(NotchPalette.ink.opacity(0.55))
-                    } else {
-                        Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
-                                              : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
-                              systemImage: "arrow.up.right.square")
-                            .font(.system(size: 10 * scale, weight: .medium))
-                            .foregroundColor(accentColor.opacity(0.8))
+                footer
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onAppear { onStep?(step) }
+            .onChange(of: step) { _, now in onStep?(now) }
+        }
+
+        /// The question in bold over a line, then its options: set apart from each other.
+        private func questionBlock(_ question: AgentInputQuestion, index: Int) -> some View {
+            VStack(alignment: .leading, spacing: 8 * scale) {
+                VStack(alignment: .leading, spacing: 4 * scale) {
+                    if question.multiSelect || (onSubmit == nil && questions.count > 1) {
+                        Text(question.multiSelect ? L("\(question.header) · 복수 선택", "\(question.header) · multiple choice") : question.header)
+                            .font(.system(size: 10.5 * scale, weight: .semibold))
+                            .foregroundColor(accentColor)
                     }
-                    Spacer(minLength: 0)
-                    if onSubmit != nil, !answersOnTap {
-                        Button(action: submit) {
-                            Text(L("보내기", "Send"))
-                                .font(.system(size: 11 * scale, weight: .semibold))
-                                .foregroundColor(canSend ? .black : NotchPalette.ink.opacity(0.4))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 5)
-                                .background(Capsule().fill(canSend ? accentColor : NotchPalette.ink.opacity(0.08)))
-                                .contentShape(Capsule())
+                    Text(question.question)
+                        .font(.system(size: 14.5 * scale, weight: .bold))
+                        .foregroundColor(NotchPalette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Rectangle().fill(NotchPalette.ink.opacity(0.1)).frame(height: 1)
+                VStack(alignment: .leading, spacing: 5 * scale) {
+                    ForEach(Array(question.options.enumerated()), id: \.offset) { optionIndex, option in
+                        if onSubmit != nil {
+                            optionButton(option, picked: picks[index]?.contains(optionIndex) == true,
+                                         multiSelect: question.multiSelect) {
+                                pick(optionIndex, in: index, multiSelect: question.multiSelect)
+                            }
+                            .popIn(.rise, delay: Double(min(optionIndex, 6)) * 0.035)
+                        } else {
+                            HStack(alignment: .top, spacing: 5) {
+                                Circle()
+                                    .fill(NotchPalette.ink.opacity(0.5))
+                                    .frame(width: 4, height: 4)
+                                    .padding(.top, 5)
+                                optionText(option)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!canSend)
-                    }
-                    if let onGo, let goTitle {
-                        // Filled as in the 완료 드롭다운, unless 보내기 is the button to press.
-                        DropdownButton(title: goTitle, tint: accentColor, filled: onSubmit == nil || answersOnTap,
-                                       scale: scale, action: onGo)
-                            .newHighlight(cornerRadius: 12 * scale, delay: 0.25)
-                            .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
-                            // Clear of the 크기 손잡이 in the corner.
-                            .padding(.trailing, onSubmit != nil ? 18 : 0)
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
+        private var footer: some View {
+            HStack(spacing: 8) {
+                if onSubmit != nil, step > 0 {
+                    Button { step -= 1 } label: {
+                        Label(L("이전", "Back"), systemImage: "chevron.left")
+                            .font(.system(size: 12 * scale, weight: .semibold))
+                            .foregroundColor(NotchPalette.ink.opacity(0.75))
+                            .padding(.horizontal, 10)
+                            .frame(height: 28 * scale)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(NotchPalette.ink.opacity(0.22)))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                } else if let onOpen {
+                    Button(action: onOpen) {
+                        Label(openTitle ?? L("\(sourceName)에서 응답", "Answer in \(sourceName)"),
+                              systemImage: "arrow.up.right.square")
+                            .font(.system(size: 11 * scale, weight: .semibold))
+                            .foregroundColor(accentColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(NotchPalette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                } else if onGo != nil {
+                    // The go button beside it does the going; this only says where to answer.
+                    Text(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
+                                         : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"))
+                        .font(.system(size: 11.5 * scale))
+                        .foregroundColor(NotchPalette.ink.opacity(0.4))
+                } else {
+                    Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
+                                          : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
+                          systemImage: "arrow.up.right.square")
+                        .font(.system(size: 10 * scale, weight: .medium))
+                        .foregroundColor(accentColor.opacity(0.8))
+                }
+                Spacer(minLength: 0)
+                // A multiple-choice question goes on with a button; the last one sends them all.
+                if onSubmit != nil, questions.indices.contains(step), questions[step].multiSelect {
+                    let last = step == questions.count - 1
+                    let ready = picks[step]?.isEmpty == false && (!last || canSend)
+                    Button { if last { submit() } else { step += 1 } } label: {
+                        Text(last ? L("보내기", "Send") : L("다음", "Next"))
+                            .font(.system(size: 12 * scale, weight: .semibold))
+                            .foregroundColor(ready ? .black : NotchPalette.ink.opacity(0.4))
+                            .padding(.horizontal, 14)
+                            .frame(height: 28 * scale)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ready ? accentColor : NotchPalette.ink.opacity(0.08)))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!ready)
+                }
+                if let onGo, let goTitle {
+                    PeekBarButton(title: goTitle, icon: "terminal", height: 28 * scale, action: onGo)
+                        .fixedSize()
+                        .newHighlight(cornerRadius: 10, delay: 0.25)
+                        .help(L("질문한 에이전트가 실행 중인 터미널이나 앱으로 이동", "Go to the terminal or app running the agent that asked"))
+                        // Clear of the 크기 손잡이 in the corner.
+                        .padding(.trailing, onSubmit != nil ? 18 : 0)
+                }
+            }
         }
 
         private func optionText(_ option: AgentInputOption) -> some View {
@@ -2320,34 +2382,53 @@ struct ClangNotchContentView: View {
             }
         }
 
+        /// A row per option, its mark always there: an empty circle (or square for several),
+        /// filled in the agent's colour with the row tinted once picked, so the pick shows.
         private func optionButton(_ option: AgentInputOption, picked: Bool, multiSelect: Bool,
                                   action: @escaping () -> Void) -> some View {
             Button(action: action) {
-                HStack(alignment: .top, spacing: 7 * scale) {
+                HStack(alignment: .firstTextBaseline, spacing: 8 * scale) {
                     Image(systemName: multiSelect ? (picked ? "checkmark.square.fill" : "square")
-                                                  : (picked ? "largecircle.fill.circle" : "circle"))
-                        .font(.system(size: 11 * scale))
-                        .foregroundColor(picked ? accentColor : NotchPalette.ink.opacity(0.45))
-                        .padding(.top, 1)
-                    optionText(option)
+                                                  : (picked ? "checkmark.circle.fill" : "circle"))
+                        .font(.system(size: 12 * scale, weight: .medium))
+                        .foregroundColor(picked ? accentColor : NotchPalette.ink.opacity(0.4))
+                    (Text(option.label).font(.system(size: 13 * scale, weight: .medium)).foregroundColor(NotchPalette.ink)
+                        + Text(option.description.isEmpty ? "" : "  " + option.description)
+                            .font(.system(size: 12 * scale)).foregroundColor(NotchPalette.ink.opacity(0.5)))
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 8 * scale)
-                .padding(.vertical, 6 * scale)
-                .background(RoundedRectangle(cornerRadius: 7 * scale, style: .continuous)
-                    .fill(picked ? accentColor.opacity(0.16) : NotchPalette.ink.opacity(0.05)))
+                .padding(.horizontal, 12 * scale)
+                .padding(.vertical, 8 * scale)
+                .background(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
+                    .fill(picked ? accentColor.opacity(0.2) : NotchPalette.ink.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
+                    .stroke(picked ? accentColor.opacity(0.7) : .clear, lineWidth: 1.2))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
 
+        /// A single choice is the answer: it shows picked for a moment, then the next question
+        /// comes, or after the last all of them go.
         private func pick(_ option: Int, in question: Int, multiSelect: Bool) {
             if multiSelect {
                 picks[question, default: []].formSymmetricDifference([option])
-            } else {
-                picks[question] = [option]
+                return
             }
-            if answersOnTap { submit() }
+            // A second tap while the first pick is showing does nothing.
+            guard !advancing else { return }
+            picks[question] = [option]
+            advancing = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(350))
+                advancing = false
+                if question < questions.count - 1 {
+                    step = question + 1
+                } else {
+                    submit()
+                }
+            }
         }
 
         private func submit() {

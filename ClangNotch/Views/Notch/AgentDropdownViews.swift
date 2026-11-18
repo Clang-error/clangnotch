@@ -52,9 +52,52 @@ struct DismissPill: View {
     let onCollapse: () -> Void
     /// 알림도 지우기: drops the notice as well.
     let onClear: () -> Void
+    /// In the wing header the capsule can't open leftward (the camera is there): its two choices
+    /// drop down under the X instead.
+    var dropsDown = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if dropsDown { droppingDown } else { openingLeft }
+    }
+
+    private var xButton: some View {
+        Button {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.12) : notchOpenSpring) { expanded.toggle() }
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 10 * scale, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(NotchPalette.ink.opacity(expanded ? 0.14 : 0.08)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(L("닫기", "Dismiss"))
+    }
+
+    private var droppingDown: some View {
+        xButton
+            .overlay(alignment: .topTrailing) {
+                if expanded {
+                    VStack(alignment: .trailing, spacing: 0) {
+                        DismissPillOption(title: L("창만 닫기", "Close only"), scale: scale, action: onCollapse)
+                        Rectangle().fill(NotchPalette.ink.opacity(0.12)).frame(height: 1)
+                        DismissPillOption(title: L("알림도 지우기", "Clear notice too"), scale: scale, action: onClear)
+                    }
+                    .fixedSize()
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(NotchPalette.inkInverse))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(NotchPalette.ink.opacity(0.16)))
+                    .offset(y: 26)
+                    .onHover { inside in
+                        guard !inside else { return }
+                        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : notchCloseAnimation) { expanded = false }
+                    }
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .topTrailing).combined(with: .opacity))
+                }
+            }
+    }
+
+    private var openingLeft: some View {
         ZStack(alignment: .trailing) {
             if expanded {
                 HStack(spacing: 0) {
@@ -147,106 +190,121 @@ struct PermissionDropdownView: View {
     private var canAllow: Bool {
         !blockedByRisk && (text.isWhole || settings.permissionAllowUnread || (expanded && seenEnd && !text.isTooLong))
     }
-    private static let warning = Color(red: 1, green: 0.42, blue: 0.36)
+    static let warning = Color(red: 1, green: 0.42, blue: 0.36)
+    /// 허용's blue (the user's pick, Claude draft 1), whichever agent asks.
+    static let allowBlue = Color(red: 0.04, green: 0.52, blue: 1.0)
 
+    /// Who asks, which of how many and the time left are in the wing header (`PermissionPeekHeader`).
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                AgentIcon(agent: item.agent)
-                Text("Permission")
-                    .font(.system(size: 13, weight: .semibold))
+            HStack(spacing: 6) {
+                Text(item.toolName)
+                    .font(.system(size: 13.5, weight: .semibold))
                     .foregroundColor(NotchPalette.ink)
                 Text(item.projectName)
-                    .font(.system(size: 11))
-                    .foregroundColor(NotchPalette.ink.opacity(0.55))
+                    .font(.system(size: 12))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                if total > 1 {
-                    Text("\(position)/\(total)")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(NotchPalette.ink.opacity(0.55))
-                }
             }
             .popIn()
 
             if !item.risks.isEmpty { riskBanner }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.toolName)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(accent)
-                if !text.full.isEmpty { detailText }
+            if !text.full.isEmpty {
+                VStack(alignment: .leading, spacing: 3) { detailText }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 11)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(NotchPalette.ink.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .popIn(delay: 0.035)
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NotchPalette.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .popIn(delay: 0.035)
 
-            HStack(spacing: 8) {
-                Button { onDecide(.terminal) } label: {
-                    Label(inTerminal ? L("터미널에서", "In terminal") : L("GUI에서", "In app"),
-                          systemImage: inTerminal ? "terminal" : "macwindow")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(NotchPalette.ink.opacity(0.6))
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(L("노치에서 답하지 않고 에이전트의 승인 창으로 넘기기", "Leave this one to the agent's own approval prompt"))
-                Spacer(minLength: 0)
-                DropdownButton(title: L("거부", "Deny"), tint: NotchPalette.ink.opacity(0.85)) { onDecide(.deny) }
-                DropdownButton(title: L("허용", "Allow"), tint: accent, filled: true) { if canAllow { onDecide(.allow) } }
-                    .disabled(!canAllow)
-                    .opacity(canAllow ? 1 : 0.35)
-                    .help(canAllow ? "" : blockedByRisk
-                          ? L("위험 표시가 뜬 요청은 터미널에서 확인해 주세요", "Check a flagged request in the terminal")
-                          : text.isTooLong
-                          ? L("명령이 너무 길어 노치에서는 허용할 수 없습니다 (보안)", "The command is too long to allow from the notch (security)")
-                          : L("전체 보기로 끝까지 본 뒤 허용할 수 있습니다", "Show all of it, to the end, before allowing"))
-                    .newHighlight(cornerRadius: 12, delay: 0.25)
+            HStack(spacing: 6) {
+                PeekBarButton(title: inTerminal ? L("터미널에서", "In terminal") : L("GUI에서", "In app"),
+                              icon: inTerminal ? "terminal" : "macwindow", style: .ghost) { onDecide(.terminal) }
+                    .help(L("노치에서 답하지 않고 에이전트의 승인 창으로 넘기기", "Leave this one to the agent's own approval prompt"))
+                PeekBarButton(title: L("거부", "Deny")) { onDecide(.deny) }
+                allowButton
+                    .frame(minWidth: 160)
             }
             .popIn(delay: 0.07)
-
-            // Drains over the wait; empty means the agent asks in its own prompt instead.
-            Capsule()
-                .fill(accent.opacity(0.55))
-                .frame(height: 2)
-                .scaleEffect(x: timeLeft, anchor: .leading)
-                .onAppear {
-                    let remaining = max(0, PermissionRequestCenter.waitLimit - Date().timeIntervalSince(item.receivedAt))
-                    timeLeft = remaining / PermissionRequestCenter.waitLimit
-                    withAnimation(.linear(duration: remaining)) { timeLeft = 0 }
-                }
         }
-        .padding(.top, 10)
+        .padding(.top, 6)
         .id(item.id)
     }
 
-    /// Why this one can't be allowed here, in plain words.
+    /// 허용, filled for the time left (it drains to empty when the request goes back to the
+    /// agent's prompt), or locked with the reason in two or three words.
+    private var allowButton: some View {
+        Button { if canAllow { onDecide(.allow) } } label: {
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(canAllow ? Self.allowBlue.opacity(0.35) : NotchPalette.ink.opacity(0.07))
+                if canAllow {
+                    GeometryReader { geometry in
+                        Rectangle().fill(Self.allowBlue).frame(width: geometry.size.width * timeLeft)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                HStack(spacing: 5) {
+                    if !canAllow { Image(systemName: "lock.fill").font(.system(size: 10, weight: .semibold)) }
+                    if canAllow {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            let left = Int(max(0, PermissionRequestCenter.waitLimit - context.date.timeIntervalSince(item.receivedAt)).rounded(.up))
+                            Text(L("허용 · \(left)초", "Allow · \(left)s")).monospacedDigit()
+                        }
+                    } else {
+                        Text(lockReason)
+                    }
+                }
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundColor(canAllow ? .white : NotchPalette.ink.opacity(0.4))
+                .frame(maxWidth: .infinity)
+            }
+            .frame(height: 32)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(!canAllow)
+        .help(canAllow ? "" : blockedByRisk
+              ? L("위험 표시가 뜬 요청은 터미널에서 확인해 주세요", "Check a flagged request in the terminal")
+              : text.isTooLong
+              ? L("명령이 너무 길어 노치에서는 허용할 수 없습니다 (보안)", "The command is too long to allow from the notch (security)")
+              : L("전체 보기로 끝까지 본 뒤 허용할 수 있습니다", "Show all of it, to the end, before allowing"))
+        .onAppear {
+            let remaining = max(0, PermissionRequestCenter.waitLimit - Date().timeIntervalSince(item.receivedAt))
+            timeLeft = remaining / PermissionRequestCenter.waitLimit
+            withAnimation(.linear(duration: remaining)) { timeLeft = 0 }
+        }
+    }
+
+    /// Why 허용 is off, as short as the button allows; the tooltip says it in full.
+    private var lockReason: String {
+        if blockedByRisk { return L("터미널에서 확인", "Check in terminal") }
+        if text.isTooLong { return L("너무 길어 불가", "Too long") }
+        return L("끝까지 보면 허용", "Read it all first")
+    }
+
+    /// Why this one is risky, one red chip per sign.
     private var riskBanner: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             ForEach(item.risks, id: \.self) { risk in
                 Label(risk.reason, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11.5, weight: .semibold))
                     .foregroundColor(Self.warning)
-            }
-            if !settings.permissionAllowFlagged {
-                Text(L("노치에서는 허용할 수 없습니다. 터미널에서 확인해 주세요.",
-                       "Can't be allowed from the notch. Check it in the terminal."))
-                    .font(.system(size: 10))
-                    .foregroundColor(NotchPalette.ink.opacity(0.6))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Self.warning.opacity(0.16), in: Capsule())
             }
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Self.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .popIn(delay: 0.02)
     }
 
     @ViewBuilder
     private var detailText: some View {
-        let font = Font.system(size: 11, design: .monospaced)
-        let ink = NotchPalette.ink.opacity(0.88)
+        let font = Font.system(size: 11.5, design: .monospaced)
+        let ink = NotchPalette.ink.opacity(0.9)
         if text.isWhole {
             // No line limit: wrapping grows the box instead of hiding anything.
             Text(text.full)
@@ -335,68 +393,40 @@ struct WrapUpDropdownView: View {
     /// buttons can be pressed, and the pick goes to Claude.
     var onPick: ((AgentInputOption) -> Void)? = nil
 
+    /// The agent, "다음 단계" and the 닫기 알약 are in the wing header (`AskPeekHeader`).
     var body: some View {
         let question = request.questions.first
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 7) {
-                AgentIcon(agent: .claude)
-                Text("Next step")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(NotchPalette.ink)
-                Text(projectName)
-                    .font(.system(size: 11))
-                    .foregroundColor(NotchPalette.ink.opacity(0.55))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                DismissPill(expanded: $dismissOpen, onCollapse: onDismiss, onClear: onClear)
-                    .foregroundColor(NotchPalette.ink.opacity(0.55))
-            }
-            .popIn()
-
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 if let recap = request.recap, !recap.isEmpty {
-                    Text(recap)
-                        .font(.system(size: 11))
-                        .foregroundColor(NotchPalette.ink.opacity(0.6))
+                    (Text(projectName.isEmpty ? "" : projectName + " · ").foregroundColor(NotchPalette.ink).fontWeight(.semibold)
+                        + Text(recap).foregroundColor(NotchPalette.ink.opacity(0.55)))
+                        .font(.system(size: 12.5))
+                        .lineSpacing(2)
                         .lineLimit(3)
                 }
                 Text(question?.question ?? "")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(NotchPalette.ink.opacity(0.92))
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .foregroundColor(NotchPalette.ink)
                     .lineLimit(3)
             }
-            .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NotchPalette.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .popIn(delay: 0.035)
 
             HStack(spacing: 6) {
                 // The app's buttons: hovering shows the message each one sends. They are
                 // labels until the notch can answer, then buttons in the agent's colour.
                 ForEach(Array((question?.options ?? []).enumerated()), id: \.offset) { _, option in
-                    Button { onPick?(option) } label: {
-                        Text(option.label)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(onPick == nil ? NotchPalette.ink.opacity(0.7) : accent)
-                            .lineLimit(1)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(onPick == nil ? .clear : accent.opacity(0.14)))
-                            .overlay(Capsule().stroke(onPick == nil ? NotchPalette.ink.opacity(0.18) : accent.opacity(0.55)))
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(onPick == nil)
-                    .help(option.description)
+                    PeekBarButton(title: option.label, style: onPick == nil ? .locked : .tint(accent)) { onPick?(option) }
+                        .disabled(onPick == nil)
+                        .help(option.description)
                 }
-                Spacer(minLength: 0)
-                // Filled as in the 완료 드롭다운, unless the buttons beside it are the ones to press.
-                DropdownButton(title: openTitle, tint: accent, filled: onPick == nil, action: onOpen)
-                    .newHighlight(cornerRadius: 12, delay: 0.25)
+                PeekBarButton(title: openTitle, style: .ghost, action: onOpen)
+                    .frame(maxWidth: 96)
             }
             .popIn(delay: 0.07)
         }
-        .padding(.top, 10)
+        .padding(.top, 6)
         .id(request.id)
     }
 }
@@ -410,53 +440,219 @@ struct DoneDropdownView: View {
     var openTitle = L("터미널 열기", "Open terminal")
     let onOpen: () -> Void
 
-    private var elapsedText: String? {
-        guard let elapsed = turn.elapsed, elapsed >= 1 else { return nil }
-        let seconds = Int(elapsed.rounded())
-        return seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
+
+    /// The agent, 완료 and the time it took are in the wing header (`DonePeekHeader`). The body is
+    /// laid out like the others: the drawn Done mark, where and what, and the way back; no card
+    /// around it (user, 2026-11-18).
+    var body: some View {
+        HStack(spacing: 12) {
+            // The wing's Done mark, drawn large: ring, tick, one pop.
+            DoneCheckmarkView(color: accent, size: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(projectName)
+                    .font(.system(size: 12))
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
+                    .lineLimit(1)
+                Text(turn.headline ?? L("작업을 마쳤습니다.", "Finished."))
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundColor(NotchPalette.ink)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            PeekBarButton(title: openTitle, icon: "terminal", height: 30, action: onOpen)
+                .fixedSize()
+                .newHighlight(cornerRadius: 10, delay: 0.25)
+                // A little below the middle, toward the answer's line (user, 2026-11-18).
+                .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] - 6 }
+        }
+        .popIn()
+        .padding(.top, 6)
+        .id(turn.id)
     }
+}
+
+
+// MARK: - Wing header layout (2026-11-18, the user's pick: Claude draft 1, Done from Gemini draft 3)
+
+/// A dropdown's first row, beside the camera: `left` in the space left of the physical notch,
+/// `right` in the space right of it, each `side` wide. Nothing goes over the housing.
+struct WingHeader<Left: View, Right: View>: View {
+    let side: CGFloat
+    @ViewBuilder let left: Left
+    @ViewBuilder let right: Right
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
-                // The wing's Done mark, drawn large: ring, tick, one pop.
-                DoneCheckmarkView(color: accent, size: 34)
-                    .padding(.top, 1)
+        HStack(spacing: 0) {
+            HStack(spacing: 6) { left }
+                .frame(width: max(0, side), alignment: .leading)
+            Spacer(minLength: 0)
+            HStack(spacing: 6) { right }
+                .frame(width: max(0, side), alignment: .trailing)
+        }
+        .lineLimit(1)
+    }
+}
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text("Done")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(accent)
-                        AgentIcon(agent: agent)
-                        Text(projectName)
-                            .font(.system(size: 11))
-                            .foregroundColor(NotchPalette.ink.opacity(0.55))
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if let elapsedText {
-                            Text(elapsedText)
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(NotchPalette.ink.opacity(0.55))
-                        }
-                    }
-                    Text(turn.headline ?? L("작업을 마쳤습니다.", "Finished."))
-                        .font(.system(size: 12))
-                        .foregroundColor(NotchPalette.ink.opacity(0.88))
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+/// The 권한 드롭다운's wing header: the agent, 권한 and which of how many on the left; "위험한 명령"
+/// when it is, and an X, on the right. The time left is on 허용 itself (user, 2026-11-18: not twice).
+struct PermissionPeekHeader: View {
+    let item: PermissionRequestItem
+    let position: Int
+    let total: Int
+    let accent: Color
+    let side: CGFloat
+    /// The X: no answer from the notch, the agent asks in its own prompt.
+    let onClose: () -> Void
+
+    var body: some View {
+        WingHeader(side: side) {
+            AgentIcon(agent: item.agent)
+            Text(L("권한", "Permission"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(accent)
+            if total > 1 {
+                Text("\(position)/\(total)")
+                    .font(.system(size: 11, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(NotchPalette.ink.opacity(0.5))
+            }
+        } right: {
+            // On the right: the left side has no room for it beside 권한 (user, 2026-11-18).
+            if !item.risks.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(L("위험한 명령", "Risky"))
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundColor(PermissionDropdownView.warning)
+            }
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(NotchPalette.ink.opacity(0.7))
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(NotchPalette.ink.opacity(0.08)))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(L("노치에서 답하지 않고 에이전트의 승인 창으로 넘기기", "Leave this one to the agent's own approval prompt"))
+        }
+        .popIn()
+    }
+}
+
+/// The question and next-step dropdowns' wing header: the agent and what it is, and the 닫기 알약.
+struct AskPeekHeader: View {
+    let agent: PermissionRequestItem.Agent
+    let title: String
+    let accent: Color
+    let side: CGFloat
+    @Binding var dismissOpen: Bool
+    var scale: CGFloat = 1
+    let onDismiss: () -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        WingHeader(side: side) {
+            AgentIcon(agent: agent)
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(accent)
+        } right: {
+            DismissPill(expanded: $dismissOpen, scale: scale, onCollapse: onDismiss, onClear: onClear, dropsDown: true)
+                .foregroundColor(NotchPalette.ink.opacity(0.7))
+        }
+        .popIn()
+    }
+}
+
+/// The 완료 드롭다운's wing header, as the others: the agent and 완료 on the left, the time it took
+/// and an X on the right.
+struct DonePeekHeader: View {
+    let agent: PermissionRequestItem.Agent
+    let elapsed: TimeInterval?
+    let accent: Color
+    let side: CGFloat
+    let onClose: () -> Void
+
+    var body: some View {
+        WingHeader(side: side) {
+            AgentIcon(agent: agent)
+            Text(L("완료", "Done"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(accent)
+        } right: {
+            if let elapsed, elapsed >= 1 {
+                let seconds = Int(elapsed.rounded())
+                Text(seconds < 60 ? L("\(seconds)초", "\(seconds)s") : L("\(seconds / 60)분 \(seconds % 60)초", "\(seconds / 60)m \(seconds % 60)s"))
+                    .font(.system(size: 11, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundColor(NotchPalette.ink.opacity(0.55))
+            }
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(NotchPalette.ink.opacity(0.7))
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(NotchPalette.ink.opacity(0.08)))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(L("닫기", "Dismiss"))
+        }
+        .popIn()
+    }
+}
+
+/// A button in a dropdown's bottom bar: as tall as the bar, filling its share of the width.
+struct PeekBarButton: View {
+    enum Style { case ghost, grey, tint(Color), locked }
+    let title: String
+    var icon: String? = nil
+    var style: Style = .grey
+    var height: CGFloat = 32
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let icon { Image(systemName: icon).font(.system(size: 11, weight: .semibold)) }
+                Text(title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+            }
+            .foregroundColor(foreground)
+            // Room either side, so a button sized to its words (터미널 열기) isn't tight.
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(fill))
+            .overlay {
+                if case .ghost = style {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(NotchPalette.ink.opacity(0.22))
                 }
             }
-            .popIn()
-
-            HStack {
-                Spacer(minLength: 0)
-                DropdownButton(title: openTitle, tint: accent, filled: true, action: onOpen)
-                    .newHighlight(cornerRadius: 12, delay: 0.25)
-            }
-            .popIn(delay: 0.07)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .padding(.top, 10)
-        .id(turn.id)
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+
+    private var foreground: Color {
+        switch style {
+        case .ghost: NotchPalette.ink.opacity(0.75)
+        case .grey: NotchPalette.ink
+        case .tint(let color): color
+        case .locked: NotchPalette.ink.opacity(0.38)
+        }
+    }
+
+    private var fill: Color {
+        switch style {
+        case .ghost: NotchPalette.ink.opacity(hovering ? 0.06 : 0)
+        case .grey: NotchPalette.ink.opacity(hovering ? 0.18 : 0.12)
+        case .tint(let color): color.opacity(hovering ? 0.28 : 0.2)
+        case .locked: NotchPalette.ink.opacity(0.07)
+        }
     }
 }

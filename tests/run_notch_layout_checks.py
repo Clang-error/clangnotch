@@ -30,6 +30,7 @@ struct DismissPill: View {
     var showQuestionNotice = false
     var questionExpanded = false
     var questionDismissOpen = false
+    var questionStep = 0
     var askingSessionOrigin: (label: String, host: String?)? { nil }
     func clearQuestionNotice() {}
     var questionScale: CGFloat { questionExpanded ? 1.4 : 1 }
@@ -51,10 +52,15 @@ struct DismissPill: View {
 dropdowns = (root / "ClangNotch/Views/Notch/AgentDropdownViews.swift").read_text()
 button_start = dropdowns.index("struct DropdownButton: View {")
 questions = dropdowns[button_start:dropdowns.index("\n}\n", button_start) + 3] + "\n" + questions
+# The question's go button since the 2026-11-18 redesign: the real one too.
+if "struct PeekBarButton: View {" in dropdowns:
+    bar_start = dropdowns.index("struct PeekBarButton: View {")
+    questions = dropdowns[bar_start:dropdowns.index("\n}\n", bar_start) + 3] + "\n" + questions
 for signature in ["private var questionNoticeColor:",
                   "private var questionContent:", "private var plainQuestionContent:",
                   "private struct QuestionOptionsView:"]:
-    questions += block(signature).replace("{ goToAskingSession() }", "{ self.goToAskingSession() }") + "\n"
+    questions += (block(signature).replace("{ goToAskingSession() }", "{ self.goToAskingSession() }")
+                  .replace("{ questionStep = $0 }", "{ self.questionStep = $0 }")) + "\n"
 if "private var questionHeader:" in view:
     header = block("private var questionHeader:")
     questions += (header.replace("goToAskingSession()", "self.goToAskingSession()")
