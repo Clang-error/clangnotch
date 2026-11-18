@@ -9,10 +9,12 @@ enum DemoMode {
 
     enum Scene: String { case claude, codex, both, ssh, tools, many, airpods, airpodslid, airpodslow, media, osd, lowbattery, tether, macbattery, idle }
 
-    /// Every scene's clock starts this long after launch, once the startup glow (3 s and a 0.3 s
-    /// fade) is gone: started at launch, the first dropdown came down inside the glow and the two
-    /// read as one effect (2026-11-11). Recordings start from here too.
-    static let startDelay: TimeInterval = 4
+    /// Every scene's clock starts this long after launch, once the launch announcement and the
+    /// startup glow (`ClangNotchContentView.launchAnnouncement`, then a 0.4 s fade) are gone:
+    /// started at launch, the first dropdown came down inside the glow and the two read as one
+    /// effect (2026-11-11). Recordings start from here too: docs/demo-pipeline/record.sh reads
+    /// this literal, so keep it a plain number. `start()` checks it still outlasts the announcement.
+    static let startDelay: TimeInterval = 5.6
 
     static var scene: Scene {
         let args = CommandLine.arguments
@@ -77,6 +79,8 @@ final class DemoDriver {
 
     func start() {
         guard task == nil else { return }
+        assert(.seconds(DemoMode.startDelay) >= ClangNotchContentView.launchAnnouncement + .milliseconds(400),
+               "DemoMode.startDelay ends before the launch announcement has faded")
         task = Task { [weak self] in
             try? await Task.sleep(for: .seconds(DemoMode.startDelay))
             guard !Task.isCancelled else { return }
