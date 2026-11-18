@@ -44,6 +44,7 @@ struct DismissPill: View {
     // The 다음 단계 드롭다운 has its own view; this fixture checks the plain question.
     func wrapUpDropdown(_ request: ClaudeInputRequest) -> some View { EmptyView() }
     func peekHeight<V: View>(for view: V, width: CGFloat) -> CGFloat { 0 }
+    func enlargedQuestionSize() -> CGSize { expandedQuestionSize() }
     func resetClosedJellyReveal() {}
     // Nothing else holds the dropdown here, so restoring it means closing it.
     func restorePeek() { notchVM.close() }

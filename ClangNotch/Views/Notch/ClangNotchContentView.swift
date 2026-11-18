@@ -1486,11 +1486,12 @@ struct ClangNotchContentView: View {
 
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if visibleModes.count > 1 { modeSwitcher }
             selectedModeContent
                 .id(activeMode)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .transition(modeContentTransition)
+            // At the bottom, as a dock (user, 2026-11-18, from the open-notch drafts).
+            if visibleModes.count > 1 { modeSwitcher }
         }
         .padding(.top, 8)
     }
@@ -1531,21 +1532,13 @@ struct ClangNotchContentView: View {
     }
 
     /// Centred when the chips fit; scrolls sideways only when they don't.
+    /// 탭 막대 as a dock at the bottom of the open notch: the tabs spread over one dark panel,
+    /// the picked one in its capsule with its name.
     private var modeSwitcher: some View {
-        ViewThatFits(in: .horizontal) {
-            modeChips(matchID: "selectedChip-fit")
-                .frame(maxWidth: .infinity)
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    modeChips(matchID: "selectedChip-scroll")
-                }
-                .onAppear { proxy.scrollTo(activeMode, anchor: .center) }
-                .onChange(of: activeMode) { _, mode in
-                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(mode, anchor: .center) }
-                }
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
+        modeChips(matchID: "selectedChip-dock")
+            .padding(5)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(NotchPalette.ink.opacity(0.06)))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     @Namespace private var chipNamespace
@@ -1554,7 +1547,7 @@ struct ClangNotchContentView: View {
 
     /// Each `ViewThatFits` branch gets its own capsule id, in case both get measured at once.
     private func modeChips(matchID: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(visibleModes) { mode in
                 NotchNavigationButton(mode: mode, selected: activeMode == mode,
                                       needsAttention: mode == .ai && attentionCount > 0,
@@ -1563,6 +1556,7 @@ struct ClangNotchContentView: View {
                         expandedMode = mode
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .id(mode)
             }
         }
@@ -2061,10 +2055,28 @@ struct ClangNotchContentView: View {
             && (codexInputRequest != nil || claudeInputRequest.map { !$0.isWrapUp } == true)
     }
 
+    /// The enlarged 질문 드롭다운: as wide as `expandedQuestionSize`, as tall as its content at the
+    /// enlarged size within that height. It stood at three fifths of the screen whatever it held,
+    /// mostly empty (user, 2026-11-18).
+    private func enlargedQuestionSize() -> CGSize {
+        let limit = expandedQuestionSize()
+        let content = VStack(spacing: 6) {
+            questionHeader
+            QuestionOptionsView(questions: codexInputRequest?.questions ?? claudeInputRequest?.questions ?? [],
+                                sourceName: codexInputRequest == nil ? "Claude" : "Codex", accentColor: questionNoticeColor,
+                                onSubmit: { _ in }, goTitle: askingSessionOpenTitle, onGo: {}, scale: 1.4)
+        }
+        .padding(.top, 4)
+        .frame(width: limit.width - expandedNotchInset * 2)
+        .fixedSize(horizontal: false, vertical: true)
+        let height = notchVM.closedNotchSize.height + ceil(NSHostingView(rootView: content).fittingSize.height) + 16
+        return CGSize(width: limit.width, height: min(limit.height, height))
+    }
+
     private func toggleQuestionExpanded() {
         questionExpanded.toggle()
         if questionExpanded {
-            notchVM.resizePeek(to: expandedQuestionSize())
+            notchVM.resizePeek(to: enlargedQuestionSize())
         } else if let request = claudeInputRequest {
             triggerClaudeInputNotice(request)
         } else if let request = codexInputRequest {
@@ -2763,7 +2775,7 @@ struct ClangNotchContentView: View {
         resetClosedJellyReveal()
         // A re-fit (answer buttons arriving) keeps a dropdown the user made bigger.
         if questionExpanded, notchVM.notchState == .peeking {
-            notchVM.resizePeek(to: expandedQuestionSize())
+            notchVM.resizePeek(to: enlargedQuestionSize())
             return
         }
         notchVM.peek(duration: nil, additionalHeight: additionalHeight, width: openNotchSize.width)

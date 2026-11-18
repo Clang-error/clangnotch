@@ -30,10 +30,12 @@ private struct CornerArc: Shape {
     private let inset: CGFloat = 7
 
     func path(in rect: CGRect) -> Path {
+        // Trimmed along the curve itself: moving the ends in with the control point left where it
+        // was bent the grip tighter than the corner (user, 2026-11-18).
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX + 6, y: rect.maxY - inset))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX - inset, y: rect.minY + 6),
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY - inset))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX - inset, y: rect.minY),
                           control: CGPoint(x: rect.maxX - inset, y: rect.maxY - inset))
-        return path
+        return path.trimmedPath(from: 0.18, to: 0.82)
     }
 }
