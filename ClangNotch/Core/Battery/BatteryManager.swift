@@ -52,7 +52,11 @@ final class BatteryManager: ObservableObject {
     private var smc: SMCReader?
     private var powerStateObserver: NSObjectProtocol?
     private var lastUpdated: Date?
-    private var isRefreshing = false
+    /// A full pass is under way (the Battery tab's 다시 찾기 button turns into a spinner).
+    @Published private(set) var isRefreshing = false
+    /// Displays seen at the last screen change, to tell a newly connected one.
+    private var knownDisplays: Set<CGDirectDisplayID> = []
+    private var displayObserver: NSObjectProtocol?
 
     /// 무선 아이폰·아이패드는 절전에 들어가면 탐색 목록에서 통째로 사라진다
     /// (실측: 15초 간격에서 45%만 응답, 값은 항상 일관). 사라졌다고 목록에서 빼면
@@ -104,6 +108,7 @@ final class BatteryManager: ObservableObject {
         }
         setPolling(idleInterval)
         startFastPath()
+        watchDisplays(true)
     }
 
     /// 설정에서 끌 때 호출 — 재실행을 기다리지 않고 타이머와 전원 알림을 푼다. 헤더 배터리 줄과
@@ -120,8 +125,43 @@ final class BatteryManager: ObservableObject {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), powerSource, .defaultMode)
             self.powerSource = nil
         }
+        watchDisplays(false)
         lastUpdated = nil
         devices = []
+    }
+
+    /// A display that connects gets the devices asked at once instead of at the next pass, up to
+    /// 5 minutes later: an iPad joining over Sidecar answered in 0.3 s but showed up minutes after
+    /// (user, 2026-11-18). Any newly added display counts; a monitor plugged in costs one extra
+    /// pass, less trouble than telling Sidecar apart by a localized name.
+    private func watchDisplays(_ on: Bool) {
+        guard on else {
+            if let displayObserver { NotificationCenter.default.removeObserver(displayObserver) }
+            displayObserver = nil
+            return
+        }
+        knownDisplays = Self.displayIDs()
+        guard displayObserver == nil else { return }
+        displayObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { _ in
+                Task { @MainActor in BatteryManager.shared.displaysChanged() }
+            }
+    }
+
+    private func displaysChanged() {
+        let now = Self.displayIDs()
+        let added = !now.subtracting(knownDisplays).isEmpty
+        knownDisplays = now
+        guard added, isMonitoring else { return }
+        Task { @MainActor in
+            // The new display settles first; the device itself is already on the network.
+            try? await Task.sleep(for: .seconds(2))
+            self.refresh()
+        }
+    }
+
+    private static func displayIDs() -> Set<CGDirectDisplayID> {
+        Set(NSScreen.screens.compactMap { $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID })
     }
 
     /// 60초 타이머 + 전원 변경 알림(충전기·잔량 변화)으로 싼 값만 갱신한다.
@@ -303,7 +343,7 @@ final class BatteryManager: ObservableObject {
     }
 
     func refresh() {
-        guard !isRefreshing else { return }
+        guard isMonitoring, !isRefreshing else { return }
         isRefreshing = true
 
         // ⚠️ 전부 메인 밖에서 돌려야 한다. 외부 프로세스 호출이 노치를 멈추는 것도 있지만,

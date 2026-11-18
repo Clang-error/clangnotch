@@ -53,6 +53,7 @@ struct BatteryView: View {
                         }
                     }
                 }
+                if !DemoMode.isActive { refreshRow }
             }
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
@@ -166,6 +167,34 @@ struct BatteryView: View {
         guard let index = ids.firstIndex(of: id), ids.indices.contains(index + offset) else { return }
         ids.swapAt(index, index + offset)
         setClosedIDs(ids)
+    }
+
+    /// 다시 찾기 (user, 2026-11-18): asks every device now instead of at the next pass (5 minutes,
+    /// 1 while this tab shows), for one nearby that hasn't been asked yet. One pass at a time: it
+    /// starts several helper processes.
+    private var refreshRow: some View {
+        HStack {
+            Spacer()
+            Button { manager.refresh() } label: {
+                HStack(spacing: 4) {
+                    if manager.isRefreshing {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    Text(manager.isRefreshing ? L("찾는 중", "Looking") : L("다시 찾기", "Look again"))
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundColor(NotchPalette.ink.opacity(0.55))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(NotchPalette.ink.opacity(0.06)))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(manager.isRefreshing)
+        }
     }
 
     private var emptyState: some View {
