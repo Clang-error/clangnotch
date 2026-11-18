@@ -3,6 +3,8 @@ import SwiftUI
 struct BatteryView: View {
     @ObservedObject var manager: BatteryManager
     @ObservedObject private var settings = AppSettings.shared
+    /// The Mac's row clicked open: the energy mode switch and the power coming in under it.
+    @State private var macOpen = false
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -18,7 +20,13 @@ struct BatteryView: View {
                         BatteryRow(device: device, pinned: headerIDs.contains(device.id),
                                    closedRank: closedIDs.firstIndex(of: device.id),
                                    energyMode: device.id == "mac" ? manager.macEnergyMode : nil,
-                                   adapterWatts: device.id == "mac" ? manager.macAdapterWatts : nil)
+                                   opened: device.id == "mac" ? macOpen : nil)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard device.id == "mac" else { return }
+                                withAnimation(.smooth(duration: 0.25)) { macOpen.toggle() }
+                                manager.watchMacPower(macOpen)
+                            }
                             .contextMenu {
                                 Button(headerIDs.contains(device.id) ? L("헤더에서 빼기", "Remove from header") : L("헤더에 표시", "Show in header")) {
                                     toggleHeader(device.id)
@@ -39,6 +47,10 @@ struct BatteryView: View {
                                 }
                             }
                         if device.live, device.onlyOverUSB == true { usbOnlyHint(device) }
+                        if device.id == "mac", macOpen {
+                            MacEnergyPanel(manager: manager)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
                 }
             }
@@ -47,7 +59,7 @@ struct BatteryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { manager.start() }
-        .onDisappear { manager.stop() }
+        .onDisappear { macOpen = false; manager.stop() }
     }
 
     /// 순위 기기가 부족할 때만 기기마다 나온다. 끄면 그 기기가 20%를 넘을 때까지 닫힌 노치에서 숨기고,
@@ -177,8 +189,8 @@ private struct BatteryRow: View {
     let closedRank: Int?
     /// The Mac's row only: 자동, 저전력 or 고성능 after its name.
     var energyMode: MacEnergyMode? = nil
-    /// The Mac's row only: the connected power adapter's watts.
-    var adapterWatts: Int? = nil
+    /// The Mac's row only: whether it is clicked open. The chevron at its end says it opens at all.
+    var opened: Bool? = nil
 
     private let good = Color(red: 0.3, green: 0.85, blue: 0.55)
     private let warn = Color(red: 1.0, green: 0.78, blue: 0.3)
@@ -277,20 +289,11 @@ private struct BatteryRow: View {
                     Text(energyMode.label)
                         .font(.system(size: 9, weight: .bold))
                 }
-                .foregroundColor(energyMode == .lowPower ? Color(red: 1.0, green: 0.8, blue: 0.2)
-                                 : energyMode == .highPower ? Color(red: 1.0, green: 0.55, blue: 0.2)
-                                 : Color(white: 0.8))
+                .foregroundColor(energyMode.tint)
                 .padding(.horizontal, 6)
                 .frame(height: 14)
                 .background(Capsule().fill(Color.black.opacity(0.55)))
                 .fixedSize()
-            }
-            if let adapterWatts {
-                Text(L("전원 어댑터 \(adapterWatts)W", "Power adapter \(adapterWatts)W"))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(dimColor)
-                    .lineLimit(1)
-                    .fixedSize()
             }
             if pinned {
                 Image(systemName: "pin.fill")
@@ -318,6 +321,12 @@ private struct BatteryRow: View {
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundColor(color)
                 .contentTransition(.numericText(value: Double(device.percent)))
+            if let opened {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(dimColor)
+                    .rotationEffect(.degrees(opened ? 180 : 0))
+            }
         }
         .padding(.horizontal, 10)
     }
@@ -372,5 +381,90 @@ struct ClosedLowBatteryBadge: View {
                     .frame(width: Self.nub - 1, height: size.height * 0.38)
             }
         }
+    }
+}
+
+extension MacEnergyMode {
+    var tint: Color {
+        switch self {
+        case .automatic: return Color(white: 0.8)
+        case .lowPower: return Color(red: 1.0, green: 0.8, blue: 0.2)
+        case .highPower: return Color(red: 1.0, green: 0.55, blue: 0.2)
+        }
+    }
+}
+
+/// Under the Mac's row once it is clicked open: what the charger gives now (입력 전력) or, on
+/// battery, what the Mac uses (소비 전력), then the
+/// energy mode for both power sources, one row of two or three filling it (no high power mode on
+/// this Mac, two). Without the helper the row is dimmed and a button under it installs it.
+private struct MacEnergyPanel: View {
+    @ObservedObject var manager: BatteryManager
+
+    private var modes: [MacEnergyMode] {
+        manager.macEnergyCapabilities?.highPower == false ? [.automatic, .lowPower] : [.automatic, .lowPower, .highPower]
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            // First and always there, "-" until a reading comes. On the charger what comes in, out
+            // of what the adapter can give (as macOS's own power readout); on battery what the Mac uses.
+            let onCharger = manager.macPower?.onCharger ?? (manager.macAdapterWatts != nil)
+            HStack {
+                Text(onCharger ? L("입력 전력", "Power in") : L("소비 전력", "Power use"))
+                Spacer()
+                Text(manager.macPower.map { String(format: "%.1fW", $0.watts) } ?? "-")
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                if onCharger, let adapter = manager.macAdapterWatts {
+                    Text(L("의 \(adapter)W", "of \(adapter)W"))
+                        .foregroundColor(NotchPalette.ink.opacity(0.4))
+                }
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(NotchPalette.ink.opacity(0.6))
+            .padding(.horizontal, 6)
+            if manager.macEnergyCapabilities != nil {
+                HStack(spacing: 4) {
+                    ForEach(modes, id: \.label) { mode in
+                        let selected = (manager.macEnergyChanging ?? manager.macEnergyMode) == mode
+                        Button { manager.setMacEnergyMode(mode) } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: mode.symbol)
+                                    .font(.system(size: 9, weight: .semibold))
+                                Text(mode.label)
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundColor(selected ? .black.opacity(0.8) : NotchPalette.ink.opacity(0.75))
+                            .frame(maxWidth: .infinity, minHeight: 26)
+                            .background(Capsule().fill(selected ? mode.tint : NotchPalette.ink.opacity(0.08)))
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(manager.macEnergyChanging != nil && !selected ? 0.5 : 1)
+                    }
+                }
+                .animation(.smooth(duration: 0.2), value: manager.macEnergyChanging ?? manager.macEnergyMode)
+                .disabled(manager.energyHelper != .installed)
+                .opacity(manager.energyHelper == .installed ? 1 : 0.45)
+                if manager.energyHelper != .installed {
+                    // Changing the mode needs root: the optional helper, installed from here.
+                    Button { manager.installEnergyHelper() } label: {
+                        Text(manager.energyHelper == .needsApproval
+                             ? L("시스템 설정 -> 로그인 항목에서 ClangNotch 허용", "Allow ClangNotch in System Settings -> Login Items")
+                             : L("에너지 모드를 바꾸려면 도우미 설치", "Install the helper to change the energy mode"))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(NotchPalette.ink.opacity(0.85))
+                            .frame(maxWidth: .infinity, minHeight: 22)
+                            .background(Capsule().strokeBorder(NotchPalette.ink.opacity(0.25)))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .notchCard(cornerRadius: 8)
+        .padding(.horizontal, 4)
     }
 }

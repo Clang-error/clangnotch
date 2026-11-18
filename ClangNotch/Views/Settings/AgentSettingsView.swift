@@ -1212,6 +1212,7 @@ struct FeaturesSettingsTab: View {
                     .onChange(of: settings.enableBattery) { _, on in
                         if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
                     }
+                EnergyHelperRow()
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
                               L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
                               isOn: $settings.enableSpeedTest)
@@ -1993,4 +1994,30 @@ private struct CodexAccountStatus: View {
 
 #Preview {
     AgentSettingsView(navigator: SettingsNavigator())
+}
+
+/// Settings -> Features: the energy mode helper, shown once it is installed or waiting for approval,
+/// with the button that removes it. Installing it happens from the Battery tab's Mac row.
+private struct EnergyHelperRow: View {
+    @ObservedObject private var battery = BatteryManager.shared
+
+    var body: some View {
+        Group {
+            if battery.energyHelper != .notInstalled {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L("에너지 모드 도우미", "Energy mode helper"))
+                        Text(battery.energyHelper == .installed
+                             ? L("배터리 탭에서 암호 없이 에너지 모드를 바꾸게 해 줌", "Lets the Battery tab change the energy mode without a password")
+                             : L("시스템 설정 -> 로그인 항목에서 허용을 기다리는 중", "Waiting to be allowed in System Settings -> Login Items"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(L("제거", "Remove")) { Task { await battery.uninstallEnergyHelper() } }
+                }
+            }
+        }
+        .onAppear { battery.refreshEnergyHelper() }
+    }
 }

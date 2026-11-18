@@ -39,9 +39,17 @@ final class BatteryManager: ObservableObject {
     /// The Mac's energy mode, for its 기기 줄. Read only while the Battery tab shows: when it opens,
     /// and on a power change after that (a new process each time, so not on every tick).
     @Published private(set) var macEnergyMode: MacEnergyMode?
-    /// The connected power adapter's watts, for the Mac's 기기 줄; nil on battery. Read with the
-    /// energy mode: when the tab shows and on a power change.
+    /// The connected power adapter's watts, for the open Mac row's "의 100W"; nil on battery. Read
+    /// with the energy mode: when the tab shows and on a power change.
     @Published private(set) var macAdapterWatts: Int?
+    /// While the Mac's row is open: what this Mac can switch, the power coming in (every second),
+    /// whether the energy mode helper is installed, and a switch waiting on the helper.
+    @Published private(set) var macEnergyCapabilities: MacEnergyMode.Capabilities?
+    @Published private(set) var macPower: MacPower?
+    @Published private(set) var macEnergyChanging: MacEnergyMode?
+    @Published private(set) var energyHelper: EnergyHelper.State = .notInstalled
+    private var powerInTimer: Timer?
+    private var smc: SMCReader?
     private var powerStateObserver: NSObjectProtocol?
     private var lastUpdated: Date?
     private var isRefreshing = false
@@ -213,7 +221,63 @@ final class BatteryManager: ObservableObject {
     }
 
     /// 탭이 닫혀도 감시는 멈추지 않고 주기만 늘린다.
-    func stop() { tabVisible = false; updatePolling() }
+    func stop() { tabVisible = false; updatePolling(); watchMacPower(false) }
+
+    /// The Mac's row opened or closed: the SMC is opened and read every second only while it is
+    /// open (two key reads, microseconds, so on the main thread), and closed with it.
+    func watchMacPower(_ on: Bool) {
+        powerInTimer?.invalidate()
+        powerInTimer = nil
+        smc = nil
+        guard on, !DemoMode.isActive, let smc = SMCReader() else { macPower = nil; return }
+        self.smc = smc
+        energyHelper = EnergyHelper.state
+        let read = { [weak self] in
+            guard let self, let smc = self.smc else { return }
+            let power = MacPower.read(smc)
+            if self.macPower != power { self.macPower = power }
+            // Allowed in System Settings while the row is open: the switch comes alive.
+            if self.energyHelper == .needsApproval { self.energyHelper = EnergyHelper.state }
+        }
+        powerInTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            Task { @MainActor in read() }
+        }
+        read()
+        if macEnergyCapabilities == nil {
+            Task.detached(priority: .utility) {
+                let capabilities = MacEnergyMode.capabilities()
+                await MainActor.run { self.macEnergyCapabilities = capabilities }
+            }
+        }
+    }
+
+    /// The button under the switch: installs the helper (or opens Login Items to allow it).
+    func installEnergyHelper() {
+        energyHelper = energyHelper == .needsApproval ? { EnergyHelper.openApproval(); return .needsApproval }() : EnergyHelper.install()
+    }
+
+    /// Settings -> Features: removes the helper.
+    func uninstallEnergyHelper() async {
+        await EnergyHelper.uninstall()
+        energyHelper = EnergyHelper.state
+    }
+
+    func refreshEnergyHelper() { energyHelper = EnergyHelper.state }
+
+    /// The switch under the Mac's row: the helper sets it, then the mode is read back.
+    func setMacEnergyMode(_ mode: MacEnergyMode) {
+        guard energyHelper == .installed, macEnergyChanging == nil, mode != macEnergyMode,
+              let capabilities = macEnergyCapabilities else { return }
+        macEnergyChanging = mode
+        Task.detached(priority: .userInitiated) {
+            _ = EnergyHelper.set(mode, capabilities)
+            let now = MacEnergyMode.read()
+            await MainActor.run {
+                self.macEnergyChanging = nil
+                if self.macEnergyMode != now { self.macEnergyMode = now }
+            }
+        }
+    }
 
     /// 닫힌 노치에 아이폰·아이패드 부족 표시가 떠 있는 동안도 촘촘히 돈다. 5분 주기에
     /// 잠든 폰이 응답을 거르면 충전을 시작해도 15분 넘게 표시가 남았다(2026-11-02 실측).
