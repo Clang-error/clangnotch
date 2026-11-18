@@ -4,7 +4,8 @@ import SwiftUI
 /// mute key or the AirPods Max crown shows here instead of in the 조절창, which came up over the
 /// card and hid it. The row hangs under the controls, the card grows by `rowHeight` to hold it,
 /// and it goes after `visibleTime` without a press. Its bar can be dragged too. Brightness keys
-/// still go to the 조절창.
+/// still go to the 조절창. The cursor on the dropdown shows it as well, with the volume as it is,
+/// and holds it until the cursor leaves (user, 2026-11-18).
 @MainActor
 final class MediaVolumeBand: ObservableObject {
     static let shared = MediaVolumeBand()
@@ -27,6 +28,8 @@ final class MediaVolumeBand: ObservableObject {
 
     private var hideWork: DispatchWorkItem?
     private var pollTimer: Timer?
+    /// The cursor is on the card or the attached dropdown: the row stays.
+    private var hovering = false
 
     private init() {}
 
@@ -47,6 +50,21 @@ final class MediaVolumeBand: ObservableObject {
             }
         }
         return true
+    }
+
+    /// The cursor came onto or left the dropdown that is down (the card's `setHovering`, the notch
+    /// view's hover over the attached one).
+    func hover(_ inside: Bool) {
+        guard inside != hovering else { return }
+        hovering = inside
+        if inside {
+            guard cardIsDown || attachedIsDown, let current = SystemControlOSD.outputVolumeReading() else { return }
+            hideWork?.cancel()
+            if reading != current { show(current, scheduling: false) }
+        } else if reading != nil, !dragging {
+            // Goes as the cursor leaves, with the card's close orb (2 s after felt slow, user 2026-11-18).
+            hideNow()
+        }
     }
 
     /// The bar dragged to `fraction` (0...1).
@@ -72,6 +90,7 @@ final class MediaVolumeBand: ObservableObject {
 
     private func scheduleHide() {
         hideWork?.cancel()
+        guard !hovering else { return }
         let work = DispatchWorkItem { MainActor.assumeIsolated { MediaVolumeBand.shared.hideNow() } }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.visibleTime, execute: work)
@@ -83,6 +102,7 @@ final class MediaVolumeBand: ObservableObject {
         pollTimer?.invalidate()
         pollTimer = nil
         dragging = false
+        hovering = false
         guard reading != nil else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { reading = nil }
     }

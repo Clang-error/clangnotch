@@ -192,9 +192,14 @@ final class AirPodsDropdown: ObservableObject {
         if !hovering { scheduleHide(after: visibleTime) }
     }
 
+    /// A bar inside the media card (the timeline, the volume row) is being dragged. Those drags
+    /// start at once and the card's own at 3 pt, so the card sees this first and stays put: its
+    /// drag runs alongside the bars', and a pinned card followed the bar's drag (user, 2026-11-18).
+    static var barDragging = false
+
     /// Dragging a pinned card: it follows the pointer, wherever it goes.
     func drag(ended: Bool) {
-        guard pinned, let panel else { return }
+        guard pinned, let panel, !Self.barDragging || ended else { return }
         if ended { dragStart = nil; return }
         let mouse = NSEvent.mouseLocation
         let start = dragStart ?? (mouse, panel.frame.origin)
@@ -633,6 +638,7 @@ final class AirPodsDropdown: ObservableObject {
         // Only the card itself takes clicks from here on; the panel shrinks to it.
         phase = .settled
         panel.setFrame(cardFrame(on: screen), display: false)
+        container?.settledContentHeight = isMediaCard ? Self.mediaCardSize.height + MediaVolumeBand.rowHeight : 0
         container?.settle()
         panel.ignoresMouseEvents = false
         scheduleHide(after: visibleTime)
@@ -649,7 +655,11 @@ final class AirPodsDropdown: ObservableObject {
         if case .dropping(let start) = phase { from = min(Date().timeIntervalSince(start) / Self.dropDuration, 1) }
         contentVisible = false
         phase = .rising
-        if isMedia { MediaVolumeBand.shared.cardIsDown = false }
+        if isMedia {
+            MediaVolumeBand.shared.cardIsDown = false
+            // A bar dragged as the card went may never end its drag.
+            Self.barDragging = false
+        }
         panel.ignoresMouseEvents = true
         panel.setFrame(fullFrame(on: screen), display: false)
         container?.rise(geometry, from: from)
@@ -679,6 +689,7 @@ final class AirPodsDropdown: ObservableObject {
     func setHovering(_ inside: Bool) {
         guard phase == .settled, inside != hovering else { return }
         hovering = inside
+        if isMediaCard { MediaVolumeBand.shared.hover(inside) }
         if inside {
             hideWork?.cancel()
         } else if volumeExtra == 0 {

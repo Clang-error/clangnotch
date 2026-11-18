@@ -190,6 +190,17 @@ final class SystemControlOSD: ObservableObject {
         return Self.volumeReading(fraction: level, muted: false)
     }
 
+    /// The output's volume as the keys would show it, for the 미디어 드롭다운's row shown on hover:
+    /// its own volume, or `SoftwareVolume`'s for an output macOS can't turn down. Nil when neither.
+    static func outputVolumeReading() -> SystemControlReading? {
+        if let device = AudioMixerManager.defaultDevice(kAudioHardwarePropertyDefaultOutputDevice),
+           isSettable(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume) {
+            return currentVolumeReading()
+        }
+        guard let software = SoftwareVolume.shared.current else { return nil }
+        return volumeReading(fraction: software.level, muted: software.muted)
+    }
+
     /// One key step from `value`, landing on the step grid like macOS.
     private static func stepped(_ value: Double, by step: Double) -> Double {
         min(max(((value / abs(step)).rounded() + (step > 0 ? 1 : -1)) * abs(step), 0), 1)

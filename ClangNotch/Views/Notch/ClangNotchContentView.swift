@@ -2556,6 +2556,8 @@ struct ClangNotchContentView: View {
     private func handleHover(_ hovering: Bool) {
         hoverTask?.cancel()
         notchHovered = hovering
+        // The cursor on the attached player shows its volume row (left: the row goes as after a key).
+        if mediaNotice != nil, notchVM.notchState == .peeking { MediaVolumeBand.shared.hover(hovering) }
         // 누를 때만 열기: hovering opens nothing, so the notch shows where to click instead.
         if settings.notchOpensOnClick, notchVM.notchState == .closed {
             presenceTask?.cancel()

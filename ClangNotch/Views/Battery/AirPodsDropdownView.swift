@@ -39,6 +39,13 @@ final class AirPodsDropdownContainer: NSView {
     private var geometry: AirPodsBlobGeometry?
     private var settled = false
     private var keepalivePresented = false
+    /// The settled content's height whatever the panel's: a media card's with its volume row.
+    /// The hosting view keeps this height, hung from the top, so the row coming or going never
+    /// resizes the SwiftUI root. Resized under the row's animation, the root's size animated and
+    /// the card was centred in the taller view: the art and bars dropped by half the row and rose
+    /// back (user's recordings, 2026-11-18; taking the panel's new size outside the animation
+    /// didn't stop it).
+    var settledContentHeight: CGFloat = 0
 
     private static let corner: CGFloat = 26
     private static let samples = 48
@@ -146,7 +153,9 @@ final class AirPodsDropdownContainer: NSView {
     override func layout() {
         super.layout()
         if settled || geometry == nil {
-            hosting.frame = bounds
+            // AppKit's origin is bottom-left: the extra height hangs below the panel, out of sight.
+            let height = settled ? max(bounds.height, settledContentHeight) : bounds.height
+            hosting.frame = NSRect(x: 0, y: bounds.height - height, width: bounds.width, height: height)
             if settled { fitSettled() }
         } else if let g = geometry {
             // AppKit's origin is bottom-left.
@@ -383,7 +392,7 @@ struct AirPodsDropdownContent: View {
         // Pressed and pushed up toward the notch: back in it goes. A pinned card moves instead.
         .simultaneousGesture(DragGesture(minimumDistance: 3)
             .onChanged { drag in
-                if model.pinned { model.drag(ended: false) } else if drag.translation.height < -12 { model.dismiss() }
+                if model.pinned { model.drag(ended: false) } else if drag.translation.height < -12, !AirPodsDropdown.barDragging { model.dismiss() }
             }
             .onEnded { _ in model.drag(ended: true) })
         .onHover { model.setHovering($0) }

@@ -398,8 +398,12 @@ private struct MediaTimeline: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: 0)
-                        .onChanged { scrub = min(1, max(0, $0.location.x / geometry.size.width)) }
+                        .onChanged {
+                            AirPodsDropdown.barDragging = true
+                            scrub = min(1, max(0, $0.location.x / geometry.size.width))
+                        }
                         .onEnded { value in
+                            AirPodsDropdown.barDragging = false
                             let target = min(1, max(0, value.location.x / geometry.size.width)) * duration
                             NowPlayingMonitor.shared.seek(to: target)
                             scrub = nil
@@ -655,8 +659,14 @@ struct MediaVolumeRow: View {
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 0)
-                    .onChanged { band.drag(to: $0.location.x / max(geometry.size.width, 1)) }
-                    .onEnded { _ in band.endDrag() })
+                    .onChanged {
+                        AirPodsDropdown.barDragging = true
+                        band.drag(to: $0.location.x / max(geometry.size.width, 1))
+                    }
+                    .onEnded { _ in
+                        AirPodsDropdown.barDragging = false
+                        band.endDrag()
+                    })
             }
             Image(systemName: "speaker.wave.3.fill")
                 .font(.system(size: 12, weight: .medium))

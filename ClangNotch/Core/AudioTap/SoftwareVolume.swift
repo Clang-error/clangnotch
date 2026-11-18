@@ -114,6 +114,12 @@ final class SoftwareVolume {
         SystemControlOSD.shared.showSoftwareVolume(level: level, muted: muted)
     }
 
+    /// The level and mute of an output macOS can't turn down; nil while this output has its own volume.
+    var current: (level: Double, muted: Bool)? {
+        guard running, let uid = Self.uncontrollableOutputUID() else { return nil }
+        return (levels[uid] ?? 1, muted)
+    }
+
     /// The 미디어 드롭다운's volume bar dragged on an output macOS can't turn down: the level for
     /// it, unmuted. Nil while this output has its own volume.
     func setLevel(_ level: Double) -> Double? {
