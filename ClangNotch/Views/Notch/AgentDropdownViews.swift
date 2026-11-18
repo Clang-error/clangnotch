@@ -52,8 +52,8 @@ struct DismissPill: View {
     let onCollapse: () -> Void
     /// 알림도 지우기: drops the notice as well.
     let onClear: () -> Void
-    /// In the wing header the capsule can't open leftward (the camera is there): its two choices
-    /// drop down under the X instead.
+    /// In the wing header the capsule can't open leftward (the camera is there): it hangs under
+    /// the X instead, 창만 닫기 at its right end (user, 2026-11-18: the capsule, not a menu).
     var dropsDown = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -79,20 +79,27 @@ struct DismissPill: View {
         xButton
             .overlay(alignment: .topTrailing) {
                 if expanded {
-                    VStack(alignment: .trailing, spacing: 0) {
-                        DismissPillOption(title: L("창만 닫기", "Close only"), scale: scale, action: onCollapse)
-                        Rectangle().fill(NotchPalette.ink.opacity(0.12)).frame(height: 1)
+                    // The capsule as it opens leftward, hung under the X: 창만 닫기 right under it.
+                    HStack(spacing: 0) {
                         DismissPillOption(title: L("알림도 지우기", "Clear notice too"), scale: scale, action: onClear)
+                        Rectangle()
+                            .fill(NotchPalette.ink.opacity(0.14))
+                            .frame(width: 1, height: 12 * scale)
+                        DismissPillOption(title: L("창만 닫기", "Close only"), scale: scale, action: onCollapse)
                     }
                     .fixedSize()
-                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(NotchPalette.inkInverse))
-                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(NotchPalette.ink.opacity(0.16)))
-                    .offset(y: 26)
+                    // Opaque over the body text under it.
+                    .background(Capsule().fill(NotchPalette.ink.opacity(0.09)).background(Capsule().fill(NotchPalette.inkInverse)))
+                    .overlay(Capsule().stroke(NotchPalette.ink.opacity(0.14)))
+                    .clipShape(Capsule())
+                    // Laid out under the X, not offset there: an offset left its hover area over
+                    // the X, so moving off the X toward it read as leaving it and folded it.
+                    .alignmentGuide(.top) { $0[.top] - 26 }
                     .onHover { inside in
                         guard !inside else { return }
                         withAnimation(reduceMotion ? .easeOut(duration: 0.12) : notchCloseAnimation) { expanded = false }
                     }
-                    .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .topTrailing).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.4, anchor: .topTrailing).combined(with: .opacity))
                 }
             }
     }

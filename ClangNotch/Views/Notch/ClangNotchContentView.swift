@@ -853,6 +853,8 @@ struct ClangNotchContentView: View {
             // Header - always visible
             notchHeader
                 .frame(height: headerHeight)
+                // Above the body: the 닫기 알약 hangs from the header over it.
+                .zIndex(1)
 
             // Expanded content
             if notchVM.notchState == .open {
