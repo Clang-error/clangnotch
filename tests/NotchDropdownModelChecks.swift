@@ -3,7 +3,8 @@ import Foundation
 // Model of the notch's dropdowns, mirroring ClangNotchContentView (handlePermissionQueue,
 // showInputNotice, dismissQuestionNotice, handleCompletedTurn, show/dismissDoneNotice,
 // trigger/dismissTetherNotice, foldPeek, restorePeek, handleHover, the 400 ms re-drop after close).
-// Speed is left out (it only drops after the open panel closes mid-test).
+// Speed is left out (it only drops after the open panel closes mid-test). Which notice comes
+// down next and whether any is left are not mirrored: they are the app's DropdownNotices, compiled in.
 // Every event order is tried, so a rule that breaks comes with the shortest path to it.
 // It found a dropdown left down and empty, and a Done or question that never came down
 // (2026-11-17). When those handlers change, change this the same way and run it.
@@ -46,8 +47,12 @@ func peek(_ s: inout S) { if s.notch != .open { s.notch = .peeking } }
 func fold(_ s: inout S) { if s.notch != .closed { s.settle = true }; s.notch = .closed }
 func closeNotch(_ s: inout S) { if s.notch != .closed { s.settle = true }; s.notch = .closed }
 
-func hasNoticeAfter(_ s: S, permission: Bool = false, done: Bool = false, media: Bool = false) -> Bool {
-    (!permission && s.showPerm) || s.showQ || s.tether || (!done && s.done) || s.pendingDone || (!media && s.media)
+/// The app's own rules (ClangNotch/Models/DropdownNotices.swift) over this state. Speed isn't
+/// modelled, and a question here is Claude's.
+func notices(_ s: S) -> DropdownNotices {
+    DropdownNotices(permissionWaiting: s.queue, permissionShown: s.showPerm, questionShown: s.showQ,
+                    claudeQuestion: s.question, codexQuestion: false, speed: false, tether: s.tether,
+                    done: s.done, pendingDone: s.pendingDone, media: s.media)
 }
 
 func handlePermissionQueue(_ s: inout S) {
@@ -56,7 +61,7 @@ func handlePermissionQueue(_ s: inout S) {
         s.showPerm = true
         peek(&s)
     } else if s.showPerm {
-        if s.notch == .peeking, !hasNoticeAfter(s, permission: true) {
+        if s.notch == .peeking, !notices(s).hasNotice(besides: .permission) {
             fold(&s); s.fold = .permission; return
         }
         s.showPerm = false
@@ -79,7 +84,7 @@ func showDoneNotice(_ s: inout S) { s.done = true; peek(&s) }
 
 func dismissDoneNotice(_ s: inout S) {
     guard s.done else { return }
-    if s.notch == .peeking, !hasNoticeAfter(s, done: true) {
+    if s.notch == .peeking, !notices(s).hasNotice(besides: .done) {
         fold(&s); s.fold = .done; return
     }
     s.done = false
@@ -94,7 +99,7 @@ func dismissTetherNotice(_ s: inout S) {
 
 func dismissMedia(_ s: inout S) {
     guard s.media else { return }
-    if s.notch == .peeking, !hasNoticeAfter(s, media: true) {
+    if s.notch == .peeking, !notices(s).hasNotice(besides: .media) {
         fold(&s); s.fold = .media; return
     }
     s.media = false
@@ -102,13 +107,13 @@ func dismissMedia(_ s: inout S) {
 }
 
 func restorePeek(_ s: inout S) {
-    if s.queue { handlePermissionQueue(&s) }
-    else if s.showQ, s.question { showInputNotice(&s) }
-    else if s.tether { peek(&s) }
-    else if s.done { peek(&s) }
-    else if s.pendingDone { s.pendingDone = false; showDoneNotice(&s) }
-    else if s.media { peek(&s) }
-    else if s.notch == .peeking { fold(&s) }
+    switch notices(s).next {
+    case .permission: handlePermissionQueue(&s)
+    case .claudeQuestion, .codexQuestion: showInputNotice(&s)
+    case .speed, .tether, .done, .media: peek(&s)
+    case .pendingDone: s.pendingDone = false; showDoneNotice(&s)
+    case nil: if s.notch == .peeking { fold(&s) }
+    }
 }
 
 func step(_ s0: S, _ e: E) -> S? {
@@ -139,7 +144,7 @@ func step(_ s0: S, _ e: E) -> S? {
         guard s.tether else { return nil }
         dismissTetherNotice(&s)
     case .mediaStarts:
-        guard !s.media, s.notch == .closed, s.fold == .none, !hasNoticeAfter(s) else { return nil }
+        guard !s.media, s.notch == .closed, s.fold == .none, !notices(s).hasNotice() else { return nil }
         s.media = true; peek(&s)
     case .mediaTimesOut:
         guard s.media, s.fold != .media else { return nil }

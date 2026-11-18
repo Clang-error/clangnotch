@@ -3017,7 +3017,7 @@ struct ClangNotchContentView: View {
             mediaNotice = playing
             return true
         }
-        guard notchVM.notchState == .closed, !foldingPeek, !hasNoticeAfter() else { return false }
+        guard notchVM.notchState == .closed, !foldingPeek, !dropdownNotices.hasNotice() else { return false }
         mediaNotice = playing
         // At once, not on the next render: a volume key right after takes the row.
         MediaVolumeBand.shared.attachedIsDown = true
@@ -3096,7 +3096,7 @@ struct ClangNotchContentView: View {
         housingWatch?.cancel()
         mediaNoticeTask?.cancel()
         guard let notice = mediaNotice else { return }
-        if notchVM.notchState == .peeking, !hasNoticeAfter(media: true) {
+        if notchVM.notchState == .peeking, !dropdownNotices.hasNotice(besides: .media) {
             foldPeek { if mediaNotice == notice { mediaNotice = nil } }
             return
         }
@@ -3141,7 +3141,7 @@ struct ClangNotchContentView: View {
             notchVM.peek(duration: nil, additionalHeight: peekHeight(for: permissionDropdown(first), width: permissionNotchWidth),
                          width: permissionNotchWidth)
         } else if showPermissionNotice {
-            if notchVM.notchState == .peeking, !hasNoticeAfter(permission: true) {
+            if notchVM.notchState == .peeking, !dropdownNotices.hasNotice(besides: .permission) {
                 foldPeek {
                     // A request that arrived meanwhile owns the dropdown now.
                     guard permissionCenter.queue.isEmpty else { return }
@@ -3157,11 +3157,13 @@ struct ClangNotchContentView: View {
         }
     }
 
-    /// Whether anything still wants the dropdown once the given notice is gone.
-    private func hasNoticeAfter(permission: Bool = false, done: Bool = false, media: Bool = false) -> Bool {
-        (!permission && showPermissionNotice) || showQuestionNotice || showSpeedNotice
-            || tetherPlaceName != nil || (!done && doneNotice != nil) || pendingDoneNotice != nil
-            || (!media && mediaNotice != nil)
+    /// The notices that want the dropdown now; `DropdownNotices` holds the rules over them.
+    private var dropdownNotices: DropdownNotices {
+        DropdownNotices(permissionWaiting: !permissionCenter.queue.isEmpty, permissionShown: showPermissionNotice,
+                        questionShown: showQuestionNotice, claudeQuestion: claudeInputRequest != nil,
+                        codexQuestion: codexInputRequest != nil, speed: showSpeedNotice,
+                        tether: tetherPlaceName != nil, done: doneNotice != nil,
+                        pendingDone: pendingDoneNotice != nil, media: mediaNotice != nil)
     }
 
     /// Folds the dropdown with its content still in it and clears that content once it's
@@ -3187,32 +3189,35 @@ struct ClangNotchContentView: View {
     /// or closes it. Every notice that goes away comes through here, so none of them can
     /// close the notch out from under another (or leave it stuck open, empty).
     private func restorePeek() {
-        // The queue, not showPermissionNotice: a request that came while the panel was open was never shown.
-        if !permissionCenter.queue.isEmpty {
+        switch dropdownNotices.next {
+        case .permission:
             handlePermissionQueue(permissionCenter.queue)
-        } else if showQuestionNotice, let request = claudeInputRequest {
-            triggerClaudeInputNotice(request)
-        } else if showQuestionNotice, let request = codexInputRequest {
-            triggerCodexInputNotice(request)
-        } else if showSpeedNotice {
+        case .claudeQuestion:
+            if let request = claudeInputRequest { triggerClaudeInputNotice(request) }
+        case .codexQuestion:
+            if let request = codexInputRequest { triggerCodexInputNotice(request) }
+        case .speed:
             notchVM.peek(duration: 90)
-        } else if tetherPlaceName != nil {
+        case .tether:
             notchVM.peek(duration: nil, additionalHeight: 64)
-        } else if let doneNotice {
-            notchVM.peek(duration: nil, additionalHeight: peekHeight(for: doneDropdown(doneNotice), width: permissionNotchWidth),
-                         width: permissionNotchWidth)
-        } else if let pending = pendingDoneNotice {
+        case .done:
+            if let doneNotice {
+                notchVM.peek(duration: nil, additionalHeight: peekHeight(for: doneDropdown(doneNotice), width: permissionNotchWidth),
+                             width: permissionNotchWidth)
+            }
+        case .pendingDone:
+            guard let pending = pendingDoneNotice else { return }
             pendingDoneNotice = nil
             if Date().timeIntervalSince(pending.at) < 60 {
                 showDoneNotice(pending)
             } else {
                 notchVM.fold()
             }
-        } else if let mediaNotice {
+        case .media:
             notchVM.peek(duration: nil, additionalHeight: mediaDropdownHeight + 12,
                          width: mediaNotchWidth)
-        } else if notchVM.notchState == .peeking {
-            notchVM.fold()
+        case nil:
+            if notchVM.notchState == .peeking { notchVM.fold() }
         }
     }
 
@@ -3263,7 +3268,7 @@ struct ClangNotchContentView: View {
     private func dismissDoneNotice() {
         doneNoticeTask?.cancel()
         guard let notice = doneNotice else { return }
-        if notchVM.notchState == .peeking, !hasNoticeAfter(done: true) {
+        if notchVM.notchState == .peeking, !dropdownNotices.hasNotice(besides: .done) {
             foldPeek { if doneNotice == notice { doneNotice = nil } }
             return
         }
