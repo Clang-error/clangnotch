@@ -404,27 +404,25 @@ private struct SettingsPageIcon: View {
 /// 설정 -> 노치 › 노치 색: four picture tiles, each a small notch over a desktop.
 /// 설정 -> 기능 -> 지금 재생 -> 미디어 드롭다운: 끔, 떨어지는 카드 (the default) or 노치에 붙음,
 /// picked from pictures like the 노치 색.
-private struct MediaDropdownStylePicker: View {
-    @ObservedObject var settings: AppSettings
-
-    enum Style: CaseIterable { case off, card, attached }
-
-    private var current: Style {
-        !settings.enableNowPlayingDropdown ? .off : settings.mediaDropdownAttached ? .attached : .card
-    }
+/// A row of small pictures to pick one from, the picked one ringed in the accent colour, as
+/// 노치 색's tiles. The settings text under a choice is its picture and a word, not a sentence.
+private struct PictureChoice<Value: Hashable, Tile: View>: View {
+    let options: [(value: Value, title: String)]
+    @Binding var selection: Value
+    @ViewBuilder let tile: (Value) -> Tile
 
     var body: some View {
         HStack(spacing: 14) {
-            ForEach(Style.allCases, id: \.self) { style in
-                let selected = current == style
-                Button { pick(style) } label: {
+            ForEach(options, id: \.value) { option in
+                let selected = selection == option.value
+                Button { selection = option.value } label: {
                     VStack(spacing: 6) {
-                        MediaDropdownStyleTile(style: style)
+                        tile(option.value)
                             .frame(width: 92, height: 60)
                             .padding(3)
                             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2.5))
-                        Text(title(style))
+                        Text(option.title)
                             .font(.callout.weight(selected ? .semibold : .regular))
                             .foregroundStyle(selected ? .primary : .secondary)
                     }
@@ -436,18 +434,90 @@ private struct MediaDropdownStylePicker: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
     }
+}
 
-    private func pick(_ style: Style) {
-        settings.enableNowPlayingDropdown = style != .off
-        if style != .off { settings.mediaDropdownAttached = style == .attached }
+/// 미디어 드롭다운 표시: off, 분리 (the card) or 붙음 (attached to the notch).
+private struct MediaDropdownStylePicker: View {
+    @ObservedObject var settings: AppSettings
+
+    enum Style: CaseIterable { case off, card, attached }
+
+    var body: some View {
+        PictureChoice(options: [(Style.off, L("끔", "Off")), (Style.card, L("분리", "Detached")), (Style.attached, L("붙음", "Attached"))],
+                      selection: Binding(
+                        get: { !settings.enableNowPlayingDropdown ? .off : settings.mediaDropdownAttached ? .attached : .card },
+                        set: { style in
+                            settings.enableNowPlayingDropdown = style != .off
+                            if style != .off { settings.mediaDropdownAttached = style == .attached }
+                        })) { MediaDropdownStyleTile(style: $0) }
+    }
+}
+
+/// 복사 드롭다운 표시 (off or the side it comes out on) and its 모양, each as pictures. The shape's
+/// pictures come out on the side picked above.
+private struct CopyDropdownPicker: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L("복사 드롭다운 표시", "Copy dropdown"))
+            PictureChoice(options: [("off", L("끔", "Off")), ("down", L("아래", "Down")), ("left", L("왼쪽", "Left")), ("right", L("오른쪽", "Right"))],
+                          selection: Binding(
+                            get: { settings.clipboardOrb ? settings.clipboardOrbDirection : "off" },
+                            set: { side in
+                                settings.clipboardOrb = side != "off"
+                                if side != "off" { settings.clipboardOrbDirection = side }
+                            })) { side in
+                CopyDropdownTile(side: side, pill: settings.clipboardOrbStyle == "pill")
+            }
+            if settings.clipboardOrb {
+                Text(L("복사 드롭다운 모양", "Copy dropdown shape"))
+                PictureChoice(options: [("orb", L("원", "Orb")), ("pill", L("알약", "Pill"))],
+                              selection: $settings.clipboardOrbStyle) { style in
+                    CopyDropdownTile(side: settings.clipboardOrbDirection, pill: style == "pill")
+                }
+            }
+        }
+    }
+}
+
+/// The closed notch on a wallpaper, and the copy dropdown beside or under it: an orb with the
+/// check, or a pill with the check and a line for 복사됨.
+private struct CopyDropdownTile: View {
+    let side: String
+    let pill: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        ZStack(alignment: .top) {
+            LinearGradient(colors: [Color(red: 0.2, green: 0.45, blue: 0.85), Color(red: 0.08, green: 0.2, blue: 0.5)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            // The notch stays in the middle; the dropdown sits under it or beside it.
+            UnevenRoundedRectangle(bottomLeadingRadius: 4, bottomTrailingRadius: 4).fill(Color.black).frame(width: notchWidth, height: 9)
+            let beside = notchWidth / 2 + 2 + dropWidth / 2
+            switch side {
+            case "down": drop.offset(y: 12)
+            case "left": drop.offset(x: -beside)
+            case "right": drop.offset(x: beside)
+            default: EmptyView()
+            }
+        }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
     }
 
-    private func title(_ style: Style) -> String {
-        switch style {
-        case .off:      return L("끔", "Off")
-        case .card:     return L("떨어지는 카드", "Card")
-        case .attached: return L("노치에 붙음", "Attached")
+    private let notchWidth: CGFloat = 28
+    private var dropWidth: CGFloat { pill ? 24 : 10 }
+
+    private var drop: some View {
+        HStack(spacing: 2.5) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 5.5, weight: .heavy))
+                .foregroundStyle(Color(red: 0.35, green: 0.85, blue: 0.5))
+            if pill { Capsule().fill(Color.white.opacity(0.85)).frame(width: 10, height: 2.5) }
         }
+        .frame(width: dropWidth, height: 10)
+        .background(Capsule().fill(Color.black))
     }
 }
 
@@ -664,7 +734,8 @@ struct SettingToggle: View {
     let caption: String
     @Binding var isOn: Bool
 
-    init(_ title: String, _ caption: String, isOn: Binding<Bool>) {
+    /// No caption where the title says it all.
+    init(_ title: String, _ caption: String = "", isOn: Binding<Bool>) {
         self.title = title
         self.caption = caption
         self._isOn = isOn
@@ -674,9 +745,11 @@ struct SettingToggle: View {
         Toggle(isOn: $isOn) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                Text(caption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if !caption.isEmpty {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -1165,33 +1238,15 @@ struct FeaturesSettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("클립보드 기록", "Clipboard history"),
-                              L("최근 복사한 글, 이미지, 파일. 파일은 위치만 기억하고 이미지는 앱을 끄면 지움",
-                                "Recently copied text, images and files. Files by their location, images deleted when the app quits"),
+                              L("최근 복사한 글, 이미지, 파일. 파일은 위치만 기억하고 이미지는 앱이 종료되면 클립보드 기록은 삭제됨",
+                                "Recently copied text, images and files. Files by their location; images leave the history when the app quits"),
                               isOn: $settings.enableClipboardHistory)
                     .onChange(of: settings.enableClipboardHistory) { _, _ in
                         ClipboardManager.shared.syncWithSettings()
                     }
                 if settings.enableClipboardHistory {
-                    SettingToggle(L("복사하면 드롭다운으로 알리기", "Show a dropdown when you copy"),
-                                  L("다른 앱에서 복사하면 닫힌 노치에서 작은 원이 떨어져 나와 체크를 보여 주고 \(settings.foldSecondsCopy)초 뒤 다시 들어감(시간은 설정 -> 노치).",
-                                    "When you copy in another app, a small orb comes off the closed notch, shows a check and goes back in after \(settings.foldSecondsCopy) s (time in Settings -> Notch)."),
-                                  isOn: $settings.clipboardOrb)
+                    CopyDropdownPicker(settings: settings)
                         .padding(.leading, 20)
-                    if settings.clipboardOrb {
-                        Picker(L("드롭다운 방향", "Dropdown direction"), selection: $settings.clipboardOrbDirection) {
-                            Text(L("아래", "Down")).tag("down")
-                            Text(L("왼쪽", "Left")).tag("left")
-                            Text(L("오른쪽", "Right")).tag("right")
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.leading, 20)
-                        Picker(L("드롭다운 모양", "Dropdown shape"), selection: $settings.clipboardOrbStyle) {
-                            Text(L("원 (체크만)", "Orb (check only)")).tag("orb")
-                            Text(L("알약 (체크 + 복사됨)", "Pill (check + Copied)")).tag("pill")
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.leading, 20)
-                    }
                 }
                 SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
                               L("앱마다 소리 크기 조절", "Volume per app") + needsAudioCapture,
@@ -1213,6 +1268,7 @@ struct FeaturesSettingsTab: View {
                         if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
                     }
                 EnergyHelperRow()
+                    .padding(.leading, 20)
                 SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
                               L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
                               isOn: $settings.enableSpeedTest)
@@ -1231,7 +1287,7 @@ struct FeaturesSettingsTab: View {
             // 조절창: the volume and brightness HUD and what goes with it.
             Section {
                 SettingToggle(L("볼륨, 밝기 표시 바꾸기", "Replace volume and brightness HUD"),
-                              L("macOS 볼륨, 밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운, 제스처로 바꾼 소리는 macOS 표시도 함께 뜸",
+                              L("macOS 볼륨, 밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운, 제스처로 바꾼 소리는 macOS 표시도 함께 표시됨",
                                 "A HUD under the menu bar instead of macOS's volume and brightness display. Volume changed on AirPods or AirPods Max (crown, gestures) still shows macOS's display too") + needsAccessibility,
                               isOn: $settings.centerSystemBanners)
                     .onChange(of: settings.centerSystemBanners) { _, on in
@@ -1247,14 +1303,13 @@ struct FeaturesSettingsTab: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.leading, 20)
-                    SettingToggle(L("밝기 키는 다른 앱에 넘기기", "Leave brightness keys to other apps"),
+                    SettingToggle(L("밝기 조절키를 다른 앱에 넘기기", "Leave the brightness keys to other apps"),
                                   L("MonitorControl, Lunar, BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기. 외부 모니터가 연결돼 있을 때만 넘김",
                                     "On when MonitorControl, Lunar or BetterDisplay sets external displays too. Only while an external display is connected"),
                                   isOn: $settings.passBrightnessKeys)
                         .padding(.leading, 20)
                     if settings.passBrightnessKeys {
-                        SettingToggle(L("밝기 조절창 보이기", "Show the brightness HUD"),
-                                      L("끄면 그 앱의 표시만 뜸", "Off, only that app's display shows"),
+                        SettingToggle(L("노치앱의 밝기 조절창 보이기", "Show the notch app's brightness HUD"),
                                       isOn: $settings.showPassedBrightnessHUD)
                             .padding(.leading, 40)
                     }
@@ -1285,8 +1340,6 @@ struct FeaturesSettingsTab: View {
                 // Only means something with the card on: shown under it, indented.
                 if settings.enableAirPodsDropdown {
                     SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods dropdown by itself"),
-                                  L("\(settings.foldSecondsAirPods)초 뒤 저절로 접음. (에어팟 맥스, 블루투스 헤드셋, 뚜껑 닫힌 채 낀 에어팟은 \(settings.foldSecondsHeadphones)초 뒤 접힘). (시간은 설정 -> 노치)",
-                                    "Folds after \(settings.foldSecondsAirPods) seconds. (AirPods Max, Bluetooth headsets and buds worn with the lid shut fold after \(settings.foldSecondsHeadphones) seconds). (Times in Settings -> Notch)"),
                                   isOn: $settings.airPodsDropdownAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -1298,7 +1351,7 @@ struct FeaturesSettingsTab: View {
                     .disabled(!settings.enableBattery)
                 if settings.airPodsLowBatteryDropdown {
                     SettingToggle(L("알림센터로 보내기", "Send to Notification Center"),
-                                  L("끄면 이 기기들은 알림센터 알림 없이 드롭다운만", "Off, these devices get only the dropdown, nothing in Notification Center"),
+                                  L("기기들의 배터리 부족 알림이 알림센터에도 표시됨", "These devices' low battery alerts show in Notification Center too"),
                                   isOn: $settings.airPodsLowBatteryNotification)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -1310,8 +1363,6 @@ struct FeaturesSettingsTab: View {
                     .disabled(!settings.enableBattery)
                 if settings.macLowBatteryDropdown {
                     SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's dropdown by itself"),
-                                  L("\(settings.foldSecondsMac)초 뒤 저절로 접음. (시간은 설정 -> 노치)",
-                                    "Folds after \(settings.foldSecondsMac) seconds. (Time in Settings -> Notch)"),
                                   isOn: $settings.macLowBatteryAutoHide)
                         .padding(.leading, 20)
                         .disabled(!settings.enableBattery)
@@ -1327,12 +1378,8 @@ struct FeaturesSettingsTab: View {
                     .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
                 if settings.enableNowPlaying {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(L("미디어 드롭다운", "Media dropdown"))
+                        Text(L("미디어 드롭다운 표시", "Show the media dropdown"))
                         MediaDropdownStylePicker(settings: settings)
-                        Text(L("재생이 시작되거나 곡이 바뀌면 내려오는 플레이어. 떨어지는 카드는 노치에서 떨어져 나와 메뉴 막대 아래에 뜨고, 노치에 붙음은 완료 드롭다운처럼 노치에서 내려왔다가 접힘. \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 -> 노치). 그 앱이 맨 앞이면 내려오지 않음.",
-                               "The player that comes down when something starts playing or the track changes. The card comes off the notch and floats under the menu bar; attached comes down from the notch like the Done dropdown and folds back. Folds after \(settings.foldSecondsMedia) seconds (time in Settings -> Notch). Not while its app is in front."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.leading, 20)
@@ -1349,8 +1396,8 @@ struct FeaturesSettingsTab: View {
                                     "While the agents work or you tether, small bars show at the right wing's edge."),
                                   isOn: $settings.nowPlayingMiniWhileWorking)
                         .padding(.leading, 20)
-                    Picker(L("멈추면 날개 숨기기", "When it stops, hide the wings"), selection: $settings.nowPlayingHideAfterStop) {
-                        Text(L("바로", "At once")).tag("now")
+                    Picker(L("재생을 멈추면 날개 숨기기", "When playback stops, hide the wings"), selection: $settings.nowPlayingHideAfterStop) {
+                        Text(L("즉시", "Immediately")).tag("now")
                         Text(L("잠시 뒤 (1.5초)", "After a moment (1.5 s)")).tag("later")
                     }
                     .pickerStyle(.segmented)
@@ -1559,7 +1606,7 @@ struct AgentsSettingsTab: View {
                                 .labelsHidden()
                         }
                     }
-                    Text(L("마지막 활동 뒤 이 시간이 지나면 세션이 목록에서 빠짐(1~240분). 일하는 중이거나 답을 기다리는 세션은 남음. 세션을 우클릭해 고정하면 시간이 지나도 남음",
+                    Text(L("마지막 활동 뒤 이 시간이 지나면 세션이 목록에서 빠짐(1~240분). 일하는 중이거나 답을 기다리는 세션은 유지. 세션을 우클릭해 고정하면 시간이 지나도 유지됨",
                            "A session leaves the list this long after its last activity (1–240 min). Working or waiting sessions stay. Right-click a session to pin it and it stays whatever the time"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -2006,9 +2053,9 @@ private struct EnergyHelperRow: View {
             if battery.energyHelper != .notInstalled {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(L("에너지 모드 도우미", "Energy mode helper"))
+                        Text(L("에너지 모드 변경 헬퍼", "Energy mode helper"))
                         Text(battery.energyHelper == .installed
-                             ? L("배터리 탭에서 암호 없이 에너지 모드를 바꾸게 해 줌", "Lets the Battery tab change the energy mode without a password")
+                             ? L("배터리 탭에서 에너지 모드를 바꿀 수 있게 해줌", "Lets the Battery tab change the energy mode")
                              : L("시스템 설정 -> 로그인 항목에서 허용을 기다리는 중", "Waiting to be allowed in System Settings -> Login Items"))
                             .font(.caption)
                             .foregroundStyle(.secondary)

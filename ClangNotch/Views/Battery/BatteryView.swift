@@ -452,7 +452,7 @@ private struct MacEnergyPanel: View {
                     Button { manager.installEnergyHelper() } label: {
                         Text(manager.energyHelper == .needsApproval
                              ? L("시스템 설정 -> 로그인 항목에서 ClangNotch 허용", "Allow ClangNotch in System Settings -> Login Items")
-                             : L("에너지 모드를 바꾸려면 도우미 설치", "Install the helper to change the energy mode"))
+                             : L("에너지 모드를 바꾸려면 헬퍼 설치", "Install the helper to change the energy mode"))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(NotchPalette.ink.opacity(0.85))
                             .frame(maxWidth: .infinity, minHeight: 22)
