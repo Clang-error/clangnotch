@@ -107,10 +107,10 @@ final class ClaudeCodeManager: ObservableObject {
     private let maxRetainedSessions = 30
 
     /// Watcher on the top-level projects dir (detects new project folders)
-    private var projectsDirWatcher: DispatchSourceFileSystemObject?
+    private var projectsDirWatcher: FileWatch?
     /// `~/.claude/sessions`: a Claude Code process starting (a resumed session too) or ending
     /// shows here first, so a scan follows at once instead of waiting for the next tick.
-    private var registryDirWatcher: DispatchSourceFileSystemObject?
+    private var registryDirWatcher: FileWatch?
     private var lastWatcherScan = Date.distantPast
     private var watcherScanPending = false
     /// A process started or a transcript appeared: scan on the short tick until then. A new
@@ -123,7 +123,7 @@ final class ClaudeCodeManager: ObservableObject {
     private static let busyScanInterval: TimeInterval = 3
     private static let quietScanInterval: TimeInterval = 15
     /// Watchers on each project subdir (detects new session JSONL files instantly)
-    private var projectDirWatchers: [String: DispatchSourceFileSystemObject] = [:]
+    private var projectDirWatchers: [String: FileWatch] = [:]
 
     /// The only tool whose in-flight presence *is* a wait on the user. Everything else
     /// (Bash, Task, WebFetch, mcp__*) looks identical in the JSONL whether it's blocked on
@@ -148,7 +148,7 @@ final class ClaudeCodeManager: ObservableObject {
 
     // MARK: - Multi-Session Watching
 
-    private var sessionWatchers: [String: DispatchSourceFileSystemObject] = [:]
+    private var sessionWatchers: [String: FileWatch] = [:]
     private var sessionFileHandles: [String: FileHandle] = [:]
     private var sessionReadPositions: [String: UInt64] = [:]
     private var sessionLineBuffers: [String: JSONLLineBuffer] = [:]
@@ -626,16 +626,9 @@ final class ClaudeCodeManager: ObservableObject {
     private func startWatchingRegistryDirectory() {
         guard registryDirWatcher == nil else { return }
         let dir = claudeDir.appendingPathComponent("sessions")
-        let fd = open(dir.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete],
-                                                               queue: .main)
-        source.setEventHandler { [weak self] in
+        registryDirWatcher = FileWatch(path: dir.path, events: [.write, .rename, .delete]) { [weak self] in
             MainActor.assumeIsolated { self?.registryChanged() }
         }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        registryDirWatcher = source
     }
 
     /// At most one scan every 2 s from here: records are rewritten often while a session works.
@@ -663,25 +656,16 @@ final class ClaudeCodeManager: ObservableObject {
         refreshProjectDirWatchers()
 
         guard projectsDirWatcher == nil else { return }
-        let fd = open(projectsDir.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .extend],
-            queue: .main
-        )
-        source.setEventHandler { [weak self] in
-            guard let self else { return }
-            // A new project folder: its first transcript is on the way.
-            self.fastScanUntil = Date().addingTimeInterval(Self.fastScanWindow)
-            self.scanForSessions()
-            self.refreshProjectDirWatchers()
-            if self.sessionScanTimer != nil { self.scheduleNextScan() }
+        projectsDirWatcher = FileWatch(path: projectsDir.path, events: [.write, .extend]) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                // A new project folder: its first transcript is on the way.
+                self.fastScanUntil = Date().addingTimeInterval(Self.fastScanWindow)
+                self.scanForSessions()
+                self.refreshProjectDirWatchers()
+                if self.sessionScanTimer != nil { self.scheduleNextScan() }
+            }
         }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        projectsDirWatcher = source
     }
 
     /// Attach a watcher to every project subdir not already watched. A new .jsonl file
@@ -695,8 +679,7 @@ final class ClaudeCodeManager: ObservableObject {
 
         // A project folder that was deleted keeps its descriptor open until its watcher goes.
         let present = Set(subdirs.map(\.path))
-        for (key, source) in projectDirWatchers where !present.contains(key) {
-            source.cancel()
+        for key in projectDirWatchers.keys where !present.contains(key) {
             projectDirWatchers.removeValue(forKey: key)
         }
 
@@ -706,23 +689,15 @@ final class ClaudeCodeManager: ObservableObject {
             let key = dir.path
             guard projectDirWatchers[key] == nil else { continue }
 
-            let fd = open(dir.path, O_EVTONLY)
-            guard fd >= 0 else { continue }
-            let source = DispatchSource.makeFileSystemObjectSource(
-                fileDescriptor: fd,
-                eventMask: [.write, .extend],
-                queue: .main
-            )
-            source.setEventHandler { [weak self] in
-                guard let self else { return }
-                // A file appeared (maybe still empty): keep looking closely for a while.
-                self.fastScanUntil = Date().addingTimeInterval(Self.fastScanWindow)
-                self.scanForSessions()
-                if self.sessionScanTimer != nil { self.scheduleNextScan() }
+            projectDirWatchers[key] = FileWatch(path: dir.path, events: [.write, .extend]) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // A file appeared (maybe still empty): keep looking closely for a while.
+                    self.fastScanUntil = Date().addingTimeInterval(Self.fastScanWindow)
+                    self.scanForSessions()
+                    if self.sessionScanTimer != nil { self.scheduleNextScan() }
+                }
             }
-            source.setCancelHandler { close(fd) }
-            source.resume()
-            projectDirWatchers[key] = source
         }
     }
 
@@ -804,31 +779,16 @@ final class ClaudeCodeManager: ObservableObject {
             return
         }
 
-        let fd = open(jsonlFile.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .extend],
-            queue: .main
-        )
-
-        source.setEventHandler { [weak self] in
-            self?.readNewSessionDataForSession(sessionId: session.id)
-        }
-
-        source.setCancelHandler {
-            close(fd)
-        }
-
-        source.resume()
-        sessionWatchers[session.id] = source
+        let sessionId = session.id
+        guard let watch = FileWatch(path: jsonlFile.path, events: [.write, .extend], onChange: { [weak self] in
+            MainActor.assumeIsolated { self?.readNewSessionDataForSession(sessionId: sessionId) }
+        }) else { return }
+        sessionWatchers[session.id] = watch
         readNewSessionDataForSession(sessionId: session.id)
     }
 
     private func stopWatchingSession(id sessionId: String) {
         debugLog("[ClaudeCode] [\(Date())] stopWatchingSession: \(sessionId.prefix(8))...")
-        sessionWatchers[sessionId]?.cancel()
         sessionWatchers.removeValue(forKey: sessionId)
         sessionFileHandles[sessionId]?.closeFile()
         sessionFileHandles.removeValue(forKey: sessionId)

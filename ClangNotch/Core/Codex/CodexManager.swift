@@ -165,7 +165,7 @@ final class CodexManager: ObservableObject {
     private var rateLimitRefreshTimer: Timer?
     private var rateLimitProcess: Process?
     private var rateLimitOutputBuffer = Data()
-    private var sessionWatchers: [String: DispatchSourceFileSystemObject] = [:]
+    private var sessionWatchers: [String: FileWatch] = [:]
     /// Each watched rollout's unread end, read off the main thread (`SessionFileTail`).
     private var sessionTails: [String: SessionFileTail] = [:]
     private var isLoadingHistoryBySession: [String: Bool] = [:]
@@ -814,35 +814,20 @@ final class CodexManager: ObservableObject {
             return
         }
 
-        let fd = open(jsonlFile.path, O_EVTONLY)
-        guard fd >= 0 else {
+        // Events come on the tail's own queue, which reads and decodes there.
+        let sessionId = session.id
+        guard let watch = FileWatch(path: jsonlFile.path, events: [.write, .extend], queue: tail.queue, onChange: { [weak self] in
+            Self.drain(tail, sessionId: sessionId, into: self)
+        }) else {
             debugLog("[Codex] Failed to open file descriptor")
             return
         }
-
-        // Events come on the tail's own queue, which reads and decodes there.
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .extend],
-            queue: tail.queue
-        )
-
-        source.setEventHandler { [weak self] in
-            Self.drain(tail, sessionId: session.id, into: self)
-        }
-
-        source.setCancelHandler {
-            close(fd)
-        }
-
-        source.resume()
-        sessionWatchers[session.id] = source
+        sessionWatchers[session.id] = watch
         readNewSessionData(sessionId: session.id)
         resolveApp(for: session)
     }
 
     private func stopWatchingSession(id sessionId: String) {
-        sessionWatchers[sessionId]?.cancel()
         sessionWatchers.removeValue(forKey: sessionId)
         sessionTails.removeValue(forKey: sessionId)
         sessionStates.removeValue(forKey: sessionId)
