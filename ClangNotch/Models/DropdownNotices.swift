@@ -5,6 +5,18 @@ enum DropdownNotice: Equatable {
     case permission, claudeQuestion, codexQuestion, speed, tether, done, pendingDone, media
 }
 
+/// How a notice leaves the dropdown (`DropdownNotices.exit`).
+enum DropdownExit: Equatable {
+    /// Nothing else wants the dropdown: fold it with the notice still in it and clear the notice
+    /// once it is tucked away (clearing first left it empty for the whole fold).
+    case foldThenClear
+    /// The panel is open: just clear it.
+    case clear
+    /// Clear it and re-fit the dropdown to the next notice, or close it. Closed too: a notice
+    /// that came behind this one has no other way down.
+    case clearThenRestore
+}
+
 /// Which notices want the notch dropdown right now, and the rules over them that the dropdown
 /// handlers in `ClangNotchContentView` go by: which one comes down next, whether any is left
 /// once one goes, and which ones a Done, tethering or the cursor give way to.
@@ -53,6 +65,12 @@ struct DropdownNotices {
     /// A dropdown down for one of these stays a dropdown when the cursor rests on it, and stays
     /// down when it leaves: it is being read. Speed and tethering open into the panel.
     var holdsAgainstHover: Bool { waitsOnAnswer || done || media }
+
+    /// How `leaving` (`.permission`, `.done` or `.media`) goes, with the notch peeking or open.
+    func exit(_ leaving: DropdownNotice, peeking: Bool, open: Bool) -> DropdownExit {
+        if peeking, !hasNotice(besides: leaving) { return .foldThenClear }
+        return open ? .clear : .clearThenRestore
+    }
 
     /// Whether anything still wants the dropdown once `leaving` is gone (nil: anything at all).
     /// Only `.permission`, `.done` and `.media` leave this way; a question or tethering goes

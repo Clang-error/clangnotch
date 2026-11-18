@@ -56,17 +56,21 @@ func notices(_ s: S) -> DropdownNotices {
                     done: s.done, pendingDone: s.pendingDone, media: s.media)
 }
 
+func exit(_ s: S, _ leaving: DropdownNotice) -> DropdownExit {
+    notices(s).exit(leaving, peeking: s.notch == .peeking, open: s.notch == .open)
+}
+
 func handlePermissionQueue(_ s: inout S) {
     if s.queue {
         guard s.notch != .open else { return }
         s.showPerm = true
         peek(&s)
     } else if s.showPerm {
-        if s.notch == .peeking, !notices(s).hasNotice(besides: .permission) {
-            fold(&s); s.fold = .permission; return
+        switch exit(s, .permission) {
+        case .foldThenClear: fold(&s); s.fold = .permission
+        case .clear: s.showPerm = false
+        case .clearThenRestore: s.showPerm = false; restorePeek(&s)
         }
-        s.showPerm = false
-        if s.notch != .open { restorePeek(&s) }
     }
 }
 
@@ -85,11 +89,11 @@ func showDoneNotice(_ s: inout S) { s.done = true; peek(&s) }
 
 func dismissDoneNotice(_ s: inout S) {
     guard s.done else { return }
-    if s.notch == .peeking, !notices(s).hasNotice(besides: .done) {
-        fold(&s); s.fold = .done; return
+    switch exit(s, .done) {
+    case .foldThenClear: fold(&s); s.fold = .done
+    case .clear: s.done = false
+    case .clearThenRestore: s.done = false; restorePeek(&s)
     }
-    s.done = false
-    if s.notch != .open { restorePeek(&s) }
 }
 
 func dismissTetherNotice(_ s: inout S) {
@@ -100,11 +104,11 @@ func dismissTetherNotice(_ s: inout S) {
 
 func dismissMedia(_ s: inout S) {
     guard s.media else { return }
-    if s.notch == .peeking, !notices(s).hasNotice(besides: .media) {
-        fold(&s); s.fold = .media; return
+    switch exit(s, .media) {
+    case .foldThenClear: fold(&s); s.fold = .media
+    case .clear: s.media = false
+    case .clearThenRestore: s.media = false; restorePeek(&s)
     }
-    s.media = false
-    if s.notch != .open { restorePeek(&s) }
 }
 
 func restorePeek(_ s: inout S) {
@@ -206,6 +210,12 @@ struct NotchDropdownModelChecks {
             for e in E.allCases {
                 if let t = step(s, e), seen.insert(t).inserted { parent[t] = (s, e); order.append(t) }
             }
+        }
+        // DROPDOWN_TRANSITIONS=<file>: every transition, sorted, for diffing a refactor that
+        // should change none (the state count alone can stay the same while edges move).
+        if let out = ProcessInfo.processInfo.environment["DROPDOWN_TRANSITIONS"] {
+            let lines = order.flatMap { s in E.allCases.compactMap { e in step(s, e).map { "\(s) | \(e) -> \($0)" } } }
+            try! (lines.sorted().joined(separator: "\n") + "\n").write(toFile: out, atomically: true, encoding: .utf8)
         }
         var broken = false
         for (name, holds) in rules {

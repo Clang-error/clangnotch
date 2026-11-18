@@ -3094,12 +3094,15 @@ struct ClangNotchContentView: View {
         housingWatch?.cancel()
         mediaNoticeTask?.cancel()
         guard let notice = mediaNotice else { return }
-        if notchVM.notchState == .peeking, !dropdownNotices.hasNotice(besides: .media) {
+        switch dropdownExit(.media) {
+        case .foldThenClear:
             foldPeek { if mediaNotice == notice { mediaNotice = nil } }
-            return
+        case .clear:
+            mediaNotice = nil
+        case .clearThenRestore:
+            mediaNotice = nil
+            restorePeek()
         }
-        mediaNotice = nil
-        if notchVM.notchState != .open { restorePeek() }
     }
 
     private func doneDropdown(_ notice: DoneNotice) -> some View {
@@ -3139,7 +3142,8 @@ struct ClangNotchContentView: View {
             notchVM.peek(duration: nil, additionalHeight: peekHeight(for: permissionDropdown(first), width: permissionNotchWidth),
                          width: permissionNotchWidth)
         } else if showPermissionNotice {
-            if notchVM.notchState == .peeking, !dropdownNotices.hasNotice(besides: .permission) {
+            let exit = dropdownExit(.permission)
+            guard exit != .foldThenClear else {
                 foldPeek {
                     // A request that arrived meanwhile owns the dropdown now.
                     guard permissionCenter.queue.isEmpty else { return }
@@ -3150,9 +3154,12 @@ struct ClangNotchContentView: View {
             }
             showPermissionNotice = false
             shownPermission = nil
-            // Closed too: a question that came behind it has no other way down.
-            if notchVM.notchState != .open { restorePeek() }
+            if exit == .clearThenRestore { restorePeek() }
         }
+    }
+
+    private func dropdownExit(_ leaving: DropdownNotice) -> DropdownExit {
+        dropdownNotices.exit(leaving, peeking: notchVM.notchState == .peeking, open: notchVM.notchState == .open)
     }
 
     /// The notices that want the dropdown now; `DropdownNotices` holds the rules over them.
@@ -3266,12 +3273,15 @@ struct ClangNotchContentView: View {
     private func dismissDoneNotice() {
         doneNoticeTask?.cancel()
         guard let notice = doneNotice else { return }
-        if notchVM.notchState == .peeking, !dropdownNotices.hasNotice(besides: .done) {
+        switch dropdownExit(.done) {
+        case .foldThenClear:
             foldPeek { if doneNotice == notice { doneNotice = nil } }
-            return
+        case .clear:
+            doneNotice = nil
+        case .clearThenRestore:
+            doneNotice = nil
+            restorePeek()
         }
-        doneNotice = nil
-        if notchVM.notchState != .open { restorePeek() }
     }
 
     /// "세션 이름 · 폴더", or just the folder while the session has no name.
