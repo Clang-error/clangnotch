@@ -79,7 +79,9 @@ final class AirPodsDropdownContainer: NSView {
             shape.removeAllAnimations()
             shape.frame = bounds
         }
-        cardLayer.path = CGPath(roundedRect: bounds, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+        // The panel may be wider than the card (a media card's close orb on its right).
+        let card = CGRect(x: 0, y: 0, width: min(geometry?.card.width ?? bounds.width, bounds.width), height: bounds.height)
+        cardLayer.path = CGPath(roundedRect: card, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
         neckLayer.path = nil
         CATransaction.commit()
         needsLayout = true
@@ -191,6 +193,31 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
+/// The media card's close button: a small orb of the card's colour beside it, like the 복사 방울.
+private struct MediaCloseOrb: View {
+    let visible: Bool
+    let close: () -> Void
+    @ObservedObject private var appearance = NotchAppearance.shared
+
+    var body: some View {
+        let theme = appearance.theme(AppSettings.shared)
+        Button(action: close) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(theme.scheme == .light ? Color.black.opacity(0.7) : Color.white.opacity(0.8))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(theme.surface ?? .black))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(L("닫기", "Close"))
+        .scaleEffect(visible ? 1 : 0.3, anchor: .leading)
+        .opacity(visible ? 1 : 0)
+        .animation(.spring(response: 0.35, dampingFraction: 0.6), value: visible)
+        .frame(maxWidth: .infinity)
+    }
+}
+
 /// Name, X, Apple's renders and the levels, laid over the card.
 struct AirPodsDropdownContent: View {
     @ObservedObject var model: AirPodsDropdown
@@ -201,9 +228,20 @@ struct AirPodsDropdownContent: View {
         let visible = model.contentVisible
         Group {
             if let media = model.card?.media {
+                // The card keeps its width whatever the panel's: while it drops the panel is only
+                // the card, and laying the orb out beside it there shifted the card 17 pt sideways
+                // until it settled (user's recording, 2026-11-18). The orb hangs off its right edge.
                 MediaDropdownCardContent(playing: media, visible: visible)
                     .frame(width: AirPodsDropdown.mediaCardSize.width, height: AirPodsDropdown.mediaCardSize.height)
                     .clipped()
+                    .overlay(alignment: .topTrailing) {
+                        // Only while the cursor is on the card (user, 2026-11-18).
+                        MediaCloseOrb(visible: visible && model.phase == .settled && model.hovering) { model.dismiss() }
+                            .frame(width: AirPodsDropdown.closeOrbSpace)
+                            .padding(.top, 4)
+                            .offset(x: AirPodsDropdown.closeOrbSpace)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if let card = model.card {
                 VStack(spacing: 0) {
                     ZStack {

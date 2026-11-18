@@ -100,6 +100,10 @@ final class AirPodsDropdown: ObservableObject {
 
     static let cardSize = CGSize(width: 340, height: 192)
     static let mediaCardSize = CGSize(width: 340, height: 168)
+    /// Room right of a settled media card for its close orb (`MediaCloseOrb`): pushing the card
+    /// up to put it away wasn't something first-time users found (2026-11-18).
+    static let closeOrbSpace: CGFloat = 34
+    private var orbSpace: CGFloat { card?.media != nil ? Self.closeOrbSpace : 0 }
     private var cardSize: CGSize { card?.media != nil ? Self.mediaCardSize : Self.cardSize }
     /// Room around the card while it drops, for its overshoot.
     static let margin: CGFloat = 24
@@ -215,7 +219,8 @@ final class AirPodsDropdown: ObservableObject {
     private var waitTask: Task<Void, Never>?
     private var hideWork: DispatchWorkItem?
     private var hideDeadline: Date?
-    private var hovering = false
+    /// The cursor is on the card (or its close orb): the countdown waits, and the orb shows.
+    @Published private(set) var hovering = false
     private var generation = 0
     /// When a case opening last dropped a card, by address.
     private var openedByCase: [String: Date] = [:]
@@ -665,11 +670,12 @@ final class AirPodsDropdown: ObservableObject {
         return NSRect(x: screen.frame.midX - width / 2, y: screen.frame.maxY - height, width: width, height: height)
     }
 
-    /// Exactly the card: anything larger would sit over the menu bar and eat its clicks.
+    /// Exactly the card (and a media card's close orb beside it, all under the menu bar):
+    /// anything reaching up would sit over the menu bar and eat its clicks.
     private func cardFrame(on screen: NSScreen) -> NSRect {
         let size = cardSize
         return NSRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - cardTop - size.height,
-                      width: size.width, height: size.height)
+                      width: size.width + orbSpace, height: size.height)
     }
 
     private func makePanel() -> NSPanel {

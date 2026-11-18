@@ -9,7 +9,7 @@ import Foundation
 // (2026-11-17). When those handlers change, change this the same way and run it.
 
 enum Notch: Hashable { case closed, peeking, open }
-enum FoldClear: Hashable { case none, permission, done }
+enum FoldClear: Hashable { case none, permission, done, media }
 
 struct S: Hashable {
     var notch = Notch.closed
@@ -20,6 +20,7 @@ struct S: Hashable {
     var done = false           // doneNotice
     var pendingDone = false
     var tether = false
+    var media = false          // the 미디어 드롭다운 attached to the notch
     var fold = FoldClear.none  // foldPeek's clear still to run
     var settle = false         // the 400 ms re-drop after the panel closed, still to run
 }
@@ -33,6 +34,8 @@ enum E: String, CaseIterable {
     case doneTimesOut = "the Done dropdown's time runs out"
     case tetherStarts = "tethering starts"
     case tetherTimesOut = "the tethering dropdown's time runs out"
+    case mediaStarts = "something starts playing (attached player)"
+    case mediaTimesOut = "the player's time runs out"
     case foldLands = "a fold finishes"
     case settleRuns = "the panel's close settles"
     case youOpen = "you hover open"
@@ -43,8 +46,8 @@ func peek(_ s: inout S) { if s.notch != .open { s.notch = .peeking } }
 func fold(_ s: inout S) { if s.notch != .closed { s.settle = true }; s.notch = .closed }
 func closeNotch(_ s: inout S) { if s.notch != .closed { s.settle = true }; s.notch = .closed }
 
-func hasNoticeAfter(_ s: S, permission: Bool = false, done: Bool = false) -> Bool {
-    (!permission && s.showPerm) || s.showQ || s.tether || (!done && s.done) || s.pendingDone
+func hasNoticeAfter(_ s: S, permission: Bool = false, done: Bool = false, media: Bool = false) -> Bool {
+    (!permission && s.showPerm) || s.showQ || s.tether || (!done && s.done) || s.pendingDone || (!media && s.media)
 }
 
 func handlePermissionQueue(_ s: inout S) {
@@ -89,12 +92,22 @@ func dismissTetherNotice(_ s: inout S) {
     if was, s.notch == .peeking, !s.showQ, !s.showPerm, !s.done { restorePeek(&s) }
 }
 
+func dismissMedia(_ s: inout S) {
+    guard s.media else { return }
+    if s.notch == .peeking, !hasNoticeAfter(s, media: true) {
+        fold(&s); s.fold = .media; return
+    }
+    s.media = false
+    if s.notch != .open { restorePeek(&s) }
+}
+
 func restorePeek(_ s: inout S) {
     if s.queue { handlePermissionQueue(&s) }
     else if s.showQ, s.question { showInputNotice(&s) }
     else if s.tether { peek(&s) }
     else if s.done { peek(&s) }
     else if s.pendingDone { s.pendingDone = false; showDoneNotice(&s) }
+    else if s.media { peek(&s) }
     else if s.notch == .peeking { fold(&s) }
 }
 
@@ -125,9 +138,19 @@ func step(_ s0: S, _ e: E) -> S? {
     case .tetherTimesOut:
         guard s.tether else { return nil }
         dismissTetherNotice(&s)
+    case .mediaStarts:
+        guard !s.media, s.notch == .closed, s.fold == .none, !hasNoticeAfter(s) else { return nil }
+        s.media = true; peek(&s)
+    case .mediaTimesOut:
+        guard s.media, s.fold != .media else { return nil }
+        dismissMedia(&s)
     case .foldLands:
         switch s.fold {
         case .none: return nil
+        case .media:
+            s.fold = .none
+            s.media = false
+            restorePeek(&s)
         case .permission:
             s.fold = .none
             if !s.queue { s.showPerm = false }
@@ -143,10 +166,10 @@ func step(_ s0: S, _ e: E) -> S? {
         if s.notch == .closed, s.fold == .none, s.queue || s.pendingDone { restorePeek(&s) }
     case .youOpen:
         guard s.notch != .open else { return nil }
-        if s.notch == .peeking, s.showQ || s.showPerm || s.done { return nil }
+        if s.notch == .peeking, s.showQ || s.showPerm || s.done || s.media { return nil }
         s.notch = .open
     case .youLeave:
-        guard s.notch == .open || (s.notch == .peeking && !s.showQ && !s.showPerm && !s.done) else { return nil }
+        guard s.notch == .open || (s.notch == .peeking && !s.showQ && !s.showPerm && !s.done && !s.media) else { return nil }
         dismissQuestionNotice(&s)
         s.tether = false
         closeNotch(&s)
@@ -156,7 +179,7 @@ func step(_ s0: S, _ e: E) -> S? {
 
 let rules: [(String, (S) -> Bool)] = [
     ("A dropdown that is down always shows a notice",
-     { s in s.notch != .peeking || s.showPerm || s.showQ || s.tether || s.done }),
+     { s in s.notch != .peeking || s.showPerm || s.showQ || s.tether || s.done || s.media }),
     ("A waiting permission, question or Done is on screen or about to come down",
      { s in
         let waiting = s.queue || (s.question && s.showQ) || s.pendingDone

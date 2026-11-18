@@ -269,6 +269,9 @@ final class NowPlayingMonitor: ObservableObject {
         try? commands?.write(contentsOf: Data((line + "\n").utf8))
     }
 
+    /// Shows the 미디어 드롭다운 attached to the notch (set by the notch view); returns whether it did.
+    static var showAttached: ((NowPlaying) -> Bool)?
+
     /// 재생 시작 시 드롭다운, by `NowPlayingCardPolicy`.
     private func dropCard(for key: String) {
         // Shown or not, the wings go by the card from here: down, or back if it didn't come.
@@ -277,7 +280,8 @@ final class NowPlayingMonitor: ObservableObject {
         let now = Date()
         guard policy.allowsCard(for: playing, key: key,
                                 frontmostBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, now: now),
-              AirPodsDropdown.media.showMedia(playing) else { return }
+              AppSettings.shared.mediaDropdownAttached ? Self.showAttached?(playing) == true
+                                                       : AirPodsDropdown.media.showMedia(playing) else { return }
         policy.cardShown(for: playing, at: now)
     }
 }

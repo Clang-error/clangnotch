@@ -79,6 +79,15 @@ struct ClangNotchContentView: View {
     /// The session the 세션 화면 shows, opened from a 세션 줄.
     @State private var sessionDetail: SessionDetailTarget?
     @State private var doneNotice: DoneNotice?
+    /// The 미디어 드롭다운 attached to the notch (설정 -> 기능 -> 지금 재생 -> 노치에 붙음): the
+    /// lowest dropdown, shown only into a closed notch, folding like the 완료 드롭다운.
+    @State private var mediaNotice: NowPlaying?
+    @State private var mediaNoticeTask: Task<Void, Never>?
+    /// The cursor is on the notch: the attached player's close button shows only then.
+    @State private var notchHovered = false
+    /// While the cursor is on the attached player: whether it rests on the camera itself, which
+    /// opens the notch as it always does (the player's body holds it instead).
+    @State private var housingWatch: Task<Void, Never>?
     @State private var doneNoticeTask: Task<Void, Never>?
     /// A finish that came while another dropdown held the notch; shown once that one goes.
     @State private var pendingDoneNotice: DoneNotice?
@@ -765,6 +774,7 @@ struct ClangNotchContentView: View {
             if !UICoordinator.shared.cursorOverNotch { handleHover(false) }
         }
         .onAppear {
+            NowPlayingMonitor.showAttached = { playing in showMediaNotice(playing) }
             triggerStartupGlow()
             if hasLiveAgentActivity {
                 triggerClosedJellyReveal()
@@ -1426,7 +1436,12 @@ struct ClangNotchContentView: View {
                         Task { @MainActor in
                             // Once the notch is back in place, so the card doesn't drop through it.
                             try? await Task.sleep(for: .seconds(notchCloseDuration))
-                            AirPodsDropdown.media.showMedia(nowPlayingMonitor.nowPlaying ?? playing)
+                            let current = nowPlayingMonitor.nowPlaying ?? playing
+                            if settings.mediaDropdownAttached {
+                                _ = showMediaNotice(current)
+                            } else {
+                                AirPodsDropdown.media.showMedia(current)
+                            }
                         }
                     }
                     // A little lower than the housing's middle, nearer the header under it
@@ -1789,6 +1804,26 @@ struct ClangNotchContentView: View {
                 SpeedPeekHeader(manager: speedTest)
             } else if let tetherPlaceName {
                 TetherPeekHeader(placeName: tetherPlaceName)
+            } else if doneNotice == nil, mediaNotice != nil {
+                // The attached player's close button, in the free space right of the camera, on
+                // the notch's own colour, while the cursor is on the notch (user, 2026-11-18).
+                HStack {
+                    Spacer()
+                    Button { dismissMediaNotice() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(NotchPalette.ink.opacity(0.7))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(theme.surface ?? .black))
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("닫기", "Close"))
+                    .scaleEffect(notchHovered ? 1 : 0.4)
+                    .opacity(notchHovered ? 1 : 0)
+                    .allowsHitTesting(notchHovered)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.65), value: notchHovered)
+                }
             } else {
                 Color.clear
             }
@@ -1808,6 +1843,8 @@ struct ClangNotchContentView: View {
                 TetherPeekContent(placeName: tetherPlaceName)
             } else if let doneNotice {
                 doneDropdown(doneNotice)
+            } else if let mediaNotice {
+                mediaDropdown(nowPlayingMonitor.nowPlaying ?? mediaNotice)
             }
         }
     }
@@ -2384,6 +2421,7 @@ struct ClangNotchContentView: View {
 
     private func handleHover(_ hovering: Bool) {
         hoverTask?.cancel()
+        notchHovered = hovering
 
         if hovering {
             if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
@@ -2394,6 +2432,11 @@ struct ClangNotchContentView: View {
                 doneNoticeTask?.cancel()
                 return
             }
+            if notchVM.notchState == .peeking && mediaNotice != nil {
+                mediaNoticeTask?.cancel()
+                watchHousing()
+                return
+            }
             guard notchVM.notchState != .open else { return }
 
             hoverTask = Task {
@@ -2402,7 +2445,7 @@ struct ClangNotchContentView: View {
 
                 await MainActor.run {
                     guard notchVM.notchState != .open,
-                          !(notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice || doneNotice != nil)) else { return }
+                          !(notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice || doneNotice != nil || mediaNotice != nil)) else { return }
                     if settings.notchHapticsEnabled {
                         TrackpadHaptics.tap(strength: settings.notchHapticStrength)
                     }
@@ -2416,6 +2459,11 @@ struct ClangNotchContentView: View {
             }
             if notchVM.notchState == .peeking && doneNotice != nil {
                 scheduleDoneNoticeDismiss(after: 1.5)
+                return
+            }
+            if notchVM.notchState == .peeking && mediaNotice != nil {
+                housingWatch?.cancel()
+                scheduleMediaNoticeDismiss(after: 1.5)
                 return
             }
             guard !isMenuTracking else { return }
@@ -2813,6 +2861,79 @@ struct ClangNotchContentView: View {
         }
     }
 
+    private func mediaDropdown(_ playing: NowPlaying) -> some View {
+        MediaDropdownCardContent(playing: playing, visible: true, attached: true)
+            .frame(height: 126)
+    }
+
+    /// Something started playing, with 노치에 붙음 chosen (`NowPlayingMonitor.showAttached`).
+    /// It doesn't push out another dropdown: into a closed notch only, else it isn't shown. Up
+    /// already, it follows the new track in place and its time doesn't start over.
+    private func showMediaNotice(_ playing: NowPlaying) -> Bool {
+        if mediaNotice != nil, notchVM.notchState == .peeking {
+            mediaNotice = playing
+            return true
+        }
+        guard notchVM.notchState == .closed, !foldingPeek, !hasNoticeAfter() else { return false }
+        mediaNotice = playing
+        resetClosedJellyReveal()
+        notchVM.peek(duration: nil, additionalHeight: peekHeight(for: mediaDropdown(playing), width: mediaNotchWidth),
+                     width: mediaNotchWidth)
+        scheduleMediaNoticeDismiss(after: Double(settings.foldSecondsMedia) + Self.peekSettleTime)
+        return true
+    }
+
+    private func scheduleMediaNoticeDismiss(after seconds: Double) {
+        mediaNoticeTask?.cancel()
+        mediaNoticeTask = Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { dismissMediaNotice() }
+        }
+    }
+
+    /// The camera's own spot opens the notch even with the attached player down, as with the
+    /// card (user, 2026-11-18): resting there for the usual open delay folds the player and opens.
+    private func watchHousing() {
+        housingWatch?.cancel()
+        housingWatch = Task { @MainActor in
+            var since: Date?
+            while !Task.isCancelled, mediaNotice != nil, notchVM.notchState == .peeking {
+                if let screen = NotchDetector.notchScreen {
+                    let mouse = NSEvent.mouseLocation
+                    let size = notchVM.closedNotchSize
+                    let onHousing = abs(mouse.x - screen.frame.midX) <= size.width / 2 && mouse.y >= screen.frame.maxY - size.height
+                    if onHousing {
+                        let start = since ?? Date()
+                        since = start
+                        if Date().timeIntervalSince(start) >= settings.notchOpenDelay {
+                            mediaNoticeTask?.cancel()
+                            mediaNotice = nil
+                            if settings.notchHapticsEnabled { TrackpadHaptics.tap(strength: settings.notchHapticStrength) }
+                            openSelectedMode()
+                            return
+                        }
+                    } else {
+                        since = nil
+                    }
+                }
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+        }
+    }
+
+    private func dismissMediaNotice() {
+        housingWatch?.cancel()
+        mediaNoticeTask?.cancel()
+        guard let notice = mediaNotice else { return }
+        if notchVM.notchState == .peeking, !hasNoticeAfter(media: true) {
+            foldPeek { if mediaNotice == notice { mediaNotice = nil } }
+            return
+        }
+        mediaNotice = nil
+        if notchVM.notchState != .open { restorePeek() }
+    }
+
     private func doneDropdown(_ notice: DoneNotice) -> some View {
         DoneDropdownView(
             agent: notice.source == .codex ? .codex : .claude,
@@ -2867,9 +2988,10 @@ struct ClangNotchContentView: View {
     }
 
     /// Whether anything still wants the dropdown once the given notice is gone.
-    private func hasNoticeAfter(permission: Bool = false, done: Bool = false) -> Bool {
+    private func hasNoticeAfter(permission: Bool = false, done: Bool = false, media: Bool = false) -> Bool {
         (!permission && showPermissionNotice) || showQuestionNotice || showSpeedNotice
             || tetherPlaceName != nil || (!done && doneNotice != nil) || pendingDoneNotice != nil
+            || (!media && mediaNotice != nil)
     }
 
     /// Folds the dropdown with its content still in it and clears that content once it's
@@ -2916,6 +3038,9 @@ struct ClangNotchContentView: View {
             } else {
                 notchVM.fold()
             }
+        } else if let mediaNotice {
+            notchVM.peek(duration: nil, additionalHeight: peekHeight(for: mediaDropdown(mediaNotice), width: mediaNotchWidth),
+                         width: mediaNotchWidth)
         } else if notchVM.notchState == .peeking {
             notchVM.fold()
         }

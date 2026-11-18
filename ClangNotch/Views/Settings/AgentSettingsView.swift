@@ -402,6 +402,118 @@ private struct SettingsPageIcon: View {
 }
 
 /// 설정 -> 노치 › 노치 색: four picture tiles, each a small notch over a desktop.
+/// 설정 -> 기능 -> 지금 재생 -> 미디어 드롭다운: 끔, 떨어지는 카드 (the default) or 노치에 붙음,
+/// picked from pictures like the 노치 색.
+private struct MediaDropdownStylePicker: View {
+    @ObservedObject var settings: AppSettings
+
+    enum Style: CaseIterable { case off, card, attached }
+
+    private var current: Style {
+        !settings.enableNowPlayingDropdown ? .off : settings.mediaDropdownAttached ? .attached : .card
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(Style.allCases, id: \.self) { style in
+                let selected = current == style
+                Button { pick(style) } label: {
+                    VStack(spacing: 6) {
+                        MediaDropdownStyleTile(style: style)
+                            .frame(width: 92, height: 60)
+                            .padding(3)
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2.5))
+                        Text(title(style))
+                            .font(.callout.weight(selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? .primary : .secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    private func pick(_ style: Style) {
+        settings.enableNowPlayingDropdown = style != .off
+        if style != .off { settings.mediaDropdownAttached = style == .attached }
+    }
+
+    private func title(_ style: Style) -> String {
+        switch style {
+        case .off:      return L("끔", "Off")
+        case .card:     return L("떨어지는 카드", "Card")
+        case .attached: return L("노치에 붙음", "Attached")
+        }
+    }
+}
+
+private struct MediaDropdownStyleTile: View {
+    let style: MediaDropdownStylePicker.Style
+
+    private let art = LinearGradient(colors: [Color(red: 0.95, green: 0.45, blue: 0.55), Color(red: 0.45, green: 0.3, blue: 0.85)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing)
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        ZStack(alignment: .top) {
+            LinearGradient(colors: [Color(red: 0.2, green: 0.45, blue: 0.85), Color(red: 0.08, green: 0.2, blue: 0.5)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            switch style {
+            case .off:
+                // The closed notch with only the wings: artwork on the left, bars on the right.
+                HStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 2).fill(art).frame(width: 7, height: 7).padding(.leading, 4)
+                    Spacer()
+                    HStack(spacing: 1) {
+                        ForEach([3.0, 5, 4, 6], id: \.self) { Capsule().fill(Color.pink.opacity(0.9)).frame(width: 1.5, height: $0) }
+                    }
+                    .padding(.trailing, 4)
+                }
+                .frame(width: 50, height: 11)
+                .background(UnevenRoundedRectangle(bottomLeadingRadius: 4, bottomTrailingRadius: 4).fill(Color.black))
+            case .card:
+                UnevenRoundedRectangle(bottomLeadingRadius: 4, bottomTrailingRadius: 4).fill(Color.black).frame(width: 28, height: 9)
+                player(width: 56, height: 30, attached: false).padding(.top, 15)
+            case .attached:
+                player(width: 64, height: 40, attached: true)
+            }
+        }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+    }
+
+    private func player(width: CGFloat, height: CGFloat, attached: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 3) {
+                RoundedRectangle(cornerRadius: 2).fill(art).frame(width: 9, height: 9)
+                VStack(alignment: .leading, spacing: 2) {
+                    Capsule().fill(Color.white.opacity(0.9)).frame(width: 22, height: 2.5)
+                    Capsule().fill(Color.white.opacity(0.45)).frame(width: 14, height: 2.5)
+                }
+            }
+            Capsule().fill(Color.white.opacity(0.3)).frame(height: 1.5)
+                .overlay(alignment: .leading) { Capsule().fill(Color.white.opacity(0.9)).frame(width: 14, height: 1.5) }
+            HStack(spacing: 6) { ForEach(0..<3, id: \.self) { _ in Circle().fill(Color.white.opacity(0.8)).frame(width: 3, height: 3) } }
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, attached ? 11 : 5)
+        .padding(.bottom, 4)
+        .frame(width: width, height: height, alignment: .top)
+        .background {
+            if attached {
+                UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8, style: .continuous).fill(Color.black)
+            } else {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.black)
+            }
+        }
+    }
+}
+
 private struct NotchAppearancePicker: View {
     @Binding var selection: String
 
@@ -1213,11 +1325,16 @@ struct FeaturesSettingsTab: View {
                               isOn: $settings.enableNowPlaying)
                     .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
                 if settings.enableNowPlaying {
-                    SettingToggle(L("재생 시작 시 드롭다운", "Dropdown when something starts playing"),
-                                  L("재생이 시작되거나 곡이 바뀌면 노치 아래에 플레이어 드롭다운. \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 -> 노치). 같은 앱에서 곡을 넘기면 매번. 그 앱이 맨 앞이면 드롭다운이 내려오지 않음.",
-                                    "A player dropdown under the notch when something starts playing or the track changes. Folds after \(settings.foldSecondsMedia) seconds (time in Settings -> Notch). Every track within the same app. It doesn't come down while its app is in front."),
-                                  isOn: $settings.enableNowPlayingDropdown)
-                        .padding(.leading, 20)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L("미디어 드롭다운", "Media dropdown"))
+                        MediaDropdownStylePicker(settings: settings)
+                        Text(L("재생이 시작되거나 곡이 바뀌면 내려오는 플레이어. 떨어지는 카드는 노치에서 떨어져 나와 메뉴 막대 아래에 뜨고, 노치에 붙음은 완료 드롭다운처럼 노치에서 내려왔다가 접힘. \(settings.foldSecondsMedia)초 뒤 접힘(시간은 설정 -> 노치). 그 앱이 맨 앞이면 내려오지 않음.",
+                               "The player that comes down when something starts playing or the track changes. The card comes off the notch and floats under the menu bar; attached comes down from the notch like the Done dropdown and folds back. Folds after \(settings.foldSecondsMedia) seconds (time in Settings -> Notch). Not while its app is in front."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.leading, 20)
                     SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),
                                   L("재생 중인 앱의 소리를 읽어 음파를 움직임", "Reads the sound of the app that plays to move the bars")
                                     + needsAudioCapture + L(". 소리를 녹음하거나 저장하지 않음.", ". Nothing is recorded or saved."),

@@ -18,6 +18,10 @@ let questionNotchWidth: CGFloat = 420
 let sessionDetailNotchSize: CGSize = .init(width: 720, height: openNotchSize.height)
 /// The 권한·완료 드롭다운: commands, paths and answers need more room than the 420pt notices.
 let permissionNotchWidth: CGFloat = 520
+/// The 미디어 드롭다운 when it comes down attached to the notch: its visible body is the card's
+/// 340 (`AirPodsDropdown.mediaCardSize`), the window 19 wider each side for the notch's top
+/// corners (`cornerRadiusInsets.opened.top`). Narrower than the 완료 드롭다운.
+let mediaNotchWidth: CGFloat = 340 + 2 * 19
 let maximumPeekHeight: CGFloat = 340
 /// The 질문 드롭다운 after its 확대 버튼: about half the screen across and three fifths down,
 /// so a Claude question with long options reads without scrolling.

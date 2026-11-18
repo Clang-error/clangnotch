@@ -90,6 +90,11 @@ public final class AppSettings: ObservableObject {
     // /usr/bin/perl (NowPlayingMonitor). Under it: the 미디어 드롭다운 when something starts playing.
     @AppStorage("enableNowPlaying") public var enableNowPlaying: Bool = true
     @AppStorage("enableNowPlayingDropdown") public var enableNowPlayingDropdown: Bool = true
+    // 설정 -> 기능 -> 지금 재생 -> 미디어 드롭다운: the player comes down from the notch like the
+    // 완료 드롭다운 instead of as the card that comes off it (2026-11-18; off by default, the card
+    // stays the default). With enableNowPlayingDropdown it makes the three choices 끔, 떨어지는
+    // 카드, 노치에 붙음, so no stored value needed moving.
+    @AppStorage("mediaDropdownAttached") public var mediaDropdownAttached: Bool = false
     // Also under it: the 음파 막대 follow the sound, read from the playing app with an audio
     // capture tap (NowPlayingLevels). Off: no tap, the bars bounce by themselves.
     @AppStorage("enableNowPlayingLevels") public var enableNowPlayingLevels: Bool = true

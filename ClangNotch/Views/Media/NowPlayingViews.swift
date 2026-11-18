@@ -222,6 +222,9 @@ struct MediaArtwork: View {
 struct MediaDropdownCardContent: View {
     let playing: NowPlaying
     let visible: Bool
+    /// Inside the notch (설정 -> 기능 -> 지금 재생 -> 미디어 드롭다운 -> 노치에 붙음): no 핀 and
+    /// no X, it folds like the other dropdowns.
+    var attached = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -236,11 +239,11 @@ struct MediaDropdownCardContent: View {
                 MediaWaveform(style: .card, playing: playing.isPlaying, color: playing.accent)
                     .frame(width: MediaWaveform.Style.card.width, height: MediaWaveform.Style.card.height)
             }
-            Spacer(minLength: 14)
+            Spacer(minLength: attached ? 8 : 14)
             if playing.duration != nil {
                 MediaTimeline(playing: playing)
             }
-            Spacer(minLength: 10)
+            Spacer(minLength: attached ? 4 : 10)
             ZStack {
                 HStack(spacing: 34) {
                     control("backward.fill", size: 19) { NowPlayingMonitor.shared.send(.prev) }
@@ -248,14 +251,17 @@ struct MediaDropdownCardContent: View {
                     control("forward.fill", size: 19) { NowPlayingMonitor.shared.send(.next) }
                 }
                 HStack {
-                    PinButton()
+                    if !attached { PinButton() }
                     Spacer()
                     AudioOutputMenu()
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
+        // Laid out like the card inside the notch too (user, 2026-11-18): 20 from the visible
+        // edge. The notch insets its content 35 from the window, whose first 19 are the top
+        // corners' curve, so 16 from the body's edge already. Starts right under the notch.
+        .padding(.horizontal, attached ? 20 - (expandedNotchInset - cornerRadiusInsets.opened.top) : 20)
+        .padding(.top, attached ? 0 : 18)
         .padding(.bottom, 12)
         .scaleEffect(visible ? 1 : 0.94)
         .opacity(visible ? 1 : 0)
