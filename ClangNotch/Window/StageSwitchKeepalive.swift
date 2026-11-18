@@ -39,7 +39,8 @@ final class StageSwitchKeepalive: NSView {
         presentClearFrame()
     }
 
-    /// Again for a window that was ordered out and comes back (the 에어팟 드롭다운's panel).
+    /// Each present makes Metal hold about 68 MB of GPU memory for a second or so (2026-11-18):
+    /// call it when a window first shows, not per animation.
     func presentClearFrame() {
         guard window != nil, let queue, let drawable = metalLayer.nextDrawable(),
               let buffer = queue.makeCommandBuffer() else { return }

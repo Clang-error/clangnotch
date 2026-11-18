@@ -38,6 +38,7 @@ final class AirPodsDropdownContainer: NSView {
     private let keepalive = StageSwitchKeepalive(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
     private var geometry: AirPodsBlobGeometry?
     private var settled = false
+    private var keepalivePresented = false
 
     private static let corner: CGFloat = 26
     private static let samples = 48
@@ -57,8 +58,15 @@ final class AirPodsDropdownContainer: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     /// The panel has just been sized to the full frame.
+    /// The keepalive presents on the first drop, once the panel is on screen, not on every drop:
+    /// each present had Metal hold about 68 MB of GPU memory for the second the drop took
+    /// (measured 2026-11-18). Whether a panel ordered out and back needs a fresh frame through a
+    /// Stage Manager switch hadn't been measured when the per-drop present went in; the user checks it.
     func drop(_ geometry: AirPodsBlobGeometry, color: CGColor) {
-        keepalive.presentClearFrame()
+        if !keepalivePresented {
+            keepalive.presentClearFrame()
+            keepalivePresented = true
+        }
         self.geometry = geometry
         settled = false
         cardLayer.fillColor = color
