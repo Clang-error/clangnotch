@@ -386,7 +386,7 @@ final class RemoteClaudeManager: ObservableObject {
         t = d.get("tool_input")
         o["tool_input"] = t if d.get("tool_name") == "AskUserQuestion" else ({k: v[:200] for k, v in t.items() if isinstance(v, str)} if isinstance(t, dict) else None)
         o["clangnotch_host"] = sys.argv[1]
-        print(json.dumps(o))
+        print(json.dumps(o))  # allow-print
         ' "$host") || exit 0
         fi
         ( curl -s -m 3 --unix-socket "$HOME/.claude/clangnotch.sock" -X POST http://localhost/claude-hook -H 'Content-Type: application/json' --data-binary "$body" & ) </dev/null >/dev/null 2>&1

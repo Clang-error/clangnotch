@@ -51,7 +51,8 @@ report warning 'repeatForever: fine for a fixed view; on a view whose SF Symbol 
 report warning 'notchVM.fold(): a dropdown that ends goes through restorePeek() or foldPeek(), which hand the notch to the next notice; a bare fold left notices that never came down (tests/NotchDropdownModelChecks.swift).' \
     "$(lines "ClangNotch/Views" 'notchVM\.fold\(\)')"
 
-report warning 'print(: app logging goes through debugLog() so release builds stay quiet (a print inside an embedded script string is fine).' \
-    "$(lines "ClangNotch" '^[[:space:]]*print\(')"
+# A line marked allow-print is one that must print: debugLog itself, or a script embedded in a string.
+report warning 'print(: app logging goes through debugLog() so release builds stay quiet. A print that must stay (debugLog itself, a script in a string) gets an allow-print comment on its line.' \
+    "$(lines "ClangNotch" '^[[:space:]]*print\(' | grep -v 'allow-print')"
 
 exit $((errors > 0))

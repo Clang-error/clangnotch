@@ -15,7 +15,7 @@ import AppKit
 @inline(__always)
 func debugLog(_ message: @autoclosure () -> String) {
     #if DEBUG
-    print(message())
+    print(message())  // allow-print
     #endif
 }
 
