@@ -456,24 +456,27 @@ struct ClangNotchContentView: View {
             .onReceive(cursorHoverPublisher) { hovering in
                 handleHover(hovering)
             }
-            .onTapGesture {
+            .onTapGesture(coordinateSpace: .local) { location in
                 // Only open on tap. Don't close when tapping empty space while open —
                 // a near-miss on a button shouldn't dismiss the notch (closing is
                 // handled by the cursor leaving the notch region).
+                // A dropdown opens the notch from its top row only (the camera and the wings
+                // beside it): a click just under 터미널 열기 opened the whole notch (user, 2026-11-18).
+                let onNotchRow = location.y <= notchVM.closedNotchSize.height
                 if notchVM.notchState == .closed {
                     if let doneFlash, let turn = doneFlash.turn {
                         focusSession(doneFlash.source, turn.sessionId)
                         return
                     }
                     openSelectedMode()
-                } else if notchVM.notchState == .peeking, doneNotice != nil,
+                } else if notchVM.notchState == .peeking, onNotchRow, doneNotice != nil,
                           !showPermissionNotice, !showQuestionNotice {
                     // Hovering holds the 완료 드롭다운 to read it; a click opens the notch,
                     // which used to wait until the dropdown had folded away by itself.
                     doneNoticeTask?.cancel()
                     doneNotice = nil
                     openSelectedMode()
-                } else if notchVM.notchState == .peeking, mediaNotice != nil, doneNotice == nil,
+                } else if notchVM.notchState == .peeking, onNotchRow, mediaNotice != nil, doneNotice == nil,
                           !showPermissionNotice, !showQuestionNotice {
                     // The attached player opens the notch on a click the same way.
                     housingWatch?.cancel()
