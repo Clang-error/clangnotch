@@ -323,8 +323,11 @@ struct ClangNotchContentView: View {
     private var glowOverlay: some View {
         ZStack {
             if showStartupGlow && notchVM.notchState == .closed {
-                NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
-                                glowColor: startupGlowColor, brightColor: startupBrightColor, wingFade: wingFade)
+                // On the surface's own outline: the overlay is widened for the tracing glows
+                // (`glowSurfaceWidth`), and this one drawn there stood out past the notch.
+                BreathingNotchGlow(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
+                                   glowColor: startupGlowColor, brightColor: startupBrightColor)
+                    .padding(.horizontal, max(0, (glowSurfaceWidth - notchSurfaceSize.width) / 2))
             } else if tetherMonitor.activePlaceName != nil {
                 // Tethering at a saved place: the glow sweeps red, agents working or not.
                 // Opening from closed, it keeps the closed sweep until the surface settles.
@@ -3438,7 +3441,7 @@ struct ClangNotchContentView: View {
             }
             guard !reduceMotion else { return }
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(housing ? 600 : 450))
+                try? await Task.sleep(for: Self.breathingStart)
                 guard notchPresence else { return }
                 withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { presenceOutset = housing ? 6 : 3 }
             }
@@ -3456,12 +3459,19 @@ struct ClangNotchContentView: View {
         }
     }
 
+    /// The breathing begins once the surface has grown (`BreathingNotchGlow` waits the same).
+    static let breathingStart: Duration = .milliseconds(600)
+    /// At launch the notch and the startup glow last three breaths (user, 2026-11-18: two were
+    /// too few): grown, then 0.8 s out and back twice and out a third time, fading from that peak.
+    static let launchAnnouncement: Duration = breathingStart + .milliseconds(800 * 5)
+
     /// At launch: here is the notch, for a moment.
     private func announceNotch() {
         setPresence(true)
         presenceTask?.cancel()
         presenceTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.5))
+            // Goes with the startup glow (`triggerStartupGlow`), not before it.
+            try? await Task.sleep(for: Self.launchAnnouncement)
             guard !Task.isCancelled, !(settings.notchOpensOnClick && notchHovered) else { return }
             setPresence(false)
         }
@@ -3471,7 +3481,7 @@ struct ClangNotchContentView: View {
         startupGlowTask?.cancel()
         showStartupGlow = true
         startupGlowTask = Task {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: Self.launchAnnouncement)
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.3)) {
