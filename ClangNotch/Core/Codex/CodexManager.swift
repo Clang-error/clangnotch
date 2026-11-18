@@ -166,9 +166,8 @@ final class CodexManager: ObservableObject {
     private var rateLimitProcess: Process?
     private var rateLimitOutputBuffer = Data()
     private var sessionWatchers: [String: DispatchSourceFileSystemObject] = [:]
-    private var sessionFileHandles: [String: FileHandle] = [:]
-    private var sessionReadPositions: [String: UInt64] = [:]
-    private var sessionLineBuffers: [String: JSONLLineBuffer] = [:]
+    /// Each watched rollout's unread end, read off the main thread (`SessionFileTail`).
+    private var sessionTails: [String: SessionFileTail] = [:]
     private var isLoadingHistoryBySession: [String: Bool] = [:]
     private var externalImportSessions: Set<String> = []
     private var sessionActivityCache: [URL: (modifiedAt: Date, fileSize: UInt64, activity: Date?)] = [:]
@@ -803,12 +802,13 @@ final class CodexManager: ObservableObject {
 
         sessionStates[session.id] = CodexState()
 
+        let tail: SessionFileTail
         do {
             let handle = try FileHandle(forReadingFrom: jsonlFile)
-            handle.seekToEndOfFile()
-            sessionFileHandles[session.id] = handle
-            sessionReadPositions[session.id] = handle.offsetInFile
-            loadRecentHistoryForSession(from: jsonlFile, sessionId: session.id)
+            let end = handle.seekToEndOfFile()
+            let buffer = loadRecentHistoryForSession(from: jsonlFile, sessionId: session.id, upTo: end)
+            tail = SessionFileTail(handle: handle, position: end, buffer: buffer, label: session.id)
+            sessionTails[session.id] = tail
         } catch {
             debugLog("[Codex] Error opening file: \(error)")
             return
@@ -820,14 +820,15 @@ final class CodexManager: ObservableObject {
             return
         }
 
+        // Events come on the tail's own queue, which reads and decodes there.
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: [.write, .extend],
-            queue: .main
+            queue: tail.queue
         )
 
         source.setEventHandler { [weak self] in
-            self?.readNewSessionData(sessionId: session.id)
+            Self.drain(tail, sessionId: session.id, into: self)
         }
 
         source.setCancelHandler {
@@ -843,10 +844,7 @@ final class CodexManager: ObservableObject {
     private func stopWatchingSession(id sessionId: String) {
         sessionWatchers[sessionId]?.cancel()
         sessionWatchers.removeValue(forKey: sessionId)
-        sessionFileHandles[sessionId]?.closeFile()
-        sessionFileHandles.removeValue(forKey: sessionId)
-        sessionReadPositions.removeValue(forKey: sessionId)
-        sessionLineBuffers.removeValue(forKey: sessionId)
+        sessionTails.removeValue(forKey: sessionId)
         sessionStates.removeValue(forKey: sessionId)
         sessionAppDestinations.removeValue(forKey: sessionId)
         sessionTerminals.removeValue(forKey: sessionId)
@@ -855,23 +853,25 @@ final class CodexManager: ObservableObject {
         externalImportSessions.remove(sessionId)
     }
 
-    private func loadRecentHistoryForSession(from file: URL, sessionId: String) {
+    /// The last 50 KB up to `end` (the watcher's start; the file's end when nil), applied as
+    /// history. Returns the unfinished line it ended on, which the watcher carries on from.
+    @discardableResult
+    private func loadRecentHistoryForSession(from file: URL, sessionId: String, upTo end: UInt64? = nil) -> JSONLLineBuffer {
         let maxBytesToRead: UInt64 = 50 * 1024
 
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return JSONLLineBuffer() }
         defer { try? handle.close() }
 
-        let fileSize = sessionReadPositions[sessionId] ?? handle.seekToEndOfFile()
+        let fileSize = end ?? handle.seekToEndOfFile()
         let startPosition = fileSize > maxBytesToRead ? fileSize - maxBytesToRead : 0
         handle.seek(toFileOffset: startPosition)
 
-        guard var data = try? handle.read(upToCount: Int(fileSize - startPosition)) else { return }
+        guard var data = try? handle.read(upToCount: Int(fileSize - startPosition)) else { return JSONLLineBuffer() }
         if startPosition > 0, let newline = data.firstIndex(of: 0x0A) {
             data.removeSubrange(...newline)
         }
         var buffer = JSONLLineBuffer()
         let linesToProcess = buffer.append(data).suffix(100)
-        sessionLineBuffers[sessionId] = buffer
 
         isLoadingHistoryBySession[sessionId] = true
         for line in linesToProcess where !line.isEmpty {
@@ -894,22 +894,31 @@ final class CodexManager: ObservableObject {
             if selectedSession?.id == sessionId { state = sessionState }
         }
         resetIdleTimer()
+        return buffer
     }
 
+    /// Whatever the file gained since the last read: read and decoded on the tail's queue, then
+    /// applied on the main thread in the same order.
     private func readNewSessionData(sessionId: String) {
-        guard let handle = sessionFileHandles[sessionId],
-              let lastPosition = sessionReadPositions[sessionId] else { return }
+        guard let tail = sessionTails[sessionId] else { return }
+        tail.queue.async { [weak self] in Self.drain(tail, sessionId: sessionId, into: self) }
+    }
 
-        handle.seek(toFileOffset: lastPosition)
-        let newData = handle.readDataToEndOfFile()
-        sessionReadPositions[sessionId] = handle.offsetInFile
-
-        guard !newData.isEmpty else { return }
-        let lines = sessionLineBuffers[sessionId, default: JSONLLineBuffer()].append(newData)
-        for line in lines {
-            parseJSONLLine(line, sessionId: sessionId)
+    /// On `tail.queue`: reads, decodes, and hands the records to the main thread.
+    nonisolated private static func drain(_ tail: SessionFileTail, sessionId: String, into manager: CodexManager?) {
+        let records = DecodedRecords(items: tail.readNewLines().compactMap(CodexActivityScan.record(line:)))
+        guard !records.items.isEmpty else { return }
+        DispatchQueue.main.async { [weak manager] in
+            MainActor.assumeIsolated { manager?.applyRecords(records, sessionId: sessionId, from: tail) }
         }
+    }
 
+    /// Drops what a tail read after its session stopped or was watched again from the start.
+    private func applyRecords(_ records: DecodedRecords, sessionId: String, from tail: SessionFileTail) {
+        guard sessionTails[sessionId] === tail else { return }
+        for json in records.items {
+            applyRecord(json, sessionId: sessionId)
+        }
         resetIdleTimer()
     }
 
@@ -946,17 +955,11 @@ final class CodexManager: ObservableObject {
     // MARK: - JSONL Parsing
 
     private func parseJSONLLine(_ line: String, sessionId: String) {
-        let json: [String: Any]
-        if line.utf8.count > CodexActivityScan.fullLineLimit {
-            // A huge tool output (46 MB in #3) only needs its start: parsing it whole stalled the notch.
-            guard let compact = CodexActivityScan.compactRecord(head: String(line.prefix(CodexActivityScan.headSize))) else { return }
-            json = compact
-        } else {
-            guard let data = line.data(using: .utf8),
-                  let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            json = parsed
-        }
+        guard let json = CodexActivityScan.record(line: line) else { return }
+        applyRecord(json, sessionId: sessionId)
+    }
 
+    private func applyRecord(_ json: [String: Any], sessionId: String) {
         guard var sessionState = sessionStates[sessionId] else { return }
 
         let type = json["type"] as? String ?? ""

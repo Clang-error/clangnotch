@@ -97,6 +97,17 @@ enum CodexActivityScan {
     /// types, the call id that ends a running tool, the tool's name and the first characters of
     /// its output (for "Exit code: N"). A message whose phase isn't in its start is dropped
     /// rather than read as a final answer.
+    /// One rollout line as JSON: whole when it is short, from its first `headSize` bytes when it
+    /// is longer than `fullLineLimit` (a huge tool output only needs its start; parsing 46 MB
+    /// whole stalled the notch in #3). Pure, so it runs off the main thread.
+    static func record(line: String) -> [String: Any]? {
+        if line.utf8.count > fullLineLimit {
+            return compactRecord(head: String(line.prefix(headSize)))
+        }
+        guard let data = line.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
     static func compactRecord(head: String) -> [String: Any]? {
         guard let payloadStart = head.range(of: "\"payload\":{"),
               let type = firstString(after: "\"type\":\"", in: head[..<payloadStart.lowerBound]) else { return nil }

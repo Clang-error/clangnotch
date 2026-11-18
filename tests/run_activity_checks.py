@@ -27,6 +27,7 @@ common = '''
     var sessionReadPositions: [String: UInt64] = [:]
     var sessionFileHandles: [String: FileHandle] = [:]
     var sessionLineBuffers: [String: JSONLLineBuffer] = [:]
+    var sessionTails: [String: SessionFileTail] = [:]
     var isLoadingHistoryBySession: [String: Bool] = [:]
     var nextCheck: TimeInterval?
     func resetIdleTimer(after delay: TimeInterval? = nil) { nextCheck = delay }
@@ -110,7 +111,7 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     func isRemote(_ sessionId: String) -> Bool { false }
 '''
 swift += formatter(codex, 'iso8601Formatter') + '\n'
-for name in ['scanForSessions','parseSessionFromFile','readFirstJSONLRecord','parseResponseItem','parseInputRequest','parseEventMsg','parseJSONLLine','loadRecentHistoryForSession','readNewSessionData','markAllSessionsIdle']:
+for name in ['scanForSessions','parseSessionFromFile','readFirstJSONLRecord','parseResponseItem','parseInputRequest','parseEventMsg','parseJSONLLine','applyRecord','applyRecords','loadRecentHistoryForSession','markAllSessionsIdle']:
     swift += method(codex, name) + '\n'
 if '    private func latestCodexActivityDate(' in codex:
     swift += method(codex, 'latestCodexActivityDate') + '\n'
@@ -534,15 +535,22 @@ swift += '''}
                 let stale = ClaudeFixture(); stale.loadRecentHistoryForSession(from:URL(fileURLWithPath:file.path), sessionId:"s")
                 precondition(!stale.state.isActive)
             } else {
+                // The watcher's path: history up to the start, then the tail read and decoded on
+                // its own queue and applied here.
                 let f = CodexFixture()
                 let h = try FileHandle(forReadingFrom:file)
-                f.sessionReadPositions["s"] = h.seekToEndOfFile(); f.sessionFileHandles["s"] = h
-                f.loadRecentHistoryForSession(from:file, sessionId:"s")
+                let end = h.seekToEndOfFile()
+                let tail = SessionFileTail(handle: h, position: end, buffer: f.loadRecentHistoryForSession(from:file, sessionId:"s", upTo: end), label: "check")
+                f.sessionTails["s"] = tail
                 precondition(!f.state.isActive)
                 let w = try FileHandle(forWritingTo:file); w.seekToEndOfFile(); w.write(full.suffix(5)); try w.close()
-                f.readNewSessionData(sessionId:"s")
+                let records = tail.queue.sync { DecodedRecords(items: tail.readNewLines().compactMap(CodexActivityScan.record(line:))) }
+                precondition(records.items.count == 1, "History partial line must survive watcher startup")
+                let other = SessionFileTail(handle: try FileHandle(forReadingFrom:file), position: 0, buffer: JSONLLineBuffer(), label: "other")
+                f.applyRecords(records, sessionId:"s", from: other)
+                precondition(!f.state.isActive, "A read from a tail the session no longer has must be dropped")
+                f.applyRecords(records, sessionId:"s", from: tail)
                 precondition(f.state.isActive)
-                try h.close()
                 let fresh = CodexFixture(); fresh.loadRecentHistoryForSession(from:file, sessionId:"s")
                 precondition(fresh.state.isActive)
                 try FileManager.default.setAttributes([.modificationDate:Date(timeIntervalSinceNow: -301)], ofItemAtPath:file.path)
@@ -581,6 +589,7 @@ with tempfile.TemporaryDirectory(prefix='clangnotch-activity-checks-') as folder
                     str(root/'ClangNotch/Models/ClaudeCodeModels.swift'),
                     str(root/'ClangNotch/Models/CodexModels.swift'),
                     str(root/'ClangNotch/Models/JSONLLineBuffer.swift'),
+                    str(root/'ClangNotch/Models/SessionFileTail.swift'),
                     str(root/'ClangNotch/Models/CodexActivityScan.swift'),
                     str(root/'ClangNotch/Core/Codex/CodexAppIPC.swift'),
                     str(root/'ClangNotch/Core/Settings/SessionRetention.swift'),
