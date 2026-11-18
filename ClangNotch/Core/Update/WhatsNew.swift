@@ -72,6 +72,15 @@ final class WhatsNew {
         window.setContentSize(NSSize(width: 460, height: 520))
         window.center()
         self.window = window
+        // Once closed, drop the window and its view tree rather than keep them for the app's life.
+        var closeObserver: NSObjectProtocol?
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self, weak window] _ in
+            if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+            window?.contentViewController = nil
+            MainActor.assumeIsolated { if self?.window === window { self?.window = nil } }
+        }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }

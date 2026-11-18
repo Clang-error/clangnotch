@@ -33,6 +33,11 @@ final class NowPlayingLevels {
     private var notchHidden = false
     private var cardDown = false
     private var playing: NowPlaying?
+    /// A pause on the same app keeps the tap this long first: a track change pauses for 0.4–1 s,
+    /// and tearing the tap down and making a new one each time pushed the app up by ~15 MB for
+    /// two seconds on every track (user's trace, 2026-11-17).
+    private var pendingStop: Task<Void, Never>?
+    private static let pauseGrace: Duration = .seconds(2)
 
     private init() {}
 
@@ -51,13 +56,27 @@ final class NowPlayingLevels {
     /// Called with every change of what plays.
     func follow(_ playing: NowPlaying?) {
         self.playing = playing
-        guard let playing, playing.isPlaying, let pid = playing.pid,
+        guard let playing, let pid = playing.pid,
               !notchHidden || cardDown,
               AppSettings.shared.enableNowPlaying, AppSettings.shared.enableNowPlayingLevels,
               !DemoMode.isActive, Self.isSafe else {
             stop()
             return
         }
+        guard playing.isPlaying else {
+            if pid == self.pid, pendingStop == nil {
+                pendingStop = Task { [weak self] in
+                    try? await Task.sleep(for: Self.pauseGrace)
+                    guard !Task.isCancelled else { return }
+                    self?.stop()
+                }
+            } else if pid != self.pid {
+                stop()
+            }
+            return
+        }
+        pendingStop?.cancel()
+        pendingStop = nil
         guard pid != self.pid else { return }
         stop()
         self.pid = pid
@@ -88,6 +107,8 @@ final class NowPlayingLevels {
     }
 
     func stop() {
+        pendingStop?.cancel()
+        pendingStop = nil
         generation += 1
         guardTimer?.invalidate()
         guardTimer = nil

@@ -115,7 +115,11 @@ final class TWorldLoginWindow: NSObject, NSWindowDelegate, WKUIDelegate, WKNavig
         return popup
     }
 
-    func webViewDidClose(_ webView: WKWebView) { webView.window?.close() }
+    func webViewDidClose(_ webView: WKWebView) {
+        guard let panel = webView.window else { return }
+        panel.close()
+        popups.removeAll { $0 === panel }
+    }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

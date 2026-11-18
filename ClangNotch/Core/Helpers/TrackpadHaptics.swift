@@ -10,11 +10,13 @@ enum TrackpadHaptics {
     private typealias CreateFn = @convention(c) (UInt64) -> UnsafeMutableRawPointer?
     private typealias OpenFn = @convention(c) (UnsafeMutableRawPointer) -> Int32
     private typealias ActuateFn = @convention(c) (UnsafeMutableRawPointer, Int32, UInt32, Float, Float) -> Int32
+    private typealias CloseFn = @convention(c) (UnsafeMutableRawPointer) -> Int32
 
     private static let framework = dlopen("/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport", RTLD_NOW)
     private static let create = symbol("MTActuatorCreateFromDeviceID", as: CreateFn.self)
     private static let open = symbol("MTActuatorOpen", as: OpenFn.self)
     private static let actuate = symbol("MTActuatorActuate", as: ActuateFn.self)
+    private static let close = symbol("MTActuatorClose", as: CloseFn.self)
     private static var actuators: [(pointer: UnsafeMutableRawPointer, builtIn: Bool)] = []
 
     /// `strength` 1 (lightest) … 8 (firmest). 1–6 are the actuator's own waveform IDs; 6 is
@@ -44,6 +46,7 @@ enum TrackpadHaptics {
         guard !targets.isEmpty else { return }
         // A trackpad that went away (Magic Trackpad off) fails; look again next time.
         if !targets.contains(where: { actuate($0.pointer, id, 0, 0, 2) == 0 }) {
+            actuators.forEach { release($0.pointer, opened: true) }
             actuators = []
         }
     }
@@ -68,12 +71,23 @@ enum TrackpadHaptics {
             defer { IOObjectRelease(service) }
             guard let id = IORegistryEntryCreateCFProperty(service, "Multitouch ID" as CFString, nil, 0)?
                     .takeRetainedValue() as? UInt64,
-                  let actuator = create(id), open(actuator) == 0 else { continue }
+                  let actuator = create(id) else { continue }
+            guard open(actuator) == 0 else {
+                release(actuator, opened: false)
+                continue
+            }
             let builtIn = IORegistryEntryCreateCFProperty(service, "MT Built-In" as CFString, nil, 0)?
                 .takeRetainedValue() as? Bool ?? false
             result.append((actuator, builtIn))
         }
         return result
+    }
+
+    /// An actuator from `MTActuatorCreateFromDeviceID` is a retained CF object: close it if it was
+    /// opened, then release it. Dropping them leaked one per trackpad on every reconnect.
+    private static func release(_ actuator: UnsafeMutableRawPointer, opened: Bool) {
+        if opened { _ = close?(actuator) }
+        Unmanaged<AnyObject>.fromOpaque(actuator).release()
     }
 
     private static func symbol<T>(_ name: String, as: T.Type) -> T? {

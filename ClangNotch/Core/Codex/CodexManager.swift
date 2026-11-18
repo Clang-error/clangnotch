@@ -596,12 +596,18 @@ final class CodexManager: ObservableObject {
 
         output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty else { return }
+            // End of output: let go of the handler, or it keeps firing on the closed pipe and holds
+            // the pipes (and this closure) every five minutes.
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
             Task { @MainActor in
                 self?.handleRateLimitOutput(data, input: input)
             }
         }
         process.terminationHandler = { [weak self] _ in
+            output.fileHandleForReading.readabilityHandler = nil
             Task { @MainActor in
                 self?.rateLimitProcess = nil
                 self?.isRefreshingRateLimits = false
@@ -621,6 +627,7 @@ final class CodexManager: ObservableObject {
                 ]
             ], to: input)
         } catch {
+            output.fileHandleForReading.readabilityHandler = nil
             rateLimitProcess = nil
             isRefreshingRateLimits = false
         }

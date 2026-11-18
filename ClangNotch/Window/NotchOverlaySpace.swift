@@ -18,7 +18,9 @@ enum NotchOverlaySpace {
     private typealias SetLevelFn = @convention(c) (Int32, UInt64, Int32) -> Int32
     private typealias ShowFn = @convention(c) (Int32, CFArray) -> Int32
     private typealias MoveWindowsFn = @convention(c) (Int32, UInt64, CFArray, Int32) -> Int32
-    private typealias CopySpacesFn = @convention(c) (Int32, Int32, CFArray) -> CFArray?
+    /// "Copy": the array comes back retained for us. Typed as `CFArray?`, Swift retained it once
+    /// more and released only that, so every `pin` leaked one (53 seen by `leaks`, 2026-11-17).
+    private typealias CopySpacesFn = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
 
     private struct SkyLight {
         let connection: Int32
@@ -68,7 +70,8 @@ enum NotchOverlaySpace {
     }
 
     private static func contains(_ window: NSWindow, space: UInt64, _ skyLight: SkyLight) -> Bool {
-        let spaces = skyLight.copySpaces(skyLight.connection, 0xF, [NSNumber(value: window.windowNumber)] as CFArray)
+        let spaces = skyLight.copySpaces(skyLight.connection, 0xF, [NSNumber(value: window.windowNumber)] as CFArray)?
+            .takeRetainedValue()
         return (spaces as? [NSNumber])?.contains { $0.uint64Value == space } == true
     }
 }
