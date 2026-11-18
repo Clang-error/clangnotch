@@ -1129,12 +1129,6 @@ struct NotchSettingsTab: View {
             }
 
             Section {
-                NotchTabOrderView()
-            } header: {
-                Text(L("탭", "Tabs"))
-            }
-
-            Section {
                 SettingToggle(L("누를 때만 열기", "Open only on click"),
                               L("커서를 올려 두기만 해서는 열리지 않음", "Resting the cursor on the notch doesn't open it"),
                               isOn: $settings.notchOpensOnClick)
@@ -1196,6 +1190,12 @@ struct NotchSettingsTab: View {
                 }
             } header: {
                 Text(L("열기와 햅틱", "Opening and haptics"))
+            }
+
+            Section {
+                NotchTabOrderView()
+            } header: {
+                Text(L("탭", "Tabs"))
             }
 
             Section {
