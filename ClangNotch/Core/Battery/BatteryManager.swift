@@ -39,6 +39,9 @@ final class BatteryManager: ObservableObject {
     /// The Mac's energy mode, for its 기기 줄. Read only while the Battery tab shows: when it opens,
     /// and on a power change after that (a new process each time, so not on every tick).
     @Published private(set) var macEnergyMode: MacEnergyMode?
+    /// The connected power adapter's watts, for the Mac's 기기 줄; nil on battery. Read with the
+    /// energy mode: when the tab shows and on a power change.
+    @Published private(set) var macAdapterWatts: Int?
     private var powerStateObserver: NSObjectProtocol?
     private var lastUpdated: Date?
     private var isRefreshing = false
@@ -201,8 +204,10 @@ final class BatteryManager: ObservableObject {
         guard isMonitoring, tabVisible, !DemoMode.isActive else { return }
         Task.detached(priority: .utility) {
             let mode = MacEnergyMode.read()
+            let watts = (IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() as? [String: Any])?[kIOPSPowerAdapterWattsKey] as? Int
             await MainActor.run {
                 if self.macEnergyMode != mode { self.macEnergyMode = mode }
+                if self.macAdapterWatts != watts { self.macAdapterWatts = watts }
             }
         }
     }

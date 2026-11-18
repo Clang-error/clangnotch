@@ -17,7 +17,8 @@ struct BatteryView: View {
                     ForEach(manager.devices) { device in
                         BatteryRow(device: device, pinned: headerIDs.contains(device.id),
                                    closedRank: closedIDs.firstIndex(of: device.id),
-                                   energyMode: device.id == "mac" ? manager.macEnergyMode : nil)
+                                   energyMode: device.id == "mac" ? manager.macEnergyMode : nil,
+                                   adapterWatts: device.id == "mac" ? manager.macAdapterWatts : nil)
                             .contextMenu {
                                 Button(headerIDs.contains(device.id) ? L("헤더에서 빼기", "Remove from header") : L("헤더에 표시", "Show in header")) {
                                     toggleHeader(device.id)
@@ -176,6 +177,8 @@ private struct BatteryRow: View {
     let closedRank: Int?
     /// The Mac's row only: 자동, 저전력 or 고성능 after its name.
     var energyMode: MacEnergyMode? = nil
+    /// The Mac's row only: the connected power adapter's watts.
+    var adapterWatts: Int? = nil
 
     private let good = Color(red: 0.3, green: 0.85, blue: 0.55)
     private let warn = Color(red: 1.0, green: 0.78, blue: 0.3)
@@ -281,6 +284,13 @@ private struct BatteryRow: View {
                 .frame(height: 14)
                 .background(Capsule().fill(Color.black.opacity(0.55)))
                 .fixedSize()
+            }
+            if let adapterWatts {
+                Text(L("전원 어댑터 \(adapterWatts)W", "Power adapter \(adapterWatts)W"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(dimColor)
+                    .lineLimit(1)
+                    .fixedSize()
             }
             if pinned {
                 Image(systemName: "pin.fill")
