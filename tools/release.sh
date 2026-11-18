@@ -12,6 +12,27 @@
 # opens without a warning even offline and the in-app updater accepts it.
 set -euo pipefail
 
+# The energy mode helper runs as root once a user installs it, so the release refuses to go out
+# unless it carries this team's Developer ID, the hardened runtime and the release-only caller
+# check (built with RELEASE_PEER, which refuses a ClangNotch a debugger can attach to).
+check_energy_helper() {
+    local helper="$1/Contents/MacOS/ClangNotchEnergyHelper"
+    local developer_id='anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
+    codesign --verify --strict -R "=$developer_id and certificate leaf[subject.OU] = \"$2\" and identifier \"com.clangerror.ClangNotch.EnergyHelper\"" "$helper" \
+        || { echo "Energy helper: not signed with this team's Developer ID" >&2; return 1; }
+    # Read whole first: `| grep -q` stops reading at the match and the writer dies of SIGPIPE,
+    # which pipefail turns into a failed check (exit 141; zsh hid it when this was tried).
+    local details text
+    details=$(codesign -dv "$helper" 2>&1)
+    [[ $details == *"flags="*"(runtime)"* ]] \
+        || { echo "Energy helper: no hardened runtime" >&2; return 1; }
+    text=$(strings "$helper")
+    [[ $text == *"get-task-allow"* ]] \
+        || { echo "Energy helper: built without the release caller check" >&2; return 1; }
+    [ -f "$1/Contents/Library/LaunchDaemons/com.clangerror.ClangNotch.EnergyHelper.plist" ] \
+        || { echo "Energy helper: launchd plist missing" >&2; return 1; }
+}
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${NOTARY_PROFILE:-clangnotch}"
 OUT="${OUT:-$HOME/Desktop/ClangNotch/ClangNotch.dmg}"
@@ -83,6 +104,7 @@ PLIST
 xcodebuild -exportArchive -archivePath "$work/ClangNotch.xcarchive" -exportPath "$work/export" \
     -exportOptionsPlist "$work/export.plist" -allowProvisioningUpdates -quiet
 app="$work/export/ClangNotch.app"
+check_energy_helper "$app" "$team"
 
 ditto -c -k --keepParent "$app" "$work/ClangNotch.zip"
 notarize "$work/ClangNotch.zip"

@@ -45,6 +45,11 @@ report error 'Settings text: call it a 드롭다운 (복사 드롭다운), not �
 report error 'Scripts: kill the one instance by its pid (pgrep -f "^/Applications/ClangNotch.app/..."), never pkill or killall.' \
     "$(lines "tools" '(^|[;&|])[[:space:]]*(pkill|killall)([[:space:]]|$)')"
 
+# Under pipefail, grep -q quits at the first match and the command feeding it dies of SIGPIPE
+# (141): the pipe fails although the text was there (release.sh's helper check, 2026-11-18).
+report error 'Scripts: "| grep -q" fails under pipefail when the writer is still writing (SIGPIPE). Read the output into a variable and test it, or use grep without -q.' \
+    "$(lines "tools" '\|[[:space:]]*grep[[:space:]]+(-[a-zA-Z]*q|--quiet)' | grep -v -e '^[^:]*:[0-9]*:[[:space:]]*#' -e '^tools/check.sh:')"
+
 report warning 'repeatForever: fine for a fixed view; on a view whose SF Symbol name changes it redraws at display rate for good (the 30% CPU usage-card bug). Keep the symbol name fixed.' \
     "$(lines "ClangNotch" '\.repeatForever\(')"
 
