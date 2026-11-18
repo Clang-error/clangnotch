@@ -182,6 +182,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchSoundsEnabled") public var notchSoundsEnabled: Bool = true
     /// Seconds the cursor rests on the notch before it opens; passing over it to the menu bar doesn't.
     @AppStorage("notchOpenDelay") public var notchOpenDelay: Double = 0.09
+    /// 설정 -> 노치 -> "누를 때만 열기": the closed notch opens on a click only, not on a resting cursor.
+    @AppStorage("notchOpensOnClick") public var notchOpensOnClick: Bool = false
     /// 설정 › 노치 › "표시할 디스플레이": "main" (the primary display) or a display's UUID
     /// (`NotchDetector`, which reads the key itself).
     @AppStorage("notchDisplay") public var notchDisplay: String = "main"

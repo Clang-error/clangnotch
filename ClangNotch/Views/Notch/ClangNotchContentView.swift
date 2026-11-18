@@ -67,6 +67,19 @@ struct ClangNotchContentView: View {
     @State private var questionStep = 0
     /// ⌘ alone is held with the notch open: the 탭 막대 shows each tab's ⌘ number.
     @State private var commandHeld = false
+    /// 노치 위치 알림 (user, 2026-11-18): the quiet notch draws its surface and breathes, so its
+    /// place shows where nothing marks it (an external display) or where it is black on black
+    /// (the camera housing). For a moment at launch, and while the cursor is on it with
+    /// 누를 때만 열기 on, where hovering opens nothing.
+    @State private var notchPresence = false
+    /// How far the quiet notch's surface reaches past its own edges, in points, on both sides and
+    /// below alike (negative: inside them).
+    @State private var presenceOutset: CGFloat = 0
+    /// Over a camera housing, how far the surface's sides sit inside its frame (`NotchShape`
+    /// draws them `topCornerRadius` in): added to the sides while it shows, so it starts at the
+    /// housing's own edges.
+    @State private var presenceSideBase: CGFloat = 0
+    @State private var presenceTask: Task<Void, Never>?
     /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
     @State private var doneFlash: DoneFlash?
     @State private var doneFlashTask: Task<Void, Never>?
@@ -259,7 +272,7 @@ struct ClangNotchContentView: View {
     /// A collapse from the panel keeps the surface black until it lands on the physical notch,
     /// then drops it in one frame — it already sits under the camera housing, so no exit effect.
     private var notchBackground: Color {
-        notchActive || notchVM.isSettlingClosed ? theme.surface ?? .black : .clear
+        notchActive || notchVM.isSettlingClosed || notchPresence ? theme.surface ?? .black : .clear
     }
 
     /// Whether to draw the notch chrome at all. When fully idle (no AI, not
@@ -468,6 +481,13 @@ struct ClangNotchContentView: View {
                     doneNoticeTask?.cancel()
                     doneNotice = nil
                     openSelectedMode()
+                } else if notchVM.notchState == .peeking, mediaNotice != nil, doneNotice == nil,
+                          !showPermissionNotice, !showQuestionNotice {
+                    // The attached player opens the notch on a click the same way.
+                    housingWatch?.cancel()
+                    mediaNoticeTask?.cancel()
+                    mediaNotice = nil
+                    openSelectedMode()
                 }
             }
             // The mask, glow and jelly scale sit on a fixed-width container, and only the
@@ -539,8 +559,8 @@ struct ClangNotchContentView: View {
             // Presentation-only deformation: layout and the panel's click-through
             // region stay fixed while the closed surface grows out from the camera.
             .scaleEffect(
-                x: closedJellyScaleX,
-                y: closedJellyScaleY,
+                x: closedJellyScaleX * presenceScale.x,
+                y: closedJellyScaleY * presenceScale.y,
                 anchor: .top
             )
     }
@@ -550,6 +570,13 @@ struct ClangNotchContentView: View {
                 .onChange(of: notchVM.notchState) { _, newState in
                     if newState != .closed {
                         resetClosedJellyReveal()
+                        // Opened or a dropdown came: the breathing stops at once.
+                        if notchPresence {
+                            presenceTask?.cancel()
+                            var still = Transaction()
+                            still.disablesAnimations = true
+                            withTransaction(still) { presenceOutset = 0; presenceSideBase = 0; notchPresence = false }
+                        }
                     }
                     // Opening goes back to the tabs' size (a 세션 화면 left it wider).
                     if newState == .open {
@@ -792,6 +819,7 @@ struct ClangNotchContentView: View {
         .onAppear {
             NowPlayingMonitor.showAttached = { playing in showMediaNotice(playing) }
             triggerStartupGlow()
+            announceNotch()
             if hasLiveAgentActivity {
                 triggerClosedJellyReveal()
             }
@@ -2533,6 +2561,11 @@ struct ClangNotchContentView: View {
     private func handleHover(_ hovering: Bool) {
         hoverTask?.cancel()
         notchHovered = hovering
+        // 누를 때만 열기: hovering opens nothing, so the notch shows where to click instead.
+        if settings.notchOpensOnClick, notchVM.notchState == .closed {
+            presenceTask?.cancel()
+            setPresence(hovering)
+        }
 
         if hovering {
             if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
@@ -2548,7 +2581,7 @@ struct ClangNotchContentView: View {
                 watchHousing()
                 return
             }
-            guard notchVM.notchState != .open else { return }
+            guard notchVM.notchState != .open, !settings.notchOpensOnClick else { return }
 
             hoverTask = Task {
                 try? await Task.sleep(for: .seconds(settings.notchOpenDelay))
@@ -3009,6 +3042,8 @@ struct ClangNotchContentView: View {
     /// card (user, 2026-11-18): resting there for the usual open delay folds the player and opens.
     private func watchHousing() {
         housingWatch?.cancel()
+        // With 누를 때만 열기 the camera's spot opens on a click instead (the notch's tap).
+        guard !settings.notchOpensOnClick else { return }
         housingWatch = Task { @MainActor in
             var since: Date?
             while !Task.isCancelled, mediaNotice != nil, notchVM.notchState == .peeking {
@@ -3364,6 +3399,72 @@ struct ClangNotchContentView: View {
         return WingFade(notchWidth: notchVM.closedNotchSize.width,
                         left: wing == .left ? 1 : 0, right: wing == .right ? 1 : 0,
                         hintWidth: settings.wingOpenHint ? WingOpenHint.tabWidth : 0)
+    }
+
+    /// `presenceOutset` as a scale from the top: the same distance past each side and the bottom.
+    /// Scaling both ways alike pushed the wide notch's sides out three times as far as its bottom,
+    /// so the sides came first and the bottom after (user, 2026-11-18). The quiet notch only: a
+    /// notch already showing its wings stays put. Not tied to `notchPresence`, so the surface
+    /// still draws in while it fades out.
+    private var presenceScale: (x: CGFloat, y: CGFloat) {
+        guard !baseNotchActive, presenceOutset != 0 || presenceSideBase != 0 else { return (1, 1) }
+        let size = notchSurfaceSize
+        return (1 + 2 * (presenceSideBase + presenceOutset) / max(size.width, 1), 1 + presenceOutset / max(size.height, 1))
+    }
+
+    /// The notch is drawn over a camera housing (not an external display's bare top edge).
+    private var notchOverHousing: Bool { (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 }
+
+    /// Shows or hides the quiet notch's surface, then breathes, reaching the same distance past
+    /// both sides and the bottom. Over a camera housing it starts exactly at the housing's edges
+    /// (hidden behind it), grows 3 pt out to the sides and down together and breathes between 3
+    /// and 6 pt (user, 2026-11-18: start at the physical notch's size, then grow out sideways and
+    /// down; the surface's own sides sit 6 pt inside the housing, so a few points of growth never
+    /// showed at the sides). On a bare edge it grows from 8 pt inside and darkens in, then
+    /// breathes out to 3 pt. It goes back the way it came. Under Reduce Motion it only fades.
+    private func setPresence(_ on: Bool) {
+        guard on != notchPresence else { return }
+        let housing = notchOverHousing
+        if on {
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still) {
+                presenceSideBase = housing ? topCornerRadius : 0
+                presenceOutset = reduceMotion || housing ? 0 : -8
+            }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.25) : housing ? .easeOut(duration: 0.6) : .spring(response: 0.5, dampingFraction: 0.86)) {
+                notchPresence = true
+                presenceOutset = reduceMotion ? 0 : housing ? 3 : 0
+            }
+            guard !reduceMotion else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(housing ? 600 : 450))
+                guard notchPresence else { return }
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { presenceOutset = housing ? 6 : 3 }
+            }
+        } else {
+            withAnimation(.easeIn(duration: housing ? 0.4 : 0.3)) {
+                presenceOutset = reduceMotion || housing ? 0 : -6
+                notchPresence = false
+            } completion: {
+                // Gone: back to its own size for whatever draws next (a still frame, not an animation).
+                guard !notchPresence else { return }
+                var still = Transaction()
+                still.disablesAnimations = true
+                withTransaction(still) { presenceOutset = 0; presenceSideBase = 0 }
+            }
+        }
+    }
+
+    /// At launch: here is the notch, for a moment.
+    private func announceNotch() {
+        setPresence(true)
+        presenceTask?.cancel()
+        presenceTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled, !(settings.notchOpensOnClick && notchHovered) else { return }
+            setPresence(false)
+        }
     }
 
     private func triggerStartupGlow() {

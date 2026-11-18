@@ -11,7 +11,11 @@ struct WingOpenHint: View {
 
     /// "여기" pointed at the tab itself, which opens nothing, and "노치" is what people call the
     /// wings too: the middle is the one place meant.
-    private static var words: String { L("가운데에 올려서 펼치기", "Hover the middle to open") }
+    private static var words: String {
+        AppSettings.shared.notchOpensOnClick
+            ? L("가운데를 눌러서 펼치기", "Click the middle to open")
+            : L("가운데에 올려서 펼치기", "Hover the middle to open")
+    }
     private static let font = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
     private static let arrowWidth: CGFloat = 9
     private static let spacing: CGFloat = 4

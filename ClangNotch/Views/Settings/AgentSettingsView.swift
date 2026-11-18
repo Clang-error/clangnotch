@@ -1135,6 +1135,10 @@ struct NotchSettingsTab: View {
             }
 
             Section {
+                SettingToggle(L("누를 때만 열기", "Open only on click"),
+                              L("커서를 올려 두기만 해서는 열리지 않음", "Resting the cursor on the notch doesn't open it"),
+                              isOn: $settings.notchOpensOnClick)
+                if !settings.notchOpensOnClick {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(L("열리기까지 기다리는 시간", "Delay before opening"))
@@ -1149,14 +1153,21 @@ struct NotchSettingsTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                }
                 SettingToggle(L("노치앱으로 인해 가려진 메뉴바 아이콘 보이기", "Show menu bar icons the notch app covers"),
-                              L("노치가 펼쳐져 가려지는 부분에 커서를 올리면, 배경이 옅어져 뒤의 메뉴바가 보이고 클릭할 수 있게 됩니다. 노치는 가운데에 올려야 펼쳐짐.",
-                                "With the cursor on a part the widened notch covers, its background fades so the menu bar behind it shows and can be clicked. The notch opens from its middle."),
+                              settings.notchOpensOnClick
+                                ? L("노치가 펼쳐져 가려지는 부분에 커서를 올리면, 배경이 옅어져 뒤의 메뉴바가 보이고 클릭할 수 있게 됩니다. 노치는 가운데를 눌러야 펼쳐짐.",
+                                    "With the cursor on a part the widened notch covers, its background fades so the menu bar behind it shows and can be clicked. The notch opens from a click on its middle.")
+                                : L("노치가 펼쳐져 가려지는 부분에 커서를 올리면, 배경이 옅어져 뒤의 메뉴바가 보이고 클릭할 수 있게 됩니다. 노치는 가운데에 올려야 펼쳐짐.",
+                                    "With the cursor on a part the widened notch covers, its background fades so the menu bar behind it shows and can be clicked. The notch opens from its middle."),
                               isOn: $settings.wingStepAside)
                 if settings.wingStepAside {
                     SettingToggle(L("툴팁 표시", "Show the tooltip"),
-                                  L("날개가 비켜나 있는 동안 노치 아래에 \"가운데에 올려서 펼치기\"를 띄움",
-                                    "While a wing is aside, \"Hover the middle to open\" shows under the notch"),
+                                  settings.notchOpensOnClick
+                                    ? L("날개가 비켜나 있는 동안 노치 아래에 \"가운데를 눌러서 펼치기\"를 띄움",
+                                        "While a wing is aside, \"Click the middle to open\" shows under the notch")
+                                    : L("날개가 비켜나 있는 동안 노치 아래에 \"가운데에 올려서 펼치기\"를 띄움",
+                                        "While a wing is aside, \"Hover the middle to open\" shows under the notch"),
                                   isOn: $settings.wingOpenHint)
                         .padding(.leading, 20)
                 }
