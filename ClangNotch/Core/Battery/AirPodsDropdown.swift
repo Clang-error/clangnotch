@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import IOBluetooth
 import SwiftUI
 
@@ -104,7 +105,14 @@ final class AirPodsDropdown: ObservableObject {
     /// up to put it away wasn't something first-time users found (2026-11-18).
     static let closeOrbSpace: CGFloat = 34
     private var orbSpace: CGFloat { card?.media != nil ? Self.closeOrbSpace : 0 }
-    private var cardSize: CGSize { card?.media != nil ? Self.mediaCardSize : Self.cardSize }
+    private var cardSize: CGSize {
+        card?.media != nil ? CGSize(width: Self.mediaCardSize.width, height: Self.mediaCardSize.height + volumeExtra) : Self.cardSize
+    }
+    /// The card's size now, for its content.
+    var currentCardSize: CGSize { cardSize }
+    /// The volume row's height while it shows in the media card (`MediaVolumeBand`), 0 otherwise.
+    /// Kept through the fold, so the blob rises from the card as it was.
+    @Published private var volumeExtra: CGFloat = 0
     /// Room around the card while it drops, for its overshoot.
     static let margin: CGFloat = 24
     static let gapBelowMenuBar: CGFloat = 10
@@ -238,7 +246,66 @@ final class AirPodsDropdown: ObservableObject {
 
     private init(isMedia: Bool) {
         self.isMedia = isMedia
+        guard isMedia else { return }
+        // The publisher's value is the new one; the band's own property still holds the old one
+        // here. Read off the band, the card was laid out for the row before it had one, and the
+        // row came only with the next key (2026-11-18), so the card takes the value from here.
+        volumeWatch = MediaVolumeBand.shared.$reading.dropFirst()
+            .sink { [weak self] reading in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let came = (reading != nil) != (self.volumeReading != nil)
+                    self.volumeReading = reading
+                    if came { self.volumeRowChanged(reading != nil) }
+                }
+            }
     }
+
+    private var volumeWatch: AnyCancellable?
+    /// What the media card's volume row shows (`MediaVolumeBand`), nil while it doesn't.
+    @Published private(set) var volumeReading: SystemControlReading?
+
+    /// The volume row came or went while the card is down: the card grows down to hold it (its top
+    /// stays), and waits to fold while it shows. The panel itself is never animated: AppKit lays a
+    /// growing window's content out from its bottom edge on each step, and the card shook by a few
+    /// points both times (user's recordings, 2026-11-18). It takes its size at once, growing before
+    /// the card's shape stretches down to it and shrinking after the shape has come back up.
+    private func volumeRowChanged(_ shown: Bool) {
+        // Coming down: the size is taken when it settles.
+        if isDropping { volumeExtra = shown ? MediaVolumeBand.rowHeight : 0 }
+        guard phase == .settled, let panel, let screen = NotchDetector.notchScreen else { return }
+        if shown {
+            hideWork?.cancel()
+        } else if !hovering {
+            let left = hideDeadline.map { $0.timeIntervalSinceNow } ?? visibleTime
+            scheduleHide(after: max(left, 1.5))
+        }
+        volumeResizes += 1
+        let resize = volumeResizes
+        let extra = MediaVolumeBand.rowHeight
+        func frame() -> NSRect {
+            var frame = cardFrame(on: screen)
+            // Dragged somewhere: from where it is, top edge fixed.
+            if pinned { frame.origin = NSPoint(x: panel.frame.minX, y: panel.frame.maxY - frame.height) }
+            return frame
+        }
+        if shown {
+            guard volumeExtra == 0 else { return }
+            volumeExtra = extra
+            panel.setFrame(frame(), display: false)
+            container?.growSettled(by: extra)
+        } else {
+            guard volumeExtra > 0 else { return }
+            container?.shrinkSettled(by: extra) { [weak self] in
+                guard let self, self.volumeResizes == resize, self.phase == .settled else { return }
+                self.volumeExtra = 0
+                panel.setFrame(frame(), display: false)
+            }
+        }
+    }
+
+    /// Bumped by each volume row change, so a shrink that finishes after the row came back does nothing.
+    private var volumeResizes = 0
 
     // MARK: - Trigger
 
@@ -522,6 +589,11 @@ final class AirPodsDropdown: ObservableObject {
         let current = generation
         hideWork?.cancel()
         hovering = false
+        if isMedia {
+            // From the start of the drop: a key pressed while it comes down shows in the card too.
+            MediaVolumeBand.shared.cardIsDown = true
+            volumeExtra = MediaVolumeBand.shared.reading != nil ? MediaVolumeBand.rowHeight : 0
+        }
         card = new
         contentVisible = false
         // The other card is already down there: come down under it.
@@ -564,6 +636,7 @@ final class AirPodsDropdown: ObservableObject {
         container?.settle()
         panel.ignoresMouseEvents = false
         scheduleHide(after: visibleTime)
+        if volumeExtra > 0 { hideWork?.cancel() }
     }
 
     func dismiss() {
@@ -576,6 +649,7 @@ final class AirPodsDropdown: ObservableObject {
         if case .dropping(let start) = phase { from = min(Date().timeIntervalSince(start) / Self.dropDuration, 1) }
         contentVisible = false
         phase = .rising
+        if isMedia { MediaVolumeBand.shared.cardIsDown = false }
         panel.ignoresMouseEvents = true
         panel.setFrame(fullFrame(on: screen), display: false)
         container?.rise(geometry, from: from)
@@ -583,6 +657,7 @@ final class AirPodsDropdown: ObservableObject {
             guard let self, self.generation == current else { return }
             panel.orderOut(nil)
             self.phase = .hidden
+            self.volumeExtra = 0
             self.card = nil
             self.stackDepth = 0
             // A card that came down under this one moves up into its place.
@@ -606,7 +681,7 @@ final class AirPodsDropdown: ObservableObject {
         hovering = inside
         if inside {
             hideWork?.cancel()
-        } else {
+        } else if volumeExtra == 0 {
             let left = hideDeadline.map { $0.timeIntervalSinceNow } ?? visibleTime
             scheduleHide(after: max(left, 1.5))
         }

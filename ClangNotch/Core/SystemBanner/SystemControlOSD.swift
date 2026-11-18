@@ -171,6 +171,25 @@ final class SystemControlOSD: ObservableObject {
         }
     }
 
+    /// The 미디어 드롭다운's volume bar dragged to `fraction`: set as a key would (muted at 0,
+    /// unmuted above), or through `SoftwareVolume` for an output macOS can't turn down. The
+    /// reading after it; nil when neither can set this output.
+    func setVolume(_ fraction: Double) -> SystemControlReading? {
+        if let device = AudioMixerManager.defaultDevice(kAudioHardwarePropertyDefaultOutputDevice),
+           Self.isSettable(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume) {
+            Self.setVolumeProperty(device, kAudioHardwareServiceDeviceProperty_VirtualMainVolume, Float32(fraction))
+            if Self.isSettable(device, kAudioDevicePropertyMute) {
+                let mute = fraction == 0
+                if (Self.currentVolumeReading()?.kind == .mute) != mute {
+                    Self.setVolumeProperty(device, kAudioDevicePropertyMute, UInt32(mute ? 1 : 0))
+                }
+            }
+            return Self.currentVolumeReading()
+        }
+        guard let level = SoftwareVolume.shared.setLevel(fraction) else { return nil }
+        return Self.volumeReading(fraction: level, muted: false)
+    }
+
     /// One key step from `value`, landing on the step grid like macOS.
     private static func stepped(_ value: Double, by step: Double) -> Double {
         min(max(((value / abs(step)).rounded() + (step > 0 ? 1 : -1)) * abs(step), 0), 1)
@@ -194,6 +213,8 @@ final class SystemControlOSD: ObservableObject {
 
     private func show(_ reading: SystemControlReading?, on screen: NSScreen?, pollsSystem: Bool = false) {
         guard let reading else { return }
+        // With the 미디어 드롭다운 down, the volume shows in its own row instead of over it.
+        if MediaVolumeBand.shared.take(reading, polls: pollsSystem) { return }
         if shown, let previous = self.reading, previous.kind == reading.kind {
             if reading.fraction <= 0, previous.fraction <= 0 { minBounce += 1 }
             if reading.fraction >= 1, previous.fraction >= 1 { maxBounce += 1 }
@@ -342,7 +363,7 @@ final class SystemControlOSD: ObservableObject {
         text.lowercased().filter(\.isHexDigit)
     }
 
-    private static func currentVolumeReading() -> SystemControlReading? {
+    static func currentVolumeReading() -> SystemControlReading? {
         guard let device = AudioMixerManager.defaultDevice(kAudioHardwarePropertyDefaultOutputDevice) else { return nil }
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
                                                  mScope: kAudioDevicePropertyScopeOutput,

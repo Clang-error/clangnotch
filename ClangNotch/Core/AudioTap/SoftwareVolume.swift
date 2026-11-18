@@ -114,6 +114,16 @@ final class SoftwareVolume {
         SystemControlOSD.shared.showSoftwareVolume(level: level, muted: muted)
     }
 
+    /// The 미디어 드롭다운's volume bar dragged on an output macOS can't turn down: the level for
+    /// it, unmuted. Nil while this output has its own volume.
+    func setLevel(_ level: Double) -> Double? {
+        guard running, let uid = Self.uncontrollableOutputUID() else { return nil }
+        levels[uid] = level
+        muted = false
+        apply()
+        return level
+    }
+
     private func startKeyTap() {
         guard keyTap == nil else { return }
         let mask = CGEventMask(1 << NX_SYSDEFINED)

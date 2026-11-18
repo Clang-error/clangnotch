@@ -79,21 +79,59 @@ final class AirPodsDropdownContainer: NSView {
     /// The panel has just shrunk to the card.
     func settle() {
         settled = true
+        fitSettled()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    /// The settled panel has just grown by `extra` at the bottom (the 미디어 드롭다운's volume row):
+    /// the card's shape stretches down from where it was to fill it.
+    func growSettled(by extra: CGFloat) {
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        animateCard(from: cardRect(top: extra), to: cardRect(top: 0), completion: nil)
+    }
+
+    /// The row is going: the shape comes back up by `extra`, then the panel may shrink.
+    func shrinkSettled(by extra: CGFloat, completion: @escaping () -> Void) {
+        animateCard(from: cardRect(top: 0), to: cardRect(top: extra), completion: completion)
+    }
+
+    /// The card's rectangle in the settled panel, leaving `top` points of the panel's bottom empty
+    /// (AppKit's y goes up). The panel may be wider than the card (a media card's close orb).
+    private func cardRect(top bottomGap: CGFloat) -> CGRect {
+        CGRect(x: 0, y: bottomGap, width: min(geometry?.card.width ?? bounds.width, bounds.width),
+               height: max(0, bounds.height - bottomGap))
+    }
+
+    private func animateCard(from: CGRect, to: CGRect, completion: (() -> Void)?) {
+        let path = { (rect: CGRect) in CGPath(roundedRect: rect, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil) }
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { completion?() }
+        let animation = CABasicAnimation(keyPath: "path")
+        animation.fromValue = path(from)
+        animation.toValue = path(to)
+        animation.duration = 0.3
+        animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.0, 0.4, 1)
+        CATransaction.setDisableActions(true)
+        cardLayer.path = path(to)
+        cardLayer.add(animation, forKey: "volumeRow")
+        CATransaction.commit()
+    }
+
+    /// The card shape fills the panel: on settling, and whenever the settled panel is laid out.
+    private func fitSettled() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         blobLayer.frame = bounds
         blobMask.path = CGPath(rect: bounds, transform: nil)
         for shape in [cardLayer, neckLayer] {
-            shape.removeAllAnimations()
+            shape.removeAnimation(forKey: "drop")
             shape.frame = bounds
         }
-        // The panel may be wider than the card (a media card's close orb on its right).
-        let card = CGRect(x: 0, y: 0, width: min(geometry?.card.width ?? bounds.width, bounds.width), height: bounds.height)
-        cardLayer.path = CGPath(roundedRect: card, cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
+        cardLayer.path = CGPath(roundedRect: cardRect(top: 0), cornerWidth: Self.corner, cornerHeight: Self.corner, transform: nil)
         neckLayer.path = nil
         CATransaction.commit()
-        needsLayout = true
-        layoutSubtreeIfNeeded()
     }
 
     /// The panel has just grown back to the full frame; `from` is how far down the blob was.
@@ -109,6 +147,7 @@ final class AirPodsDropdownContainer: NSView {
         super.layout()
         if settled || geometry == nil {
             hosting.frame = bounds
+            if settled { fitSettled() }
         } else if let g = geometry {
             // AppKit's origin is bottom-left.
             hosting.frame = NSRect(x: (bounds.width - g.card.width) / 2, y: bounds.height - g.cardTop - g.card.height,
@@ -239,9 +278,18 @@ struct AirPodsDropdownContent: View {
                 // The card keeps its width whatever the panel's: while it drops the panel is only
                 // the card, and laying the orb out beside it there shifted the card 17 pt sideways
                 // until it settled (user's recording, 2026-11-18). The orb hangs off its right edge.
-                MediaDropdownCardContent(playing: media, visible: visible)
-                    .frame(width: AirPodsDropdown.mediaCardSize.width, height: AirPodsDropdown.mediaCardSize.height)
-                    .clipped()
+                // Top-aligned at the card's width: the volume row makes it taller (`MediaVolumeBand`).
+                VStack(spacing: 0) {
+                    MediaDropdownCardContent(playing: media, visible: visible)
+                        .frame(width: AirPodsDropdown.mediaCardSize.width, height: AirPodsDropdown.mediaCardSize.height)
+                    if let reading = model.volumeReading, model.currentCardSize.height > AirPodsDropdown.mediaCardSize.height {
+                        MediaVolumeRow(reading: reading, inset: 20)
+                            .frame(width: AirPodsDropdown.mediaCardSize.width)
+                            .opacity(visible ? 1 : 0)
+                    }
+                }
+                .frame(width: AirPodsDropdown.mediaCardSize.width, height: model.currentCardSize.height, alignment: .top)
+                .clipped()
                     .overlay(alignment: .topTrailing) {
                         // Only while the cursor is on the card (user, 2026-11-18).
                         MediaCloseOrb(visible: visible && model.phase == .settled && model.hovering) { model.dismiss() }
@@ -249,7 +297,9 @@ struct AirPodsDropdownContent: View {
                             .padding(.top, 4)
                             .offset(x: AirPodsDropdown.closeOrbSpace)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // At the top while the panel grows or shrinks for the volume row: centred in
+                    // it, the card jumped by half the row's height first (2026-11-18).
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else if let card = model.card {
                 VStack(spacing: 0) {
                     ZStack {

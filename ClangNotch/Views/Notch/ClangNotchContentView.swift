@@ -85,6 +85,10 @@ struct ClangNotchContentView: View {
     @State private var mediaNoticeTask: Task<Void, Never>?
     /// The cursor is on the notch: the attached player's close button shows only then.
     @State private var notchHovered = false
+    /// The attached player's volume row (`MediaVolumeBand`), handed down from here: this view
+    /// redraws at once for the notch's own size, and a reading observed further down came in a
+    /// render or two later, the row about 0.7 s after the notch had grown for it (2026-11-18).
+    @State private var mediaVolumeReading: SystemControlReading?
     /// While the cursor is on the attached player: whether it rests on the camera itself, which
     /// opens the notch as it always does (the player's body holds it instead).
     @State private var housingWatch: Task<Void, Never>?
@@ -551,6 +555,14 @@ struct ClangNotchContentView: View {
                 }
                 .onChange(of: notchVM.notchSize) { _, _ in
                     updateInteractiveRegion()
+                }
+                // The attached player takes a volume key's row while it is down.
+                .onChange(of: mediaNotice != nil) { _, down in
+                    MediaVolumeBand.shared.attachedIsDown = down
+                    if !down { mediaVolumeReading = nil }
+                }
+                .onReceive(MediaVolumeBand.shared.$reading) { reading in
+                    mediaVolumeChanged(reading)
                 }
                 .onChange(of: settings.wingStepAside) { _, _ in
                     updateInteractiveRegion()
@@ -2463,7 +2475,8 @@ struct ClangNotchContentView: View {
             }
             if notchVM.notchState == .peeking && mediaNotice != nil {
                 housingWatch?.cancel()
-                scheduleMediaNoticeDismiss(after: 1.5)
+                // The volume row holds it; it folds after the row goes.
+                if mediaVolumeReading == nil { scheduleMediaNoticeDismiss(after: 1.5) }
                 return
             }
             guard !isMenuTracking else { return }
@@ -2862,8 +2875,7 @@ struct ClangNotchContentView: View {
     }
 
     private func mediaDropdown(_ playing: NowPlaying) -> some View {
-        MediaDropdownCardContent(playing: playing, visible: true, attached: true)
-            .frame(height: 126)
+        AttachedMediaDropdown(playing: playing, volume: mediaVolumeReading)
     }
 
     /// Something started playing, with 노치에 붙음 chosen (`NowPlayingMonitor.showAttached`).
@@ -2876,9 +2888,11 @@ struct ClangNotchContentView: View {
         }
         guard notchVM.notchState == .closed, !foldingPeek, !hasNoticeAfter() else { return false }
         mediaNotice = playing
+        // At once, not on the next render: a volume key right after takes the row.
+        MediaVolumeBand.shared.attachedIsDown = true
+        mediaVolumeReading = MediaVolumeBand.shared.reading
         resetClosedJellyReveal()
-        notchVM.peek(duration: nil, additionalHeight: peekHeight(for: mediaDropdown(playing), width: mediaNotchWidth),
-                     width: mediaNotchWidth)
+        notchVM.peek(duration: nil, additionalHeight: mediaDropdownHeight + 12, width: mediaNotchWidth)
         scheduleMediaNoticeDismiss(after: Double(settings.foldSecondsMedia) + Self.peekSettleTime)
         return true
     }
@@ -2920,6 +2934,29 @@ struct ClangNotchContentView: View {
                 try? await Task.sleep(for: .milliseconds(80))
             }
         }
+    }
+
+    /// The attached player's fixed height, with the volume row while it shows.
+    private var mediaDropdownHeight: CGFloat { AttachedMediaDropdown.height(with: mediaVolumeReading) }
+
+    /// The volume row came or went in the attached player: it grows or shrinks to hold it, and
+    /// waits to fold while the row shows. The player takes its new height at once, held at the
+    /// top, and only the notch animates, uncovering the row; animating both, on two curves, moved
+    /// the timeline and the buttons up and down meanwhile. The height is the fixed one plus the
+    /// peek's 12, not measured: building the player in a hosting view to measure it stalled the
+    /// notch for a moment at each key (user's recording, 2026-11-18).
+    private func mediaVolumeChanged(_ reading: SystemControlReading?) {
+        guard mediaNotice != nil, notchVM.notchState == .peeking else { return }
+        let shown = reading != nil
+        let came = shown != (mediaVolumeReading != nil)
+        mediaVolumeReading = reading
+        guard came else { return }
+        if shown {
+            mediaNoticeTask?.cancel()
+        } else if !notchHovered {
+            scheduleMediaNoticeDismiss(after: 1.5)
+        }
+        notchVM.resizePeek(to: CGSize(width: mediaNotchWidth, height: notchVM.closedNotchSize.height + mediaDropdownHeight + 12))
     }
 
     private func dismissMediaNotice() {
@@ -3039,7 +3076,7 @@ struct ClangNotchContentView: View {
                 notchVM.fold()
             }
         } else if let mediaNotice {
-            notchVM.peek(duration: nil, additionalHeight: peekHeight(for: mediaDropdown(mediaNotice), width: mediaNotchWidth),
+            notchVM.peek(duration: nil, additionalHeight: mediaDropdownHeight + 12,
                          width: mediaNotchWidth)
         } else if notchVM.notchState == .peeking {
             notchVM.fold()
@@ -3277,4 +3314,31 @@ struct ClangNotchContentView: View {
     ClangNotchContentView()
         .frame(width: 600, height: 300)
         .background(Color.gray.opacity(0.3))
+}
+
+/// The 미디어 드롭다운 inside the notch, at its fixed height plus the volume row's while that
+/// shows: both from the one reading, so the row and the height change together.
+private struct AttachedMediaDropdown: View {
+    let playing: NowPlaying
+    let volume: SystemControlReading?
+
+    static func height(with volume: SystemControlReading?) -> CGFloat {
+        126 + (volume != nil ? MediaVolumeBand.rowHeight : 0)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MediaDropdownCardContent(playing: playing, visible: true, attached: true)
+                .frame(height: 126)
+            if let volume {
+                // The player's own side margin inside the notch (`MediaDropdownCardContent`).
+                MediaVolumeRow(reading: volume, inset: 20 - (expandedNotchInset - cornerRadiusInsets.opened.top))
+            }
+        }
+        .frame(height: Self.height(with: volume), alignment: .top)
+            // Held at the top while the notch grows to it: the peek's frame centres its content,
+            // and the player sat cut off above and slid down as the notch grew (user's recording,
+            // 2026-11-18).
+            .frame(maxHeight: .infinity, alignment: .top)
+    }
 }

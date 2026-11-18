@@ -616,3 +616,54 @@ enum AudioOutputs {
                                    UInt32(MemoryLayout<AudioObjectID>.size), &value)
     }
 }
+
+/// The 미디어 드롭다운's volume row (`MediaVolumeBand`): small speaker, the bar, big speaker, as the
+/// user's picture. The speakers bounce at the ends like the 조절창's; the bar can be dragged.
+/// It hangs under the player, not inside it: the player keeps its fixed height and is never laid
+/// out again, only the dropdown's edge grows below (user, 2026-11-18: inside, the player's
+/// stretching spacers were laid out on every step of the panel growing, and it shook).
+/// `MediaVolumeBand.rowHeight` tall with its gap; `inset` is the player's side margin.
+struct MediaVolumeRow: View {
+    let reading: SystemControlReading
+    let inset: CGFloat
+    @ObservedObject private var band = MediaVolumeBand.shared
+
+    var body: some View {
+        bar
+            .frame(height: MediaVolumeBand.rowHeight - 8)
+            .padding(.horizontal, inset)
+            .padding(.bottom, 8)
+            // A fade in place: sliding from the top ran it over the buttons (user, 2026-11-18).
+            .transition(.opacity)
+    }
+
+    private var bar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: reading.kind == .mute ? "speaker.slash.fill" : "speaker.fill")
+                .font(.system(size: 10, weight: .medium))
+                .symbolEffect(.bounce, value: band.minBounce)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 18)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.primary.opacity(0.16))
+                    // Empty at 0: the timeline's 6 pt floor left a dot there (user, 2026-11-18).
+                    Capsule().fill(.primary.opacity(reading.kind == .mute ? 0.35 : 0.9))
+                        .frame(width: reading.fraction > 0 ? max(6, geometry.size.width * reading.fraction) : 0)
+                }
+                .frame(height: band.dragging ? 8 : 6)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { band.drag(to: $0.location.x / max(geometry.size.width, 1)) }
+                    .onEnded { _ in band.endDrag() })
+            }
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.system(size: 12, weight: .medium))
+                .symbolEffect(.bounce, value: band.maxBounce)
+                .frame(width: 22)
+        }
+        .foregroundStyle(.secondary)
+        .animation(.easeOut(duration: 0.12), value: band.dragging)
+    }
+}
