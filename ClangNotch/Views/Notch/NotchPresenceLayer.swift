@@ -170,11 +170,13 @@ final class NotchPresenceView: NSView {
         }
     }
 
-    /// Puts the surface and the glow's line at `outset` (the glow on the bare outline without the surface).
+    /// Puts the surface and the glow's line at `outset` (the glow on the bare outline without the
+    /// surface). No surface unless it shows: the glow alone over a notch with its wings up drew
+    /// the black surface over the wings (user, 2026-11-18).
     private func setOutlines(_ c: Config, outset: CGFloat) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        surfaceLayer.path = path(c, outset: outset, surface: true, fill: true)
+        surfaceLayer.path = showingSurface ? path(c, outset: outset, surface: true, fill: true) : nil
         let line = path(c, outset: showingSurface ? outset : 0, surface: showingSurface, fill: false)
         haloNear.path = line
         haloFar.path = line
