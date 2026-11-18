@@ -182,7 +182,7 @@ final class ClaudeCodeManager: ObservableObject {
     /// read again only once the file has changed, not on every scan.
     private var cwdMissByFile: [String: Date] = [:]
     /// Newest line timestamp per transcript, valid while the file's mtime is unchanged.
-    private var lastEntryByFile: [String: (modified: Date, entry: Date)] = [:]
+    private var lastEntryByFile: [String: (modified: Date, entry: Date, used: Date)] = [:]
     /// A session must be this quiet before a missing registry record ends it, so a new or
     /// /clear'd session isn't ended in the moment before its record is rewritten.
     private let endedSessionGrace: TimeInterval = 30
@@ -226,6 +226,7 @@ final class ClaudeCodeManager: ObservableObject {
         clearEndedSessions()
         let recentThreshold = Date().addingTimeInterval(-SessionRetention.keepSeconds)
         let pinned = SessionRetention.pinned
+        var listedFiles = Set<String>()
 
         // First try IDE lock files (for VS Code/Cursor extensions)
         if fm.fileExists(atPath: ideDir.path) {
@@ -331,6 +332,7 @@ final class ClaudeCodeManager: ObservableObject {
                             }
                         }
                         debugLog("[ClaudeCode] Terminal session: \(session.displayName) [id: \(sessionId.prefix(8))...]")
+                        listedFiles.insert(jsonlFile.path)
                         sessions.append(session)
                     }
                 }
@@ -340,6 +342,13 @@ final class ClaudeCodeManager: ObservableObject {
         }
 
         sessions.append(contentsOf: remoteSessions.values)
+
+        // The per-file caches only matter while something still asks (a recent file, a listed
+        // session, a pinned old one); without this they kept every transcript the app ever looked at.
+        let unusedSince = Date().addingTimeInterval(-3600)
+        lastEntryByFile = lastEntryByFile.filter { $0.value.used > unusedSince }
+        cwdByFile = cwdByFile.filter { listedFiles.contains($0.key) }
+        cwdMissByFile = cwdMissByFile.filter { lastEntryByFile[$0.key] != nil || listedFiles.contains($0.key) }
 
         // Keep working/waiting sessions, pinned ones, and quiet ones for the keep time
         // (`SessionRetention`, five minutes unless set).
@@ -674,6 +683,13 @@ final class ClaudeCodeManager: ObservableObject {
             at: projectsDir,
             includingPropertiesForKeys: [.isDirectoryKey]
         ) else { return }
+
+        // A project folder that was deleted keeps its descriptor open until its watcher goes.
+        let present = Set(subdirs.map(\.path))
+        for (key, source) in projectDirWatchers where !present.contains(key) {
+            source.cancel()
+            projectDirWatchers.removeValue(forKey: key)
+        }
 
         for dir in subdirs {
             var isDir: ObjCBool = false
@@ -2014,9 +2030,12 @@ final class ClaudeCodeManager: ObservableObject {
     /// (`cost-state`, `last-prompt`, `bridge-session`, `tools-used`…) to sessions idle for
     /// days, several files at once, which listed them for five minutes (2026-11-06).
     private func lastEntryDate(of file: URL, modified: Date) -> Date {
-        if let cached = lastEntryByFile[file.path], cached.modified == modified { return cached.entry }
+        if let cached = lastEntryByFile[file.path], cached.modified == modified {
+            lastEntryByFile[file.path]?.used = Date()
+            return cached.entry
+        }
         let entry = Self.newestLineTimestamp(in: file) ?? .distantPast
-        lastEntryByFile[file.path] = (modified, entry)
+        lastEntryByFile[file.path] = (modified, entry, Date())
         return entry
     }
 
