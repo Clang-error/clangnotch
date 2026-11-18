@@ -3,8 +3,9 @@ import Foundation
 // Model of the notch's dropdowns, mirroring ClangNotchContentView (handlePermissionQueue,
 // showInputNotice, dismissQuestionNotice, handleCompletedTurn, show/dismissDoneNotice,
 // trigger/dismissTetherNotice, foldPeek, restorePeek, handleHover, the 400 ms re-drop after close).
-// Speed is left out (it only drops after the open panel closes mid-test). Which notice comes
-// down next and whether any is left are not mirrored: they are the app's DropdownNotices, compiled in.
+// Speed is left out (it only drops after the open panel closes mid-test). The rules over which
+// notices are down (what comes next, what is left, what a Done, tethering or the cursor give way
+// to) are not mirrored: they are the app's DropdownNotices, compiled in.
 // Every event order is tried, so a rule that breaks comes with the shortest path to it.
 // It found a dropdown left down and empty, and a Done or question that never came down
 // (2026-11-17). When those handlers change, change this the same way and run it.
@@ -94,7 +95,7 @@ func dismissDoneNotice(_ s: inout S) {
 func dismissTetherNotice(_ s: inout S) {
     let was = s.tether
     s.tether = false
-    if was, s.notch == .peeking, !s.showQ, !s.showPerm, !s.done { restorePeek(&s) }
+    if was, s.notch == .peeking, !notices(s).keepsTetherOut { restorePeek(&s) }
 }
 
 func dismissMedia(_ s: inout S) {
@@ -133,12 +134,12 @@ func step(_ s0: S, _ e: E) -> S? {
         s.question = false; dismissQuestionNotice(&s)
     case .turnEnds:
         guard s.notch != .open, !s.done, !s.pendingDone else { return nil }
-        if s.showPerm || s.showQ || s.tether { s.pendingDone = true } else { showDoneNotice(&s) }
+        if notices(s).holdsDoneBack { s.pendingDone = true } else { showDoneNotice(&s) }
     case .doneTimesOut:
         guard s.done, s.fold != .done else { return nil }
         dismissDoneNotice(&s)
     case .tetherStarts:
-        guard !s.tether, s.notch == .closed, !s.showQ, !s.showPerm, !s.done else { return nil }
+        guard !s.tether, s.notch == .closed, !notices(s).keepsTetherOut else { return nil }
         s.tether = true; peek(&s)
     case .tetherTimesOut:
         guard s.tether else { return nil }
@@ -171,10 +172,10 @@ func step(_ s0: S, _ e: E) -> S? {
         if s.notch == .closed, s.fold == .none, s.queue || s.pendingDone { restorePeek(&s) }
     case .youOpen:
         guard s.notch != .open else { return nil }
-        if s.notch == .peeking, s.showQ || s.showPerm || s.done || s.media { return nil }
+        if s.notch == .peeking, notices(s).holdsAgainstHover { return nil }
         s.notch = .open
     case .youLeave:
-        guard s.notch == .open || (s.notch == .peeking && !s.showQ && !s.showPerm && !s.done && !s.media) else { return nil }
+        guard s.notch == .open || (s.notch == .peeking && !notices(s).holdsAgainstHover) else { return nil }
         dismissQuestionNotice(&s)
         s.tether = false
         closeNotch(&s)

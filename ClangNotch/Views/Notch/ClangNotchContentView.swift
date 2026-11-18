@@ -290,7 +290,7 @@ struct ClangNotchContentView: View {
         // Also traces the open panel's and the dropdown's outline while an agent works.
         guard doneFlash == nil else { return false }
         // A question or permission dropdown glows even though the asking session sits idle waiting.
-        if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) { return true }
+        if notchVM.notchState == .peeking && dropdownNotices.waitsOnAnswer { return true }
         // The 완료 드롭다운 glows only for work still really going on: the finished session's
         // activity grace period lit it and then cut it off mid-dropdown.
         if notchVM.notchState == .peeking && doneNotice != nil {
@@ -327,7 +327,7 @@ struct ClangNotchContentView: View {
                                 wingFade: wingFade)
             } else if shouldShowActivityGlow {
                 let showBothSources = hasSimultaneousClaudeCodexActivity
-                    && !((showQuestionNotice || showPermissionNotice) && notchVM.notchState == .peeking)
+                    && !(dropdownNotices.waitsOnAnswer && notchVM.notchState == .peeking)
                 NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
                                 glowColor: showBothSources ? codexGlowColor : currentGlowColor,
                                 brightColor: showBothSources ? codexBrightColor : currentBrightColor,
@@ -2567,7 +2567,7 @@ struct ClangNotchContentView: View {
         }
 
         if hovering {
-            if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
+            if notchVM.notchState == .peeking && dropdownNotices.waitsOnAnswer {
                 return
             }
             // Reading the 완료 드롭다운 holds it; it doesn't turn into the full panel.
@@ -2588,7 +2588,7 @@ struct ClangNotchContentView: View {
 
                 await MainActor.run {
                     guard notchVM.notchState != .open,
-                          !(notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice || doneNotice != nil || mediaNotice != nil)) else { return }
+                          !(notchVM.notchState == .peeking && dropdownNotices.holdsAgainstHover) else { return }
                     if settings.notchHapticsEnabled {
                         TrackpadHaptics.tap(strength: settings.notchHapticStrength)
                     }
@@ -2597,7 +2597,7 @@ struct ClangNotchContentView: View {
             }
         } else {
             // Question and permission reading stays compact until answered or explicitly dismissed.
-            if notchVM.notchState == .peeking && (showQuestionNotice || showPermissionNotice) {
+            if notchVM.notchState == .peeking && dropdownNotices.waitsOnAnswer {
                 return
             }
             if notchVM.notchState == .peeking && doneNotice != nil {
@@ -2954,8 +2954,7 @@ struct ClangNotchContentView: View {
     /// Only drops from a closed notch: an open panel or another notice already owns the
     /// space, and the monitor repeats the alert while tethering continues.
     private func triggerTetherNotice(_ placeName: String) {
-        guard notchVM.notchState == .closed, !showQuestionNotice, !showSpeedNotice,
-              !showPermissionNotice, doneNotice == nil else { return }
+        guard notchVM.notchState == .closed, !dropdownNotices.keepsTetherOut else { return }
         tetherPlaceName = placeName
         resetClosedJellyReveal()
         notchVM.peek(duration: nil, additionalHeight: 64)
@@ -2974,8 +2973,7 @@ struct ClangNotchContentView: View {
         let wasShowing = tetherPlaceName != nil
         tetherPlaceName = nil
         // A notice that dropped in on top owns the peek now; leave closing it to that notice.
-        if wasShowing, notchVM.notchState == .peeking,
-           !showQuestionNotice, !showSpeedNotice, !showPermissionNotice, doneNotice == nil {
+        if wasShowing, notchVM.notchState == .peeking, !dropdownNotices.keepsTetherOut {
             restorePeek()
         }
     }
@@ -3234,7 +3232,7 @@ struct ClangNotchContentView: View {
             return
         }
         let notice = DoneNotice(source: source, turn: turn, projectName: sessionLabel(source, turn.sessionId))
-        if showPermissionNotice || showQuestionNotice || showSpeedNotice || tetherPlaceName != nil {
+        if dropdownNotices.holdsDoneBack {
             pendingDoneNotice = notice
         } else {
             showDoneNotice(notice)
