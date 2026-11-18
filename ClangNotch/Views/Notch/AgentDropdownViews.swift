@@ -445,28 +445,31 @@ struct DoneDropdownView: View {
     /// laid out like the others: the drawn Done mark, where and what, and the way back; no card
     /// around it (user, 2026-11-18).
     var body: some View {
-        HStack(spacing: 12) {
-            // The wing's Done mark, drawn large: ring, tick, one pop.
-            DoneCheckmarkView(color: accent, size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(projectName)
-                    .font(.system(size: 12))
-                    .foregroundColor(NotchPalette.ink.opacity(0.5))
-                    .lineLimit(1)
-                Text(turn.headline ?? L("작업을 마쳤습니다.", "Finished."))
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .foregroundColor(NotchPalette.ink)
-                    .lineLimit(2)
+        // Room under the header and above the button (user, 2026-11-18: it was all packed tight).
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                // The wing's Done mark, drawn large: ring, tick, one pop.
+                DoneCheckmarkView(color: accent, size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(projectName)
+                        .font(.system(size: 12))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
+                        .lineLimit(1)
+                    Text(turn.headline ?? L("작업을 마쳤습니다.", "Finished."))
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundColor(NotchPalette.ink)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
-            PeekBarButton(title: openTitle, icon: "terminal", height: 30, action: onOpen)
-                .fixedSize()
+            .popIn()
+            // On its own line, as wide as the dropdown, like the others' bottom bar: Done is read
+            // at a glance and the way back should be easy to hit (user, 2026-11-18).
+            PeekBarButton(title: openTitle, icon: "terminal", action: onOpen)
                 .newHighlight(cornerRadius: 10, delay: 0.25)
-                // A little below the middle, toward the answer's line (user, 2026-11-18).
-                .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] - 6 }
+                .popIn(delay: 0.07)
         }
-        .popIn()
-        .padding(.top, 6)
+        .padding(.top, 14)
         .id(turn.id)
     }
 }
