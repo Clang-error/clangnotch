@@ -217,7 +217,11 @@ final class ClaudeCodeManager: ObservableObject {
     // MARK: - Public Methods
 
     /// Scan for active Claude Code sessions
-    func scanForSessions() {
+    /// `listing`: the project folders and their transcripts, already read off the main thread
+    /// (`scanInBackground`). Without one (the folder watchers, a hook for an unknown transcript)
+    /// it is read here, so a new file is picked up at once.
+    func scanForSessions(listing: [ProjectFolder]? = nil) {
+        scanGeneration += 1
         let fm = FileManager.default
         var sessions: [ClaudeSession] = []
 
@@ -262,16 +266,7 @@ final class ClaudeCodeManager: ObservableObject {
             debugLog("[ClaudeCode] Scanning projects dir for active terminal sessions...")
 
             do {
-                // Whether an entry is a folder comes with the listing; only a symbolic link
-                // still needs its own look (a stat per folder, every scan, was pure overhead).
-                let projectDirs = try fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                    .filter { url in
-                        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                        if values?.isDirectory == true { return true }
-                        guard values?.isSymbolicLink != false else { return false }
-                        var isDir: ObjCBool = false
-                        return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
-                    }
+                let folders = listing ?? Self.projectFolders(in: projectsDir)
 
                 // Projects already represented by an IDE lock session (same underlying
                 // JSONL). Skip them here so one session isn't shown twice — once as an
@@ -282,7 +277,8 @@ final class ClaudeCodeManager: ObservableObject {
                 // a folder; picking only the newest file hid the others — including one that
                 // stopped writing because it waits on a permission prompt. Files that went
                 // quiet are kept only while their session is still working or waiting.
-                for projectDir in projectDirs {
+                for folder in folders {
+                    let projectDir = folder.dir
                     if ideProjectKeys.contains(projectDir.lastPathComponent) {
                         debugLog("[ClaudeCode] Skipping terminal scan for \(projectDir.lastPathComponent) (covered by IDE session)")
                         continue
@@ -293,7 +289,7 @@ final class ClaudeCodeManager: ObservableObject {
                     let workspacePath = projectDir.lastPathComponent
                         .replacingOccurrences(of: "-", with: "/")
 
-                    for transcript in transcripts(in: projectDir) {
+                    for transcript in folder.transcripts {
                         let jsonlFile = transcript.url
                         let sessionId = transcript.id
                         var session = ClaudeSession(
@@ -336,8 +332,6 @@ final class ClaudeCodeManager: ObservableObject {
                         sessions.append(session)
                     }
                 }
-            } catch {
-                debugLog("[ClaudeCode] Error scanning projects: \(error)")
             }
         }
 
@@ -602,13 +596,28 @@ final class ClaudeCodeManager: ObservableObject {
         scheduleNextScan()
     }
 
+    /// Bumped by every scan, so a listing read in the background isn't applied over a scan that
+    /// ran meanwhile (a folder watcher's, which may have seen a newer file).
+    private var scanGeneration = 0
+
+    /// The timer's scan: the folders are listed off the main thread; deciding what to show still
+    /// happens here, against the current state, so a session that started working or was pinned
+    /// meanwhile keeps its row.
+    private func scanInBackground() async {
+        let generation = scanGeneration
+        let dir = projectsDir
+        let listing = await Task.detached(priority: .utility) { Self.projectFolders(in: dir) }.value
+        guard generation == scanGeneration else { return }
+        scanForSessions(listing: listing)
+    }
+
     private func scheduleNextScan() {
         sessionScanTimer?.invalidate()
         let interval = hasAnySessionActivity || Date() < fastScanUntil ? Self.busyScanInterval : Self.quietScanInterval
         sessionScanTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.sessionScanTimer != nil else { return }
-                self.scanForSessions()
+                await self.scanInBackground()
                 self.scheduleNextScan()
             }
         }
@@ -2071,7 +2080,31 @@ final class ClaudeCodeManager: ObservableObject {
     }
 
     /// A transcript in a project folder with the two dates the scan needs.
-    private struct Transcript {
+    struct ProjectFolder: Sendable {
+        let dir: URL
+        let transcripts: [Transcript]
+    }
+
+    /// Every project folder with its transcripts: the file-system part of a scan, safe off the
+    /// main thread. Listing 78 folders and reading the dates of their 447 files was most of
+    /// each scan's main-thread time (20–50 ms, sampled 2026-11-18).
+    nonisolated static func projectFolders(in projectsDir: URL) -> [ProjectFolder] {
+        let fm = FileManager.default
+        // Whether an entry is a folder comes with the listing; only a symbolic link
+        // still needs its own look (a stat per folder, every scan, was pure overhead).
+        guard let entries = try? fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { return [] }
+        return entries
+            .filter { url in
+                let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                if values?.isDirectory == true { return true }
+                guard values?.isSymbolicLink != false else { return false }
+                var isDir: ObjCBool = false
+                return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+            }
+            .map { ProjectFolder(dir: $0, transcripts: transcripts(in: $0)) }
+    }
+
+    struct Transcript: Sendable {
         let url: URL
         /// The file's name without ".jsonl": the conversation id.
         let id: String
@@ -2083,7 +2116,7 @@ final class ClaudeCodeManager: ObservableObject {
     /// once per file: sorting by a date fetched inside the comparison, plus a creation date
     /// looked up per file afterwards, was most of a scan (77 folders, 438 files, every 3 s
     /// while something works; measured 2026-11-16).
-    private func transcripts(in projectDir: URL) -> [Transcript] {
+    nonisolated private static func transcripts(in projectDir: URL) -> [Transcript] {
         let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
         guard let allFiles = try? FileManager.default.contentsOfDirectory(
             at: projectDir, includingPropertiesForKeys: Array(keys)) else { return [] }
@@ -2102,7 +2135,7 @@ final class ClaudeCodeManager: ObservableObject {
     }
 
     private func findActiveSessionFiles(in projectDir: URL) -> [URL] {
-        transcripts(in: projectDir).map(\.url)
+        Self.transcripts(in: projectDir).map(\.url)
     }
 }
 
