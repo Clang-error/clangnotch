@@ -70,15 +70,8 @@ struct ClangNotchContentView: View {
     /// 노치 위치 알림 (user, 2026-11-18): the quiet notch draws its surface and breathes, so its
     /// place shows where nothing marks it (an external display) or where it is black on black
     /// (the camera housing). For a moment at launch, and while the cursor is on it with
-    /// 누를 때만 열기 on, where hovering opens nothing.
+    /// 누를 때만 열기 on, where hovering opens nothing. Drawn by `NotchPresenceLayer`.
     @State private var notchPresence = false
-    /// How far the quiet notch's surface reaches past its own edges, in points, on both sides and
-    /// below alike (negative: inside them).
-    @State private var presenceOutset: CGFloat = 0
-    /// Over a camera housing, how far the surface's sides sit inside its frame (`NotchShape`
-    /// draws them `topCornerRadius` in): added to the sides while it shows, so it starts at the
-    /// housing's own edges.
-    @State private var presenceSideBase: CGFloat = 0
     @State private var presenceTask: Task<Void, Never>?
     /// A Claude or Codex turn that just finished normally; the closed wings show Done for 3s.
     @State private var doneFlash: DoneFlash?
@@ -150,8 +143,6 @@ struct ClangNotchContentView: View {
             : .blurFade(radius: 6).combined(with: .scale(scale: 0.985, anchor: .top))
     }
 
-    private let startupGlowColor = Color(red: 0.55, green: 0.8, blue: 0.9)
-    private let startupBrightColor = Color(red: 0.75, green: 0.9, blue: 1.0)
     private let errorGlowColor = Color(red: 0.9, green: 0.2, blue: 0.2)
     private let errorBrightColor = Color(red: 1.0, green: 0.3, blue: 0.3)
     private let claudeGlowColor = Color(red: 0.9, green: 0.4, blue: 0.1)
@@ -272,7 +263,7 @@ struct ClangNotchContentView: View {
     /// A collapse from the panel keeps the surface black until it lands on the physical notch,
     /// then drops it in one frame — it already sits under the camera housing, so no exit effect.
     private var notchBackground: Color {
-        notchActive || notchVM.isSettlingClosed || notchPresence ? theme.surface ?? .black : .clear
+        notchActive || notchVM.isSettlingClosed ? theme.surface ?? .black : .clear
     }
 
     /// Whether to draw the notch chrome at all. When fully idle (no AI, not
@@ -323,11 +314,9 @@ struct ClangNotchContentView: View {
     private var glowOverlay: some View {
         ZStack {
             if showStartupGlow && notchVM.notchState == .closed {
-                // On the surface's own outline: the overlay is widened for the tracing glows
-                // (`glowSurfaceWidth`), and this one drawn there stood out past the notch.
-                BreathingNotchGlow(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
-                                   glowColor: startupGlowColor, brightColor: startupBrightColor)
-                    .padding(.horizontal, max(0, (glowSurfaceWidth - notchSurfaceSize.width) / 2))
+                // The startup glow is `NotchPresenceLayer`'s (`presenceLayer`); it holds the
+                // other glows back while it lasts.
+                EmptyView()
             } else if tetherMonitor.activePlaceName != nil {
                 // Tethering at a saved place: the glow sweeps red, agents working or not.
                 // Opening from closed, it keeps the closed sweep until the surface settles.
@@ -521,6 +510,8 @@ struct ClangNotchContentView: View {
                     .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
                     .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
             }
+            // The quiet notch's 위치 알림 and the startup glow, moved by the render server.
+            .notchPresenceLayer(presenceLayer)
             // With the surface it hangs from, so it takes the closed notch's jelly scale too.
             .overlay(alignment: .top) {
                 if settings.wingOpenHint {
@@ -562,8 +553,8 @@ struct ClangNotchContentView: View {
             // Presentation-only deformation: layout and the panel's click-through
             // region stay fixed while the closed surface grows out from the camera.
             .scaleEffect(
-                x: closedJellyScaleX * presenceScale.x,
-                y: closedJellyScaleY * presenceScale.y,
+                x: closedJellyScaleX,
+                y: closedJellyScaleY,
                 anchor: .top
             )
     }
@@ -576,9 +567,7 @@ struct ClangNotchContentView: View {
                         // Opened or a dropdown came: the breathing stops at once.
                         if notchPresence {
                             presenceTask?.cancel()
-                            var still = Transaction()
-                            still.disablesAnimations = true
-                            withTransaction(still) { presenceOutset = 0; presenceSideBase = 0; notchPresence = false }
+                            notchPresence = false
                         }
                     }
                     // Opening goes back to the tabs' size (a 세션 화면 left it wider).
@@ -3404,62 +3393,29 @@ struct ClangNotchContentView: View {
                         hintWidth: settings.wingOpenHint ? WingOpenHint.tabWidth : 0)
     }
 
-    /// `presenceOutset` as a scale from the top: the same distance past each side and the bottom.
-    /// Scaling both ways alike pushed the wide notch's sides out three times as far as its bottom,
-    /// so the sides came first and the bottom after (user, 2026-11-18). The quiet notch only: a
-    /// notch already showing its wings stays put. Not tied to `notchPresence`, so the surface
-    /// still draws in while it fades out.
-    private var presenceScale: (x: CGFloat, y: CGFloat) {
-        guard !baseNotchActive, presenceOutset != 0 || presenceSideBase != 0 else { return (1, 1) }
-        let size = notchSurfaceSize
-        return (1 + 2 * (presenceSideBase + presenceOutset) / max(size.width, 1), 1 + presenceOutset / max(size.height, 1))
-    }
-
     /// The notch is drawn over a camera housing (not an external display's bare top edge).
     private var notchOverHousing: Bool { (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 }
 
-    /// Shows or hides the quiet notch's surface, then breathes, reaching the same distance past
-    /// both sides and the bottom. Over a camera housing it starts exactly at the housing's edges
-    /// (hidden behind it), grows 3 pt out to the sides and down together and breathes between 3
-    /// and 6 pt (user, 2026-11-18: start at the physical notch's size, then grow out sideways and
-    /// down; the surface's own sides sit 6 pt inside the housing, so a few points of growth never
-    /// showed at the sides). On a bare edge it grows from 8 pt inside and darkens in, then
-    /// breathes out to 3 pt. It goes back the way it came. Under Reduce Motion it only fades.
-    private func setPresence(_ on: Bool) {
-        guard on != notchPresence else { return }
-        let housing = notchOverHousing
-        if on {
-            var still = Transaction()
-            still.disablesAnimations = true
-            withTransaction(still) {
-                presenceSideBase = housing ? topCornerRadius : 0
-                presenceOutset = reduceMotion || housing ? 0 : -8
-            }
-            withAnimation(reduceMotion ? .easeOut(duration: 0.25) : housing ? .easeOut(duration: 0.6) : .spring(response: 0.5, dampingFraction: 0.86)) {
-                notchPresence = true
-                presenceOutset = reduceMotion ? 0 : housing ? 3 : 0
-            }
-            guard !reduceMotion else { return }
-            Task { @MainActor in
-                try? await Task.sleep(for: Self.breathingStart)
-                guard notchPresence else { return }
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { presenceOutset = housing ? 6 : 3 }
-            }
-        } else {
-            withAnimation(.easeIn(duration: housing ? 0.4 : 0.3)) {
-                presenceOutset = reduceMotion || housing ? 0 : -6
-                notchPresence = false
-            } completion: {
-                // Gone: back to its own size for whatever draws next (a still frame, not an animation).
-                guard !notchPresence else { return }
-                var still = Transaction()
-                still.disablesAnimations = true
-                withTransaction(still) { presenceOutset = 0; presenceSideBase = 0 }
-            }
-        }
+    /// The 위치 알림 shows only on the quiet closed notch; with the wings up the notch's own surface
+    /// is there, and the startup glow lies on it alone.
+    private var presenceLayer: NotchPresenceLayer {
+        let quiet = notchVM.notchState == .closed && !baseNotchActive
+        return NotchPresenceLayer(
+            presence: notchPresence && quiet, fadesOut: quiet, housing: notchOverHousing,
+            glow: showStartupGlow && notchVM.notchState == .closed,
+            surfaceSize: notchSurfaceSize, sideInset: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
+            surface: NSColor(theme.surface ?? .black), still: reduceMotion)
     }
 
-    /// The breathing begins once the surface has grown (`BreathingNotchGlow` waits the same).
+    /// Shows or hides the quiet notch's 위치 알림 (`NotchPresenceLayer` grows it out, breathes and
+    /// draws it back in: user, 2026-11-18, start at the physical notch's size and grow out
+    /// sideways and down).
+    private func setPresence(_ on: Bool) {
+        guard on != notchPresence else { return }
+        notchPresence = on
+    }
+
+    /// The breathing begins once the surface has grown (`NotchPresenceLayer`).
     static let breathingStart: Duration = .milliseconds(600)
     /// At launch the notch and the startup glow last three breaths (user, 2026-11-18: two were
     /// too few): grown, then 0.8 s out and back twice and out a third time, fading from that peak.

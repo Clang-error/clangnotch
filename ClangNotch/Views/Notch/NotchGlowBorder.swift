@@ -616,34 +616,3 @@ final class TracingGlowOutlineView: NSView {
         spinner.add(turn, forKey: "turn")
     }
 }
-
-
-/// The startup glow (2026-11-18): the outline lit in the startup colour, breathing with the
-/// notch's own breathing (`notchPresence`, 0.8 s each way, starting as the surface has grown,
-/// three breaths at launch)
-/// instead of a line running round it. Still under Reduce Motion.
-struct BreathingNotchGlow: View {
-    let topCornerRadius: CGFloat
-    let bottomCornerRadius: CGFloat
-    let glowColor: Color
-    let brightColor: Color
-    @State private var bright = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// The same blue, deeper, for the halo: the pale startup colour vanished on a light
-    /// wallpaper (user's recording, 2026-11-18).
-    private static let halo = Color(red: 0.2, green: 0.55, blue: 1.0)
-
-    var body: some View {
-        NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius, drawsTopEdge: false)
-            .stroke(brightColor, lineWidth: 1.2)
-            .shadow(color: Self.halo.opacity(0.95), radius: 3)
-            .shadow(color: Self.halo.opacity(0.6), radius: 7)
-            .opacity(bright ? 1 : 0.3)
-            .task {
-                guard !reduceMotion else { bright = true; return }
-                try? await Task.sleep(for: ClangNotchContentView.breathingStart)
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { bright = true }
-            }
-    }
-}
