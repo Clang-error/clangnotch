@@ -350,11 +350,16 @@ private struct UnifiedWorkspaceSessionRow: View {
                             .font(.system(size: sessionTitle == nil ? 13 : 12, weight: .semibold))
                             .foregroundColor(.primary)
                             .lineLimit(1)
-                        if !group.claude.isEmpty {
-                            SourceBadge(label: "Claude", color: .orange, active: claudeActive)
+                        // The 출처 배지 names the model the session runs ("Opus 5.5"): the icon and
+                        // the colour already say which agent (user, 2026-11-19). The agent's name
+                        // until a reply has named the model.
+                        if let session = group.claude.first {
+                            SourceBadge(label: manager.sessionStates[session.id].flatMap { ModelName.short($0.model) } ?? "Claude",
+                                        color: .orange, active: claudeActive)
                         }
-                        if !group.codex.isEmpty {
-                            SourceBadge(label: "Codex", color: .blue, active: codexActive)
+                        if let session = group.codex.first {
+                            SourceBadge(label: codexManager.sessionStates[session.id].flatMap { ModelName.short($0.model) } ?? "Codex",
+                                        color: .blue, active: codexActive)
                         }
                         if subagentCount > 0 {
                             // 서브에이전트 배지: this session started subagents and they are at work.

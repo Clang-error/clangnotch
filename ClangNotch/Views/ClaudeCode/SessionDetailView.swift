@@ -82,6 +82,9 @@ struct SessionDetailView: View {
                 contextRow(used: context.used, limit: context.limit,
                            nearCompaction: ContextCompaction.isNear(target.agent == .claude ? .claude : .codex,
                                                                     used: context.used, limit: context.limit))
+            } else if let modelName {
+                // The context bar is off or has nothing yet: the model alone on that line.
+                modelLabel(modelName).padding(.leading, 32)
             }
             HStack(alignment: .top, spacing: 12) {
                 stepList
@@ -164,11 +167,27 @@ struct SessionDetailView: View {
         }
     }
 
-    /// One thin line under the header.
+    /// The model the session runs, named short ("Opus 5.5", `ModelName`); nil until a reply has named it.
+    private var modelName: String? {
+        let model = target.agent == .claude ? manager.sessionStates[target.sessionId]?.model
+            : codexManager.sessionStates[target.sessionId]?.model
+        return model.flatMap(ModelName.short)
+    }
+
+    private func modelLabel(_ name: String) -> some View {
+        Text(name)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(accent)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    /// One thin line under the header, the model first (user, 2026-11-19).
     private func contextRow(used: Int, limit: Int, nearCompaction: Bool) -> some View {
         let progress = limit > 0 ? min(1, Double(used) / Double(limit)) : 0
         let color: Color = progress > 0.9 ? .red : progress > 0.7 ? .orange : progress > 0.5 ? .yellow : .green
         return HStack(spacing: 8) {
+            if let modelName { modelLabel(modelName) }
             Text("Context")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(NotchPalette.ink.opacity(0.5))

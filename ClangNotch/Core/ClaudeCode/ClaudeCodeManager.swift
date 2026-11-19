@@ -1132,7 +1132,9 @@ final class ClaudeCodeManager: ObservableObject {
                                         isMeta: Bool = false) {
         guard var sessionState = sessionStates[sessionId] else { return }
 
-        if let model = message["model"] as? String {
+        // "<synthetic>" marks Claude Code's own messages (an API error): keep the session's real
+        // model, which names it in the 세션 줄 and finds its context window.
+        if let model = message["model"] as? String, !model.hasPrefix("<") {
             sessionState.model = model
         }
 
