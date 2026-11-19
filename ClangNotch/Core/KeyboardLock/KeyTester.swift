@@ -79,7 +79,7 @@ final class KeyTester: ObservableObject {
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
+            EventTapRecovery.tapWasDisabled(eventTap)
             return false
         case .keyDown, .keyUp:
             set(Int(event.getIntegerValueField(.keyboardEventKeycode)), down: type == .keyDown)
