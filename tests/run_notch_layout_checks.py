@@ -95,6 +95,7 @@ questions += '''
     var doneFlash: Int?
     struct NowPlaying { var isShowing = false }
     var nowPlayingMonitor = NowPlaying()
+    var airPodsWingContent: ClosedAirPodsWings?
 '''
 questions += block("private var baseNotchActive:").replace("private var", "var", 1) + "\n}\n"
 questions += '''
@@ -102,6 +103,8 @@ enum ClosedLowBatteryBadge {
     static let wingIconWidth: CGFloat = 20
     static func width(showsIcon: Bool) -> CGFloat { showsIcon ? 40.5 : 29.5 }
 }
+// 날개에만's laid-out card: only its widths matter to the wing math.
+struct ClosedAirPodsWings { var leftWidth: CGFloat = 68; var rightWidth: CGFloat = 54 }
 enum MediaWaveform {
     struct Style { let width: CGFloat; static let wing = Style(width: 16.3); static let mini = Style(width: 6.0) }
 }
@@ -139,13 +142,14 @@ struct FixtureSession { let id: String }
     var batteryManager = NotchChromeFixture.State()
     var tetherMonitor = Tether()
     var nowPlayingMonitor = NotchChromeFixture.NowPlaying()
+    var airPodsWingContent: ClosedAirPodsWings?
     let notchVM = NotchViewModel()
     var closedDisplayedLabel = ""
     struct DoneFlash { enum Source { case claude, codex }; let id = UUID(); let source: Source }
     var doneFlash: DoneFlash?
     var claudeHasRealActivity: Bool { claudeCodeManager.state.isActive }
     var codexHasRealActivity: Bool { settings.showSourceCodex && codexManager.state.isActive }
-    func layout() -> (leftVisible: Bool, claudeOnRight: Bool, leftWidth: CGFloat, rightWidth: CGFloat, batteryWings: Bool) {
+    func layout() -> (leftVisible: Bool, claudeOnRight: Bool, leftWidth: CGFloat, rightWidth: CGFloat, batteryWings: Bool, airPodsWings: Bool, mediaWings: Bool) {
 '''
 # The wing caps, as the view has them.
 questions = questions.replace("    func layout() -> (leftVisible", "".join(
@@ -154,7 +158,7 @@ questions = questions.replace("    func layout() -> (leftVisible", "".join(
 # Run the exact closed-header decisions and width calculations, without its view rendering.
 questions += block("private var closedHeader:").split("{", 1)[1].split("        if !hasAnyContent {")[0]
 questions += '''
-        return (hasLeftWing, showsSimultaneousClaudeWing, leftWingWidth, baseRightWingWidth, showsBatteryWings)
+        return (hasLeftWing, showsSimultaneousClaudeWing, leftWingWidth, baseRightWingWidth, showsBatteryWings, showsAirPodsWings, showsMediaWings)
     }
 }
 '''

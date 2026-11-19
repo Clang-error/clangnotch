@@ -145,16 +145,23 @@ struct FeaturesSettingsTab: View {
         }
     }
 
-    /// 배터리 알림: every switch for the AirPods, headset and Mac battery cards (its own section
-    /// since 2026-11-12 as 에어팟 드롭다운, its own page since 2026-11-19).
+    /// 배터리 알림 (named 에어팟 드롭다운 until 2026-11-19): how and when the AirPods, headset and
+    /// Mac battery cards show (its own section since 2026-11-12, its own page since 2026-11-19).
     private var batteryAlerts: some View {
         Section {
+            // How the connection and low battery cards show, for both switches below.
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L("에어팟 드롭다운 표시", "Show the AirPods dropdown"))
+                AirPodsDropdownStylePicker(settings: settings)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .disabled(!settings.enableBattery)
             SettingToggle(L("에어팟 연결 알림", "AirPods connection dropdown"),
-                          L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시. 배터리 잔량이 켜져 있어야 함",
-                            "Name and battery under the notch when AirPods or a Bluetooth headset connect. Needs Battery levels"),
+                          L("에어팟이나 블루투스 헤드셋을 연결하면 잔량 표시. 배터리 잔량이 켜져 있어야 함",
+                            "Battery levels when AirPods or a Bluetooth headset connect. Needs Battery levels"),
                           isOn: $settings.enableAirPodsDropdown)
                 .disabled(!settings.enableBattery)
-            // Only means something with the card on: shown under it, indented.
+            // Only means something with the card on: under it, indented.
             if settings.enableAirPodsDropdown {
                 SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods dropdown by itself"),
                               isOn: $settings.airPodsDropdownAutoHide)
@@ -173,11 +180,20 @@ struct FeaturesSettingsTab: View {
                     .padding(.leading, 20)
                     .disabled(!settings.enableBattery)
             }
-            SettingToggle(L("맥 배터리 부족 시 드롭다운", "Dropdown when this Mac runs low"),
-                          L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩. 충전 중엔 안 뜸",
-                            "Drawn as this Mac's model, once at 20% and once at 10%. Not while charging"),
-                          isOn: $settings.macLowBatteryDropdown)
-                .disabled(!settings.enableBattery)
+            // Picked from pictures like the 에어팟 드롭다운 표시 above (user, 2026-11-19).
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("맥 배터리 부족 시 드롭다운", "Dropdown when this Mac runs low"))
+                    Text(L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩. 충전 중엔 안 뜸",
+                           "Drawn as this Mac's model, once at 20% and once at 10%. Not while charging"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                PictureChoice(options: [(false, L("끔", "Off")), (true, L("분리", "Detached"))],
+                              selection: $settings.macLowBatteryDropdown) { MacLowBatteryTile(shown: $0) }
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .disabled(!settings.enableBattery)
             if settings.macLowBatteryDropdown {
                 SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's dropdown by itself"),
                               isOn: $settings.macLowBatteryAutoHide)
@@ -324,6 +340,104 @@ private struct MediaDropdownStylePicker: View {
                             settings.enableNowPlayingDropdown = style != .off
                             if style != .off { settings.mediaDropdownAttached = style == .attached }
                         })) { MediaDropdownStyleTile(style: $0) }
+    }
+}
+
+/// 설정 -> 기능 -> 배터리 알림 -> 에어팟 드롭다운 표시: 날개에만 (the levels in the closed
+/// notch's wings) or 분리 (the card that comes off the notch, the default), for the connection and
+/// low battery cards, picked from pictures like the 미디어 드롭다운 표시. Off is each one's switch.
+private struct AirPodsDropdownStylePicker: View {
+    @ObservedObject var settings: AppSettings
+
+    enum Style: CaseIterable { case wings, card }
+
+    var body: some View {
+        PictureChoice(options: [(Style.wings, L("날개에만", "Wings only")), (Style.card, L("분리", "Detached"))],
+                      selection: Binding(
+                        get: { settings.airPodsDropdownWings ? .wings : .card },
+                        set: { settings.airPodsDropdownWings = $0 == .wings })) { AirPodsDropdownStyleTile(style: $0) }
+    }
+}
+
+/// The closed notch on a wallpaper, with the buds and the case in its wings (a ring each) or with
+/// the card under it.
+private struct AirPodsDropdownStyleTile: View {
+    let style: AirPodsDropdownStylePicker.Style
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        ZStack(alignment: .top) {
+            LinearGradient(colors: [Color(red: 0.2, green: 0.45, blue: 0.85), Color(red: 0.08, green: 0.2, blue: 0.5)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            switch style {
+            case .wings:
+                HStack(spacing: 2) {
+                    glyph("airpodspro", size: 7)
+                    ring(0.8)
+                    Spacer()
+                    ring(0.6)
+                    glyph("airpods.chargingcase", size: 6)
+                }
+                .padding(.horizontal, 4)
+                .frame(width: 72, height: 12)
+                .background(UnevenRoundedRectangle(bottomLeadingRadius: 4, bottomTrailingRadius: 4).fill(Color.black))
+            case .card:
+                UnevenRoundedRectangle(bottomLeadingRadius: 4, bottomTrailingRadius: 4).fill(Color.black).frame(width: 28, height: 9)
+                HStack(spacing: 10) {
+                    VStack(spacing: 2) { glyph("airpodspro", size: 11); battery(0.8) }
+                    VStack(spacing: 2) { glyph("airpods.chargingcase", size: 10); battery(0.6) }
+                }
+                .frame(width: 56, height: 30)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.black))
+                .padding(.top, 15)
+            }
+        }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+    }
+
+    private func glyph(_ name: String, size: CGFloat) -> some View {
+        Image(systemName: name).font(.system(size: size)).foregroundStyle(Color.white.opacity(0.9))
+    }
+
+    private func ring(_ level: CGFloat) -> some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.25), lineWidth: 1.2)
+            Circle().trim(from: 0, to: level).stroke(Color.white, style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 7, height: 7)
+    }
+
+    private func battery(_ level: CGFloat) -> some View {
+        Capsule().fill(Color.white.opacity(0.3)).frame(width: 12, height: 3)
+            .overlay(alignment: .leading) { Capsule().fill(Color.green).frame(width: 12 * level, height: 3) }
+    }
+}
+
+/// 맥 배터리 부족 시 드롭다운: the closed notch on a wallpaper, bare or with the Mac's card under it.
+private struct MacLowBatteryTile: View {
+    let shown: Bool
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        ZStack(alignment: .top) {
+            LinearGradient(colors: [Color(red: 0.2, green: 0.45, blue: 0.85), Color(red: 0.08, green: 0.2, blue: 0.5)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            UnevenRoundedRectangle(bottomLeadingRadius: 4, bottomTrailingRadius: 4).fill(Color.black).frame(width: 28, height: 9)
+            if shown {
+                VStack(spacing: 3) {
+                    Image(systemName: "laptopcomputer").font(.system(size: 13)).foregroundStyle(Color.white.opacity(0.9))
+                    Capsule().fill(Color.white.opacity(0.3)).frame(width: 14, height: 3)
+                        .overlay(alignment: .leading) { Capsule().fill(Color.red).frame(width: 3, height: 3) }
+                }
+                .frame(width: 56, height: 30)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.black))
+                .padding(.top, 15)
+            }
+        }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
     }
 }
 

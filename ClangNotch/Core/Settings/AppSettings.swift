@@ -85,6 +85,11 @@ public final class AppSettings: ObservableObject {
     // Off: the 에어팟 드롭다운 stays until its X is pressed or it is pushed up into the notch;
     // a Max or another headset still folds after 10 s.
     @AppStorage("airPodsDropdownAutoHide") public var airPodsDropdownAutoHide: Bool = true
+    // 설정 -> 기능 -> 배터리 알림 -> 에어팟 드롭다운 표시 (top of the page): the connection and
+    // low battery cards drawn in the closed notch's wings instead of coming down (2026-11-19; off
+    // by default, the card stays the default), picked as 날개에만 or 분리. This Mac's card still
+    // comes down.
+    @AppStorage("airPodsDropdownWings") public var airPodsDropdownWings: Bool = false
 
     // 지금 재생 표시: what plays (macOS's Now Playing) in the closed notch's wings, read through
     // /usr/bin/perl (NowPlayingMonitor). Under it: the 미디어 드롭다운 when something starts playing.

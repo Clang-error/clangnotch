@@ -143,6 +143,23 @@ struct NotchLayoutChecks {
         wings.claudeCodeManager.state.isThinking = false
         wings.batteryManager.closedNotchLowBattery = nil
         check(!wings.layout().leftVisible && !wings.layout().batteryWings, "No low battery, no wings")
+        // 날개에만: the AirPods card takes both wings over music and an agent at work, never over a question.
+        wings.airPodsWingContent = ClosedAirPodsWings()
+        chrome.airPodsWingContent = ClosedAirPodsWings()
+        check(chrome.baseNotchActive, "The AirPods wings must draw the closed notch background on a quiet notch")
+        chrome.airPodsWingContent = nil
+        wings.nowPlayingMonitor.isShowing = true
+        check(wings.layout().leftVisible && wings.layout().airPodsWings && !wings.layout().mediaWings, "The AirPods wings take both wings over music")
+        wings.nowPlayingMonitor.isShowing = false
+        wings.claudeCodeManager.state.isThinking = true
+        check(wings.layout().airPodsWings, "The AirPods wings take both wings over an agent at work")
+        wings.claudeCodeManager.state.isThinking = false
+        wings.claudeCodeManager.pendingInputRequests = [claudeWait]
+        wings.claudeCodeManager.state.activeTools = [ClaudeToolExecution(id: "claude-wait", toolName: "AskUserQuestion", argument: nil, startTime: Date())]
+        check(!wings.layout().airPodsWings && wings.layout().rightWidth == 58, "A waiting question keeps Answer over the AirPods wings")
+        wings.claudeCodeManager.pendingInputRequests.removeAll()
+        wings.claudeCodeManager.state.activeTools.removeAll()
+        wings.airPodsWingContent = nil
         questions.triggerCodexInputNotice(request("짧은 질문"))
         let shortHeight = questions.notchVM.notchSize.height
         check(shortHeight < 170, "A short question must not leave a large empty band")

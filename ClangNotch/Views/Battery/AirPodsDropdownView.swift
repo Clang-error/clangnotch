@@ -309,7 +309,7 @@ struct AirPodsDropdownContent: View {
                     // At the top while the panel grows or shrinks for the volume row: centred in
                     // it, the card jumped by half the row's height first (2026-11-18).
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            } else if let card = model.card {
+            } else if let card = model.card, !model.inWings {   // 날개에만: drawn in the wings, not in the ordered-out panel
                 VStack(spacing: 0) {
                     ZStack {
                         Text(card.name)
@@ -484,14 +484,21 @@ private struct AirPodsBatteryGlyph: View {
 }
 
 /// One of macOS's AirPods banner loops, playing round and round with no sound, transparent
-/// where the video is (HEVC with alpha). It plays only while the card is up.
-private struct LoopingVideo: NSViewRepresentable {
+/// where the video is (HEVC with alpha). It plays only while the card (or 날개에만's wings,
+/// `ClosedAirPodsWings`) is up.
+struct LoopingVideo: NSViewRepresentable {
     let url: URL
+    /// The loops are framed loosely: above 1, the video is drawn this many times the view's height
+    /// across, centred, and cut to the view (the closed notch's wings are only 30 pt tall).
+    var zoom: CGFloat = 1
 
     final class PlayerView: NSView {
         let player = AVQueuePlayer()
         var looper: AVPlayerLooper?
         var url: URL?
+        var zoom: CGFloat = 1 {
+            didSet { if zoom != oldValue { layer?.masksToBounds = zoom != 1; needsLayout = true } }
+        }
         private let playerLayer = AVPlayerLayer()
 
         override init(frame: NSRect) {
@@ -510,7 +517,9 @@ private struct LoopingVideo: NSViewRepresentable {
             super.layout()
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            playerLayer.frame = bounds
+            let side = bounds.height * zoom
+            playerLayer.frame = zoom == 1 ? bounds
+                : CGRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
             CATransaction.commit()
         }
 
@@ -525,11 +534,15 @@ private struct LoopingVideo: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PlayerView {
         let view = PlayerView()
+        view.zoom = zoom
         view.play(url)
         return view
     }
 
-    func updateNSView(_ view: PlayerView, context: Context) { view.play(url) }
+    func updateNSView(_ view: PlayerView, context: Context) {
+        view.zoom = zoom
+        view.play(url)
+    }
 
     static func dismantleNSView(_ view: PlayerView, coordinator: ()) {
         view.player.pause()

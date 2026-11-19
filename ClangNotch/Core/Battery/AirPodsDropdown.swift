@@ -66,6 +66,18 @@ final class AirPodsDropdown: ObservableObject {
 
     @Published private(set) var card: Card? { didSet { tellMediaCard() } }
     @Published private(set) var phase: Phase = .hidden { didSet { tellMediaCard() } }
+    /// 설정 -> 기능 -> 배터리 알림 -> 날개에만: the card that's up is drawn in the closed notch's
+    /// wings (`ClosedAirPodsWings`) instead of coming down in the panel. `card` and `phase` go on
+    /// as for a card that came down (settled at once, no blob), so fresh levels, a bud taken out,
+    /// the lid closing and 자동으로 접기 reach the wings the same way; only the panel stays away.
+    /// With 자동으로 접기 off the wings stay until the lid closes, as the card does (user, 2026-11-19).
+    @Published private(set) var inWings = false
+
+    /// Connection, case and low battery cards go to the wings when 날개에만 is chosen (the low
+    /// battery one too since the same day, user). This Mac's card still comes down.
+    private func drawsInWings(_ card: Card) -> Bool {
+        !isMedia && AppSettings.shared.airPodsDropdownWings && card.media == nil && !card.isThisMac
+    }
 
     /// The notch's media wings hide while the 미디어 드롭다운 is out, and spring back once it has
     /// gone all the way back into the notch: coming back as it started to rise, they showed
@@ -79,7 +91,7 @@ final class AirPodsDropdown: ObservableObject {
     /// so this one comes down under it; 0 when it isn't there.
     var stackDepth: CGFloat = 0 {
         didSet {
-            guard stackDepth != oldValue, phase == .settled, !pinned, let panel, let screen = NotchDetector.notchScreen else { return }
+            guard stackDepth != oldValue, phase == .settled, !inWings, !pinned, let panel, let screen = NotchDetector.notchScreen else { return }
             layOut(on: screen)
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.4
@@ -91,6 +103,7 @@ final class AirPodsDropdown: ObservableObject {
 
     /// This card's bottom edge from the top of the screen while it is down in its place.
     private var occupiedDepth: CGFloat {
+        if inWings { return 0 }
         switch phase {
         case .dropping, .settled: return pinned ? 0 : cardTop + cardSize.height
         case .hidden, .rising: return 0
@@ -212,7 +225,7 @@ final class AirPodsDropdown: ObservableObject {
     /// none is down. The card sits under it, and goes back up when it folds.
     var peekDepth: CGFloat = 0 {
         didSet {
-            guard peekDepth != oldValue, phase == .settled, !pinned, let panel, let screen = NotchDetector.notchScreen else { return }
+            guard peekDepth != oldValue, phase == .settled, !inWings, !pinned, let panel, let screen = NotchDetector.notchScreen else { return }
             layOut(on: screen)
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.4
@@ -590,6 +603,21 @@ final class AirPodsDropdown: ObservableObject {
             if phase == .settled, !hovering { scheduleHide(after: visibleTime) }
             return
         }
+        if drawsInWings(new) {
+            generation += 1
+            hideWork?.cancel()
+            hovering = false
+            // A card that was down in the panel (this Mac's) gives way at once.
+            if !inWings { panel?.orderOut(nil) }
+            card = new
+            inWings = true
+            contentVisible = true
+            phase = .settled
+            if other.stackDepth > 0 { other.stackDepth = 0 }
+            scheduleHide(after: visibleTime)
+            return
+        }
+        inWings = false
         generation += 1
         let current = generation
         hideWork?.cancel()
@@ -646,6 +674,17 @@ final class AirPodsDropdown: ObservableObject {
     }
 
     func dismiss() {
+        if inWings {
+            // Nothing to fold: the wings let go of it and animate themselves.
+            guard phase == .settled else { return }
+            hideWork?.cancel()
+            generation += 1
+            contentVisible = false
+            phase = .hidden
+            card = nil
+            inWings = false
+            return
+        }
         guard phase == .settled || isDropping, let panel, let screen = NotchDetector.notchScreen else { return }
         if pinned { pinned = false; dragStart = nil }
         hideWork?.cancel()

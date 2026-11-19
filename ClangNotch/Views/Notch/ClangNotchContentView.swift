@@ -93,6 +93,8 @@ struct ClangNotchContentView: View {
     /// lowest dropdown, shown only into a closed notch, folding like the 완료 드롭다운.
     @State private var mediaNotice: NowPlaying?
     @State private var mediaNoticeTask: Task<Void, Never>?
+    /// 날개에만: the 에어팟 드롭다운's card, laid out for the wings, while it is drawn there.
+    @State private var airPodsWingContent: ClosedAirPodsWings?
     /// The cursor is on the notch: the attached player's close button shows only then.
     @State private var notchHovered = false
     /// The attached player's volume row (`MediaVolumeBand`), handed down from here: this view
@@ -279,6 +281,7 @@ struct ClangNotchContentView: View {
             || batteryManager.closedNotchLowBattery != nil
             || doneFlash != nil
             || nowPlayingMonitor.isShowing
+            || airPodsWingContent != nil
     }
 
     private var notchActive: Bool {
@@ -342,9 +345,11 @@ struct ClangNotchContentView: View {
                     topCornerRadius: topCornerRadius,
                     bottomCornerRadius: bottomCornerRadius,
                     // Music springing the wings out on a quiet notch ripples in the artwork's
-                    // colour, not the agents' (it came out Claude orange, user 2026-11-12).
-                    glowColor: !hasLiveAgentActivity && nowPlayingMonitor.isShowing
-                        ? Color(nsColor: nowPlayingMonitor.nowPlaying?.accent ?? .white)
+                    // colour, not the agents' (it came out Claude orange, user 2026-11-12); the
+                    // AirPods wings (날개에만) in the notch's own ink.
+                    glowColor: hasLiveAgentActivity ? currentBrightColor
+                        : airPodsWingContent != nil ? NotchPalette.ink
+                        : nowPlayingMonitor.isShowing ? Color(nsColor: nowPlayingMonitor.nowPlaying?.accent ?? .white)
                         : currentBrightColor
                 )
                 // Past its edges too, where the ripple spreads.
@@ -651,6 +656,13 @@ struct ClangNotchContentView: View {
                     cancelClosedJellyDismiss()
                     triggerClosedJellyReveal()
                 }
+                // The AirPods wings (날개에만) spring out of a quiet notch the same way.
+                .onChange(of: airPodsWingContent != nil) { wasShowing, isShowing in
+                    guard !wasShowing, isShowing, !hasLiveAgentActivity, tetherMonitor.activePlaceName == nil,
+                          !nowPlayingMonitor.isShowing else { return }
+                    cancelClosedJellyDismiss()
+                    triggerClosedJellyReveal()
+                }
                 .onChange(of: claudeCodeManager.lastCompletedTurn) { _, turn in
                     guard let turn, settings.showSourceClaudeCode else { return }
                     handleCompletedTurn(turn, .claude)
@@ -759,6 +771,14 @@ struct ClangNotchContentView: View {
             // 배경 따라: catches a wallpaper changed since the last look.
             if state != .closed { appearance.refreshWallpaper() }
         }
+        // 날개에만: only the card, not the whole dropdown, whose hover and phase would redraw this view.
+        .onReceive(AirPodsDropdown.shared.$card.combineLatest(AirPodsDropdown.shared.$inWings)
+            .map { card, inWings in inWings ? card : nil }
+            .removeDuplicates()) { card in
+                // Laid out again only for a new card, whatever the subscription replays.
+                guard card != airPodsWingContent?.card else { return }
+                airPodsWingContent = card.map { ClosedAirPodsWings(card: $0, notchHeight: notchVM.closedNotchSize.height) }
+            }
         .onChange(of: settings.notchAppearance) { appearance.refreshWallpaper() }
         // The 조절창 moves under the open notch instead of covering it.
         .onChange(of: notchVM.notchState == .open ? notchVM.notchSize.height : 0, initial: true) { _, depth in
@@ -1005,6 +1025,11 @@ struct ClangNotchContentView: View {
         // A finished turn takes both wings for a moment, but never over something that
         // waits on the user (Locked, Answer, Needs OK).
         let showsDone = doneFlash != nil && !isKeyboardLocked && !isQuestionWait && !hasPermissionNeeded
+        // 날개에만: the 에어팟 드롭다운's card takes both wings for its time, over the agents,
+        // Done, tethering and music, but, like Done, never over something that waits on the user.
+        let airPodsWings = isKeyboardLocked || isQuestionWait || hasPermissionNeeded ? nil
+            : airPodsWingContent
+        let showsAirPodsWings = airPodsWings != nil
 
         // When fully idle (no tool/thinking), the closed notch shows nothing.
         let showLeftWing = showsDone
@@ -1091,7 +1116,7 @@ struct ClangNotchContentView: View {
         // Tethering at a saved place: with the agents quiet it takes both wings ("테더링" and
         // "집 · 12분"); while they work it shrinks to a red hotspot icon at the right edge.
         let tetherPlace = tetherMonitor.activePlaceName
-        let showsTetherWings = tetherPlace != nil && !showLeftWing && agentRightWingWidth == 0
+        let showsTetherWings = tetherPlace != nil && !showLeftWing && agentRightWingWidth == 0 && !showsAirPodsWings
         let tetherRightLabel = tetherPlace.map { "\($0) · \(tetherMonitor.connectedLabel)" } ?? ""
         let tetherLeftWidth = 14 + 6 + measuredTextWidth(L("테더링", "Tethering"), 10, .semibold)
         let baseRightWingWidth = showsTetherWings ? measuredTextWidth(tetherRightLabel, 10, .medium) : agentRightWingWidth
@@ -1102,7 +1127,7 @@ struct ClangNotchContentView: View {
         // on the left, bars on the right, as in the Dynamic Island); otherwise it shrinks to a
         // few bars at the right edge, like the tethering icon.
         let showsMediaWings = nowPlayingMonitor.isShowing && !showLeftWing && agentRightWingWidth == 0
-            && tetherPlace == nil
+            && tetherPlace == nil && !showsAirPodsWings
         let showsMediaMini = nowPlayingMonitor.isShowing && !showsMediaWings && settings.nowPlayingMiniWhileWorking
         let mediaArtSize: CGFloat = 20
         let mediaWingWidth: CGFloat = showsMediaWings ? MediaWaveform.Style.wing.width : 0
@@ -1114,18 +1139,20 @@ struct ClangNotchContentView: View {
         // else on the wings it takes both: the device on the left, its battery on the right.
         let lowBattery = batteryManager.closedNotchLowBattery
         let showsBatteryWings = lowBattery != nil && !showLeftWing && agentRightWingWidth == 0
-            && tetherPlace == nil && !nowPlayingMonitor.isShowing
+            && tetherPlace == nil && !nowPlayingMonitor.isShowing && !showsAirPodsWings
         let batteryBadgeWidth: CGFloat = lowBattery == nil ? 0
             : ClosedLowBatteryBadge.width(showsIcon: !showsBatteryWings)
                 + (baseRightWingWidth > 0 || showsTetherIcon || showsMediaMini || showsMediaWings ? 6 : 0)
-        let rightWingWidth = baseRightWingWidth + mediaWingWidth + tetherIconWidth + mediaMiniWidth + batteryBadgeWidth
+        let rightWingWidth = airPodsWings?.rightWidth
+            ?? baseRightWingWidth + mediaWingWidth + tetherIconWidth + mediaMiniWidth + batteryBadgeWidth
 
         // Both wings have to claim the same width, otherwise this centred row slides
         // sideways by half the difference and the shorter side's content ends up under
         // the physical notch. The slots include each wing's edge padding.
-        let hasLeftWing = showLeftWing || showsTetherWings || showsMediaWings || showsBatteryWings
-        let leftContentWidth = showsTetherWings ? tetherLeftWidth : showsMediaWings ? mediaArtSize
-            : showsBatteryWings ? ClosedLowBatteryBadge.wingIconWidth : leftWingWidth
+        let hasLeftWing = showLeftWing || showsTetherWings || showsMediaWings || showsBatteryWings || showsAirPodsWings
+        let leftContentWidth = airPodsWings?.leftWidth
+            ?? (showsTetherWings ? tetherLeftWidth : showsMediaWings ? mediaArtSize
+                : showsBatteryWings ? ClosedLowBatteryBadge.wingIconWidth : leftWingWidth)
         // Music alone on the wings sits as far from the surface's sides as from its top and
         // bottom, as in the Dynamic Island (user's photo, 2026-11-15): the 앨범 그림 6 pt in, the
         // 음파 막대 7. The header's own 14 pt and the usual 8 left the picture 16 pt in, adrift
@@ -1164,7 +1191,10 @@ struct ClangNotchContentView: View {
                 // Left wing
                 if hasLeftWing {
                     HStack(spacing: 6) {
-                        if showsMediaWings, let playing = nowPlayingMonitor.nowPlaying {
+                        if let airPodsWings {
+                            ClosedAirPodsWings.Row(pieces: airPodsWings.left)
+                                .transition(.scale(scale: 0.5).combined(with: .opacity))
+                        } else if showsMediaWings, let playing = nowPlayingMonitor.nowPlaying {
                             MediaArtwork(playing: playing, size: mediaArtSize)
                                 .transition(.scale(scale: 0.5).combined(with: .opacity))
                         } else if showsBatteryWings, let lowBattery {
@@ -1275,129 +1305,138 @@ struct ClangNotchContentView: View {
                     Spacer().frame(width: wingWidth - rightSlot)
                 }
 
-                // Right wing - tool info or status
-                if baseRightWingWidth > 0 {
-                    Group {
-                        if isKeyboardLocked {
-                            HStack(spacing: 4) {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 10, weight: .semibold))
-                                Text("Locked")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                            }
-                            .foregroundColor(lockedTint)
-                        } else if showsDone, let doneFlash {
-                            DoneCheckmarkView(color: doneBlue)
-                                .id(doneFlash.id)
-                        } else if showsQuestionOnRight {
-                            HStack(spacing: 4) {
-                                Image(systemName: "bubble.left.and.bubble.right")
-                                    .font(.system(size: 8))
-                                Text("Answer")
-                                    .font(.system(size: 9, weight: .medium))
-                            }
-                            .foregroundColor(showsClaudeQuestionOnRight || !isCodexQuestionWait ? .orange : .blue)
-                        } else if showsSimultaneousClaudeWing {
-                            // Mirror of the left wing: label, then the dot at the outer edge.
-                            HStack(spacing: 6) {
-                                ClosedToolTransitionLabel(
-                                    label: simultaneousClaudeLabel,
-                                    foregroundOpacity: currentClaudeTool != nil ? 0.85 : 0.7,
-                                    glowColor: claudeGlowColor
-                                )
-                                claudeWingIcons(count: claudeWorkingCount, spreadsLeading: false, glowColor: claudeGlowColor)
-                                    // Same id as the left wing's Claude icon: when Codex joins,
-                                    // Claude's icon glides across the notch instead of popping.
-                                    .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)
-                            }
-                        } else if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
-                            // Codex tool info
-                            HStack(spacing: 4) {
-                                if codexTool.isRunning {
-                                    if let codexTurnStart { ClosedElapsedLabel(since: codexTurnStart) }
-                                    ProgressView()
-                                        .scaleEffect(0.3)
-                                        .frame(width: 8, height: 8)
-                                } else {
-                                    Text(codexTool.formattedDuration)
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(NotchPalette.ink.opacity(0.6))
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                }
-                            }
-                        } else if let claudeTool = currentClaudeTool, !hasPermissionNeeded {
-                            // Claude Code tool info
-                            HStack(spacing: 4) {
-                                if claudeTool.isRunning {
-                                    if let claudeTurnStart { ClosedElapsedLabel(since: claudeTurnStart) }
-                                    ProgressView()
-                                        .scaleEffect(0.3)
-                                        .frame(width: 8, height: 8)
-                                } else {
-                                    Text(claudeTool.formattedDuration)
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(NotchPalette.ink.opacity(0.6))
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                }
-                            }
-                        } else if isThinking {
-                            HStack(spacing: 4) {
-                                if let thinkingTurnStart { ClosedElapsedLabel(since: thinkingTurnStart) }
-                                ProgressView()
-                                    .scaleEffect(0.3)
-                                    .frame(width: 8, height: 8)
-                            }
-                        } else if hasPermissionNeeded {
-                            HStack(spacing: 4) {
-                                NeedsOKDot()
-                                Text("Needs OK")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundColor(.orange)
-                            }
-                        } else if showsTetherWings {
-                            Text(tetherRightLabel)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(NotchPalette.ink.opacity(0.75))
-                                .lineLimit(1)
-                                .fixedSize()
-                        }
+                if let airPodsWings {
+                    if rightWingWidth > 0 {
+                        ClosedAirPodsWings.Row(pieces: airPodsWings.right)
+                            .frame(width: rightWingWidth, alignment: .trailing)
+                            .padding(.trailing, wingEdgePadding)
+                            .transition(.scale(scale: 0.5).combined(with: .opacity))
                     }
-                    .frame(width: baseRightWingWidth, alignment: .trailing)
-                    .padding(.trailing, lowBattery == nil && !showsTetherIcon && !showsMediaMini ? wingEdgePadding : 6)
-                }
-                if showsMediaWings {
-                    MediaWaveform(style: .wing, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
-                                  color: nowPlayingMonitor.nowPlaying?.accent)
-                        .frame(width: mediaWingWidth, height: MediaWaveform.Style.wing.height)
-                        .opacity(rightWingLayerOpacity)
-                        .animation(WingFade.animation, value: rightWingLayerOpacity)
-                        .padding(.trailing, lowBattery == nil ? rightEdgePadding : 6)
-                        .transition(.opacity)
-                }
-                if showsTetherIcon {
-                    Image(systemName: "personalhotspot")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(errorBrightColor)
-                        .frame(width: 14)
-                        .padding(.trailing, lowBattery == nil && !showsMediaMini ? wingEdgePadding : 6)
-                }
-                if showsMediaMini {
-                    MediaWaveform(style: .mini, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
-                                  color: nowPlayingMonitor.nowPlaying?.accent)
-                        .frame(width: MediaWaveform.Style.mini.width, height: MediaWaveform.Style.mini.height)
-                        .opacity(rightWingLayerOpacity)
-                        .animation(WingFade.animation, value: rightWingLayerOpacity)
-                        .padding(.trailing, lowBattery == nil ? wingEdgePadding : 6)
-                        .transition(.opacity.combined(with: .scale(scale: 0.5, anchor: .trailing)))
-                }
-                if let lowBattery {
-                    ClosedLowBatteryBadge(device: lowBattery, showsIcon: !showsBatteryWings)
-                        .frame(width: ClosedLowBatteryBadge.width(showsIcon: !showsBatteryWings), alignment: .trailing)
-                        .padding(.trailing, wingEdgePadding)
+                } else {
+                    // Right wing - tool info or status
+                    if baseRightWingWidth > 0 {
+                        Group {
+                            if isKeyboardLocked {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 10, weight: .semibold))
+                                    Text("Locked")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                }
+                                .foregroundColor(lockedTint)
+                            } else if showsDone, let doneFlash {
+                                DoneCheckmarkView(color: doneBlue)
+                                    .id(doneFlash.id)
+                            } else if showsQuestionOnRight {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "bubble.left.and.bubble.right")
+                                        .font(.system(size: 8))
+                                    Text("Answer")
+                                        .font(.system(size: 9, weight: .medium))
+                                }
+                                .foregroundColor(showsClaudeQuestionOnRight || !isCodexQuestionWait ? .orange : .blue)
+                            } else if showsSimultaneousClaudeWing {
+                                // Mirror of the left wing: label, then the dot at the outer edge.
+                                HStack(spacing: 6) {
+                                    ClosedToolTransitionLabel(
+                                        label: simultaneousClaudeLabel,
+                                        foregroundOpacity: currentClaudeTool != nil ? 0.85 : 0.7,
+                                        glowColor: claudeGlowColor
+                                    )
+                                    claudeWingIcons(count: claudeWorkingCount, spreadsLeading: false, glowColor: claudeGlowColor)
+                                        // Same id as the left wing's Claude icon: when Codex joins,
+                                        // Claude's icon glides across the notch instead of popping.
+                                        .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)
+                                }
+                            } else if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
+                                // Codex tool info
+                                HStack(spacing: 4) {
+                                    if codexTool.isRunning {
+                                        if let codexTurnStart { ClosedElapsedLabel(since: codexTurnStart) }
+                                        ProgressView()
+                                            .scaleEffect(0.3)
+                                            .frame(width: 8, height: 8)
+                                    } else {
+                                        Text(codexTool.formattedDuration)
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundColor(NotchPalette.ink.opacity(0.6))
+                                            .lineLimit(1)
+                                            .fixedSize(horizontal: true, vertical: false)
+                                    }
+                                }
+                            } else if let claudeTool = currentClaudeTool, !hasPermissionNeeded {
+                                // Claude Code tool info
+                                HStack(spacing: 4) {
+                                    if claudeTool.isRunning {
+                                        if let claudeTurnStart { ClosedElapsedLabel(since: claudeTurnStart) }
+                                        ProgressView()
+                                            .scaleEffect(0.3)
+                                            .frame(width: 8, height: 8)
+                                    } else {
+                                        Text(claudeTool.formattedDuration)
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundColor(NotchPalette.ink.opacity(0.6))
+                                            .lineLimit(1)
+                                            .fixedSize(horizontal: true, vertical: false)
+                                    }
+                                }
+                            } else if isThinking {
+                                HStack(spacing: 4) {
+                                    if let thinkingTurnStart { ClosedElapsedLabel(since: thinkingTurnStart) }
+                                    ProgressView()
+                                        .scaleEffect(0.3)
+                                        .frame(width: 8, height: 8)
+                                }
+                            } else if hasPermissionNeeded {
+                                HStack(spacing: 4) {
+                                    NeedsOKDot()
+                                    Text("Needs OK")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundColor(.orange)
+                                }
+                            } else if showsTetherWings {
+                                Text(tetherRightLabel)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(NotchPalette.ink.opacity(0.75))
+                                    .lineLimit(1)
+                                    .fixedSize()
+                            }
+                        }
+                        .frame(width: baseRightWingWidth, alignment: .trailing)
+                        .padding(.trailing, lowBattery == nil && !showsTetherIcon && !showsMediaMini ? wingEdgePadding : 6)
+                    }
+                    if showsMediaWings {
+                        MediaWaveform(style: .wing, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
+                                      color: nowPlayingMonitor.nowPlaying?.accent)
+                            .frame(width: mediaWingWidth, height: MediaWaveform.Style.wing.height)
+                            .opacity(rightWingLayerOpacity)
+                            .animation(WingFade.animation, value: rightWingLayerOpacity)
+                            .padding(.trailing, lowBattery == nil ? rightEdgePadding : 6)
+                            .transition(.opacity)
+                    }
+                    if showsTetherIcon {
+                        Image(systemName: "personalhotspot")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(errorBrightColor)
+                            .frame(width: 14)
+                            .padding(.trailing, lowBattery == nil && !showsMediaMini ? wingEdgePadding : 6)
+                    }
+                    if showsMediaMini {
+                        MediaWaveform(style: .mini, playing: nowPlayingMonitor.nowPlaying?.isPlaying ?? false,
+                                      color: nowPlayingMonitor.nowPlaying?.accent)
+                            .frame(width: MediaWaveform.Style.mini.width, height: MediaWaveform.Style.mini.height)
+                            .opacity(rightWingLayerOpacity)
+                            .animation(WingFade.animation, value: rightWingLayerOpacity)
+                            .padding(.trailing, lowBattery == nil ? wingEdgePadding : 6)
+                            .transition(.opacity.combined(with: .scale(scale: 0.5, anchor: .trailing)))
+                    }
+                    if let lowBattery {
+                        ClosedLowBatteryBadge(device: lowBattery, showsIcon: !showsBatteryWings)
+                            .frame(width: ClosedLowBatteryBadge.width(showsIcon: !showsBatteryWings), alignment: .trailing)
+                            .padding(.trailing, wingEdgePadding)
+                    }
                 }
             }
             .frame(width: totalWidth)
@@ -1430,6 +1469,7 @@ struct ClangNotchContentView: View {
             .animation(.easeOut(duration: 0.28), value: showsMediaMini)
             .animation(.easeOut(duration: 0.28), value: showsMediaWings)
             .animation(.easeOut(duration: 0.28), value: showsBatteryWings)
+            .animation(.easeOut(duration: 0.28), value: showsAirPodsWings)
         }
     }
 
