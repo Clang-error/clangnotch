@@ -69,8 +69,8 @@ struct AboutSettingsTab: View {
                     .onChange(of: settings.checkForUpdates) { _, _ in updates.syncWithSettings() }
                 if settings.checkForUpdates {
                     SettingToggle(L("받은 업데이트 자동으로 설치", "Install downloaded updates automatically"),
-                                  L("에이전트가 쉬고 노치가 닫혀 있을 때 앱을 바꾸고 다시 켬. 끄면 재시작 버튼을 누를 때만 설치",
-                                    "Replaces the app and reopens it while your agents are idle and the notch is closed. Off, it installs only when you restart for it"),
+                                  L("에이전트 세션이 유휴 상태, 노치가 닫혀 있을 때 자동으로 설치.",
+                                    "Installs by itself while your agent sessions are idle and the notch is closed."),
                                   isOn: $settings.autoInstallUpdates)
                         .onChange(of: settings.autoInstallUpdates) { _, _ in updates.syncAutoInstall() }
                 }
@@ -136,7 +136,7 @@ struct AboutSettingsTab: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(L("정식 버전", "Release"))
                             Text(findingStable ? L("확인 중…", "Checking…")
-                                 : stableMessage ?? L("베타를 그만 쓰고 최신 정식 버전으로 돌아갑니다", "Leave the beta for the latest release"))
+                                 : stableMessage ?? L("최신 정식 버전으로 돌아갑니다", "Back to the latest release"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

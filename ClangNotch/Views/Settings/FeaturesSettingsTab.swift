@@ -132,7 +132,7 @@ struct FeaturesSettingsTab: View {
             }
             // Its own switch: it keeps the volume key tap up even with the HUD switch off.
             SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
-                          L("HDMI, DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생",
+                          L("HDMI, DisplayPort 스피커로 가는 소리를 가로채, 줄여서 다시 재생",
                             "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter") + needsAccessibility,
                           isOn: $settings.enableSoftwareVolume)
                 .onChange(of: settings.enableSoftwareVolume) { _, on in
@@ -333,7 +333,7 @@ private struct MediaDropdownStylePicker: View {
     enum Style: CaseIterable { case off, card, attached }
 
     var body: some View {
-        PictureChoice(options: [(Style.off, L("끔", "Off")), (Style.card, L("분리", "Detached")), (Style.attached, L("붙음", "Attached"))],
+        PictureChoice(options: [(Style.off, L("노치", "Notch")), (Style.card, L("분리", "Detached")), (Style.attached, L("붙음", "Attached"))],
                       selection: Binding(
                         get: { !settings.enableNowPlayingDropdown ? .off : settings.mediaDropdownAttached ? .attached : .card },
                         set: { style in
@@ -352,7 +352,7 @@ private struct AirPodsDropdownStylePicker: View {
     enum Style: CaseIterable { case wings, card }
 
     var body: some View {
-        PictureChoice(options: [(Style.wings, L("날개에만", "Wings only")), (Style.card, L("분리", "Detached"))],
+        PictureChoice(options: [(Style.wings, L("노치", "Notch")), (Style.card, L("분리", "Detached"))],
                       selection: Binding(
                         get: { settings.airPodsDropdownWings ? .wings : .card },
                         set: { settings.airPodsDropdownWings = $0 == .wings })) { AirPodsDropdownStyleTile(style: $0) }

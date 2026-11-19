@@ -346,7 +346,7 @@ private struct AgentsCardOrderView: View {
             }
             // Sized to the row count, as the tab list is.
             .frame(height: CGFloat(cards.count) * 26 + 16)
-            Text(L("끌어서 순서 바꾸기. NEEDS YOU는 늘 맨 위", "Drag to reorder. NEEDS YOU stays on top"))
+            Text(L("끌어서 순서 바꾸기.", "Drag to reorder."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

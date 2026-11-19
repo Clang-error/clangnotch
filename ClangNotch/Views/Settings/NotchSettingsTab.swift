@@ -93,11 +93,7 @@ struct NotchSettingsTab: View {
                               isOn: $settings.wingStepAside)
                 if settings.wingStepAside {
                     SettingToggle(L("툴팁 표시", "Show the tooltip"),
-                                  settings.notchOpensOnClick
-                                    ? L("날개가 비켜나 있는 동안 노치 아래에 \"가운데를 눌러서 펼치기\"를 띄움",
-                                        "While a wing is aside, \"Click the middle to open\" shows under the notch")
-                                    : L("날개가 비켜나 있는 동안 노치 아래에 \"가운데에 올려서 펼치기\"를 띄움",
-                                        "While a wing is aside, \"Hover the middle to open\" shows under the notch"),
+                                  L("날개가 비켜나 있는 동안 노치 아래에 툴팁을 띄움", "While a wing is aside, a tooltip shows under the notch"),
                                   isOn: $settings.wingOpenHint)
                         .padding(.leading, 20)
                 }
@@ -212,12 +208,7 @@ private struct WallpaperColorSource: View {
 
         if settings.notchWallpaperSource == "custom" {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("스포이드", "Eyedropper"))
-                    Text(L("화면 아무 곳이나 눌러 그 색을 노치에 칠함", "Click anywhere on screen to paint the notch that colour"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(L("스포이드", "Eyedropper"))
                 Spacer()
                 if let color = NotchAppearance.color(hex: settings.notchCustomColor) {
                     Circle()

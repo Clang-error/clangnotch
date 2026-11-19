@@ -9,7 +9,7 @@ struct AppGeneralSettingsTab: View {
         Form {
             Section {
                 Picker(L("표시 언어", "Display language"), selection: $settings.settingsLanguage) {
-                    Text(L("시스템 언어 따름", "Follow system")).tag("system")
+                    Text(L("시스템 언어를 따름", "Follow system")).tag("system")
                     Text("한국어").tag("ko")
                     Text("English").tag("en")
                 }
@@ -19,7 +19,7 @@ struct AppGeneralSettingsTab: View {
 
             Section {
                 Picker(L("설정 창 색상", "Settings window color"), selection: $settings.settingsAppearance) {
-                    Text(L("시스템 따름", "Follow system")).tag("system")
+                    Text(L("시스템을 따름", "Follow system")).tag("system")
                     Text(L("라이트", "Light")).tag("light")
                     Text(L("다크", "Dark")).tag("dark")
                 }
@@ -32,9 +32,7 @@ struct AppGeneralSettingsTab: View {
                     .onChange(of: launchAtLogin) { _, newValue in
                         LoginItem.setEnabled(newValue)
                     }
-                SettingToggle(L("메뉴 막대 아이콘 표시", "Show menu bar icon"),
-                              L("세션 수, 키보드 잠금, 설정을 메뉴 막대에서 열기", "Sessions, keyboard lock and settings from the menu bar"),
-                              isOn: $settings.showMenuBarItem)
+                SettingToggle(L("메뉴 막대 아이콘 표시", "Show menu bar icon"), isOn: $settings.showMenuBarItem)
             } header: {
                 Text(L("시작", "Startup"))
             }
