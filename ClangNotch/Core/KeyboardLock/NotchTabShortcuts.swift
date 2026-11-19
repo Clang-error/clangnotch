@@ -51,7 +51,7 @@ final class NotchTabShortcuts {
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     if let refcon {
                         let shortcuts = Unmanaged<NotchTabShortcuts>.fromOpaque(refcon).takeUnretainedValue()
-                        if let tap = shortcuts.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+                        EventTapRecovery.tapWasDisabled(shortcuts.eventTap)
                     }
                     return Unmanaged.passUnretained(event)
                 }

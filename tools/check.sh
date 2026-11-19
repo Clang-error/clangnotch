@@ -50,6 +50,13 @@ report error 'Scripts: kill the one instance by its pid (pgrep -f "^/Application
 report error 'Scripts: "| grep -q" fails under pipefail when the writer is still writing (SIGPIPE). Read the output into a variable and test it, or use grep without -q.' \
     "$(lines "tools" '\|[[:space:]]*grep[[:space:]]+(-[a-zA-Z]*q|--quiet)' | grep -v -e '^[^:]*:[0-9]*:[[:space:]]*#' -e '^tools/check.sh:')"
 
+# An active tap (.defaultTap) that macOS switched off must not come straight back: when
+# Accessibility was taken away, a tap that keeps coming back freezes every key and click on the
+# Mac until the app quits (2026-11-19). EventTapRecovery.tapWasDisabled turns it on again only
+# while Accessibility allows it. Checked over the whole tree, by file.
+report error 'Event taps: an active tap handles .tapDisabledByTimeout / .tapDisabledByUserInput with EventTapRecovery.tapWasDisabled(tap), not CGEvent.tapEnable(…, enable: true): re-enabled without Accessibility it freezes the keyboard and mouse.' \
+    "$(grep -rl --include='*.swift' 'tapDisabledByTimeout' ClangNotch | xargs grep -l '\.defaultTap' 2>/dev/null | xargs grep -L 'EventTapRecovery.tapWasDisabled' 2>/dev/null)"
+
 report warning 'repeatForever: fine for a fixed view; on a view whose SF Symbol name changes it redraws at display rate for good (the 30% CPU usage-card bug). Keep the symbol name fixed.' \
     "$(lines "ClangNotch" '\.repeatForever\(')"
 

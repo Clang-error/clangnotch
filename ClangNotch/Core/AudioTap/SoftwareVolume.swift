@@ -157,6 +157,10 @@ final class SoftwareVolume {
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
+    /// Accessibility was taken away (`KeyboardLockManager.accessibilityLost`): the key tap goes
+    /// at once. `syncWithSettings` brings it back once it is allowed again.
+    func dropKeyTap() { stopKeyTap() }
+
     private func stopKeyTap() {
         if let keyTap { CGEvent.tapEnable(tap: keyTap, enable: false); CFMachPortInvalidate(keyTap) }
         if let keyTapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), keyTapSource, .commonModes) }
@@ -166,7 +170,7 @@ final class SoftwareVolume {
 
     private func handle(_ type: CGEventType, _ event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let keyTap { CGEvent.tapEnable(tap: keyTap, enable: true) }
+            EventTapRecovery.tapWasDisabled(keyTap)
             return Unmanaged.passUnretained(event)
         }
         // Media keys: subtype 8, key in the high half of data1, 0xA down / 0xB up after it.

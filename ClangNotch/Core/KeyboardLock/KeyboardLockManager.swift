@@ -99,6 +99,10 @@ final class KeyboardLockManager: ObservableObject {
     func refreshPermissionStatus() {
         let trusted = AXIsProcessTrusted()
         guard trusted != hasAccessibilityPermission else { return }
+        guard trusted else {
+            accessibilityLost()
+            return
+        }
         hasAccessibilityPermission = trusted
         // Allowed after launch (or again after a signature change): the HUD's AX observer and
         // the volume key tap failed then and are only set up at start, so set them up now.
@@ -106,6 +110,18 @@ final class KeyboardLockManager: ObservableObject {
             SystemBannerCenterer.shared.syncWithSettings()
             SoftwareVolume.shared.syncWithSettings()
         }
+    }
+
+    /// Accessibility was taken away: every tap that holds input goes at once, or the Mac's keyboard
+    /// and mouse freeze (`EventTapRecovery`). The volume key tap comes back by itself once it is
+    /// allowed again (`refreshPermissionStatus`), the tab shortcuts at the next open; the lock
+    /// and a key test have to be started again.
+    func accessibilityLost() {
+        hasAccessibilityPermission = false
+        unlock()
+        NotchTabShortcuts.shared.setActive(false)
+        if KeyTester.shared.isTesting { KeyTester.shared.stop() }
+        SoftwareVolume.shared.dropKeyTap()
     }
 
     func openAccessibilitySettings() {
@@ -135,9 +151,7 @@ final class KeyboardLockManager: ObservableObject {
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     if let refcon {
                         let manager = Unmanaged<KeyboardLockManager>.fromOpaque(refcon).takeUnretainedValue()
-                        if let tap = manager.eventTap {
-                            CGEvent.tapEnable(tap: tap, enable: true)
-                        }
+                        EventTapRecovery.tapWasDisabled(manager.eventTap)
                     }
                     return Unmanaged.passUnretained(event)
                 }
