@@ -106,6 +106,11 @@ public final class AppSettings: ObservableObject {
     // When playback stops, the closed notch's media wings go "now" or "later" (1.5 s, the bars
     // resting meanwhile).
     @AppStorage("nowPlayingHideAfterStop") public var nowPlayingHideAfterStop: String = "later"
+    // 설정 -> 기능 -> 미디어 -> 멈춘 곡이 펼친 노치에 남는 시간, in seconds (1–600; 3 minutes, the
+    // old fixed time, by default): a paused track leaves the open notch's 노치 띠 after this, and
+    // the header moves up into it. An app such as Music keeps a paused track "now playing" until
+    // it quits (2026-11-12); settable since 2026-11-19.
+    @AppStorage("nowPlayingBandPausedSeconds") public var nowPlayingBandPausedSeconds: Int = 180
     // The few bars at the right wing's edge while the agents (or tethering) hold the wings.
     @AppStorage("nowPlayingMiniWhileWorking") public var nowPlayingMiniWhileWorking: Bool = true
 

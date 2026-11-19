@@ -25,11 +25,15 @@ final class NowPlayingMonitor: ObservableObject {
         }
     }
 
-    /// Paused for 3 minutes: the 노치 띠 lets it go too. An app such as Music keeps a paused
-    /// track as "now playing" until it quits, and it stayed there all day (user, 2026-11-12).
+    /// Paused for 멈춘 곡이 펼친 노치에 남는 시간 (3 minutes by default): the 노치 띠 lets it go too.
+    /// An app such as Music keeps a paused track as "now playing" until it quits, and it stayed
+    /// there all day (user, 2026-11-12).
     @Published private(set) var pausedLong = false
     private var pausedWork: DispatchWorkItem?
-    private static let pausedLimit: TimeInterval = 3 * 60
+    private static var pausedLimit: TimeInterval { TimeInterval(max(1, AppSettings.shared.nowPlayingBandPausedSeconds)) }
+
+    /// The time was changed in Settings: a track paused now counts it again from now.
+    func pausedLimitChanged() { updatePausedLong() }
 
     private func updatePausedLong() {
         pausedWork?.cancel()

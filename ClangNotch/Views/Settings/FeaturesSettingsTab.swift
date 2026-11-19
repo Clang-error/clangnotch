@@ -236,6 +236,10 @@ struct FeaturesSettingsTab: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.leading, 20)
+                SecondsRow(title: L("멈춘 곡이 펼친 노치에 남는 시간", "How long a paused track stays in the open notch"),
+                           seconds: $settings.nowPlayingBandPausedSeconds, range: 1...600)
+                    .padding(.leading, 20)
+                    .onChange(of: settings.nowPlayingBandPausedSeconds) { NowPlayingMonitor.shared.pausedLimitChanged() }
             }
         }
     }

@@ -59,3 +59,30 @@ struct SettingToggle: View {
         }
     }
 }
+
+/// A time in seconds: the number, "초" and a stepper, kept inside `range` (설정 -> 노치 -> 드롭다운
+/// 머무는 시간, 설정 -> 기능 -> 미디어 -> 멈춘 곡이 펼친 노치에 남는 시간).
+struct SecondsRow: View {
+    let title: String
+    @Binding var seconds: Int
+    var range: ClosedRange<Int> = 2...60
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(alignment: .center, spacing: 6) {
+                TextField("", value: Binding(get: { seconds },
+                                             set: { seconds = min(range.upperBound, max(range.lowerBound, $0)) }),
+                          format: .number)
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .monospacedDigit()
+                    .frame(width: 46)
+                Text(L("초", "s"))
+                    .foregroundColor(.secondary)
+                Stepper("", value: $seconds, in: range)
+                    .labelsHidden()
+            }
+        }
+    }
+}

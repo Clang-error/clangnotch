@@ -11,22 +11,7 @@ struct NotchSettingsTab: View {
     /// In a grouped Form a bare HStack with a text field becomes a label column with the field
     /// dropped below it (user's screenshot, 2026-11-12); LabeledContent keeps one centred row.
     private func foldRow(_ title: String, _ seconds: Binding<Int>, range: ClosedRange<Int> = 2...60) -> some View {
-        LabeledContent(title) {
-            HStack(alignment: .center, spacing: 6) {
-                TextField("", value: Binding(get: { seconds.wrappedValue },
-                                             set: { seconds.wrappedValue = min(range.upperBound, max(range.lowerBound, $0)) }),
-                          format: .number)
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .monospacedDigit()
-                    .frame(width: 46)
-                Text(L("초", "s"))
-                    .foregroundColor(.secondary)
-                Stepper("", value: seconds, in: range)
-                    .labelsHidden()
-            }
-        }
+        SecondsRow(title: title, seconds: seconds, range: range)
     }
 
     var body: some View {
