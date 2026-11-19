@@ -52,6 +52,13 @@ struct AboutSettingsTab: View {
                     Text(L("개발자 Clang_error", "Developer: Clang_error"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    // The project's page: the code, the releases, where to report a problem.
+                    Link(destination: URL(string: "https://github.com/Clang-error/clangnotch")!) {
+                        Text("GitHub")
+                            .font(.caption.weight(.medium))
+                    }
+                    .padding(.top, 2)
+                    .help("github.com/Clang-error/clangnotch")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
