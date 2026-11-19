@@ -43,6 +43,10 @@ final class NotchPanel: NSPanel {
         contentView = container
     }
 
-    override var canBecomeKey: Bool { false }
+    /// True only while something in the notch is being typed into (a question's 직접 입력,
+    /// `UICoordinator.notchTyping`); the rest of the time the notch never takes the keyboard.
+    var acceptsTyping = false
+
+    override var canBecomeKey: Bool { acceptsTyping }
     override var canBecomeMain: Bool { false }
 }

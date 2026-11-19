@@ -30,6 +30,20 @@ enum NotchMode: String, CaseIterable, Identifiable {
 
 }
 
+/// Lets the notch take the keyboard while a question's 직접 입력 is typed into
+/// (`UICoordinator.notchTyping`). An environment value so the question views stay free of the
+/// app's singletons (the layout check compiles them on their own).
+private struct NotchTypingKey: EnvironmentKey {
+    static let defaultValue: @MainActor (Bool) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    var notchTyping: @MainActor (Bool) -> Void {
+        get { self[NotchTypingKey.self] }
+        set { self[NotchTypingKey.self] = newValue }
+    }
+}
+
 struct ClangNotchContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var notchVM = NotchViewModel()
@@ -810,6 +824,7 @@ struct ClangNotchContentView: View {
                              holdSeconds: settings.foldSecondsCopy)
         }
         .compositingGroup()
+        .environment(\.notchTyping, { UICoordinator.shared.notchTyping($0) })
         .environment(\.colorScheme, notchScheme)
         .preferredColorScheme(notchScheme)
         // ⌘1–⌘7 pick the nth visible tab, but only while open: the tap that supplies them
@@ -1955,7 +1970,8 @@ struct ClangNotchContentView: View {
                                                     focusSession(.claude, id)
                                                     notchVM.close()
                                                 }
-                                            } })
+                                            } },
+                                            allowsCustom: !request.isWrapUp)
                             .id(request.id)
                     }
                 }
@@ -2205,7 +2221,7 @@ struct ClangNotchContentView: View {
                     QuestionOptionsView(questions: request.questions, sourceName: "Claude", accentColor: .orange,
                                         onSubmit: claudeQuestionAnswer, goTitle: askingSessionOpenTitle,
                                         onGo: { goToAskingSession() }, scale: questionScale,
-                                        onStep: { questionStep = $0 })
+                                        onStep: { questionStep = $0 }, allowsCustom: true)
                         .id(request.id)
                         .background(ThinScrollers())
                 }
@@ -2230,7 +2246,8 @@ struct ClangNotchContentView: View {
             questionHeader
             QuestionOptionsView(questions: codexInputRequest?.questions ?? claudeInputRequest?.questions ?? [],
                                 sourceName: codexInputRequest == nil ? "Claude" : "Codex", accentColor: questionNoticeColor,
-                                onSubmit: { _ in }, goTitle: askingSessionOpenTitle, onGo: {}, scale: 1.4)
+                                onSubmit: { _ in }, goTitle: askingSessionOpenTitle, onGo: {}, scale: 1.4,
+                                allowsCustom: codexInputRequest == nil)
         }
         .padding(.top, 4)
         .frame(width: limit.width - expandedNotchInset * 2)
@@ -2400,7 +2417,17 @@ struct ClangNotchContentView: View {
         var scale: CGFloat = 1
         /// Which question shows, for the wing header's "질문 1/2".
         var onStep: ((Int) -> Void)? = nil
+        /// 직접 입력 under the options (Claude questions, user 2026-11-19): a typed answer goes
+        /// back as the answer, as Claude's own "Other" does.
+        var allowsCustom = false
+        @Environment(\.notchTyping) private var notchTyping
+        /// Picks per question; `Self.custom` stands for the typed answer.
         @State private var picks: [Int: Set<Int>] = [:]
+        @State private var customText: [Int: String] = [:]
+        /// The question whose 직접 입력 is being typed into.
+        @State private var editing: Int?
+        @FocusState private var fieldFocused: Bool
+        private static let custom = -1
         /// Answerable questions come one at a time (user, 2026-11-18): a pick shows for a moment,
         /// then the next one comes; ‹ 이전 goes back with the earlier pick still marked.
         @State private var step = 0
@@ -2442,6 +2469,8 @@ struct ClangNotchContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .onAppear { onStep?(step) }
             .onChange(of: step) { _, now in onStep?(now) }
+            // The keyboard goes back with the question (answered, folded, replaced).
+            .onDisappear { if editing != nil { notchTyping(false) } }
         }
 
         /// The question in bold over a line, then its options: set apart from each other.
@@ -2477,7 +2506,76 @@ struct ClangNotchContentView: View {
                             }
                         }
                     }
+                    if onSubmit != nil, allowsCustom {
+                        customRow(index, multiSelect: question.multiSelect)
+                            .popIn(.rise, delay: Double(min(question.options.count, 6)) * 0.035)
+                    }
                 }
+            }
+        }
+
+        /// 직접 입력: a row like the options; clicked, it turns into a field (the notch takes the
+        /// keyboard for it), and Return makes the text the answer. Esc leaves it.
+        private func customRow(_ index: Int, multiSelect: Bool) -> some View {
+            let picked = picks[index]?.contains(Self.custom) == true
+            let text = customText[index] ?? ""
+            return HStack(alignment: .firstTextBaseline, spacing: 8 * scale) {
+                Image(systemName: picked ? (multiSelect ? "checkmark.square.fill" : "checkmark.circle.fill") : "pencil")
+                    .font(.system(size: 12 * scale, weight: .medium))
+                    .foregroundColor(picked ? accentColor : NotchPalette.ink.opacity(0.4))
+                if editing == index {
+                    TextField(L("직접 입력", "Type an answer"),
+                              text: Binding(get: { customText[index] ?? "" }, set: { customText[index] = $0 }))
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13 * scale, weight: .medium))
+                        .foregroundColor(NotchPalette.ink)
+                        .focused($fieldFocused)
+                        .onSubmit { commitCustom(index, multiSelect: multiSelect) }
+                        .onExitCommand { stopTyping() }
+                    Text(L("↩ 보내기", "↩ Send"))
+                        .font(.system(size: 11 * scale))
+                        .foregroundColor(NotchPalette.ink.opacity(0.35))
+                } else {
+                    Text(text.isEmpty ? L("직접 입력…", "Type an answer…") : text)
+                        .font(.system(size: 13 * scale, weight: .medium))
+                        .foregroundColor(NotchPalette.ink.opacity(text.isEmpty ? 0.5 : 1))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 12 * scale)
+            .padding(.vertical, 8 * scale)
+            .background(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
+                .fill(picked ? accentColor.opacity(0.2) : NotchPalette.ink.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
+                .stroke(editing == index ? accentColor.opacity(0.7) : picked ? accentColor.opacity(0.7) : .clear, lineWidth: 1.2))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard editing != index else { return }
+                editing = index
+                notchTyping(true)
+                // Once the field is there.
+                DispatchQueue.main.async { fieldFocused = true }
+            }
+        }
+
+        private func stopTyping() {
+            editing = nil
+            fieldFocused = false
+            notchTyping(false)
+        }
+
+        /// Return in 직접 입력: the text is this question's answer (one of the answers, for a
+        /// multiple-choice question), and a single choice goes on as a pick does.
+        private func commitCustom(_ index: Int, multiSelect: Bool) {
+            let text = (customText[index] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            customText[index] = text
+            stopTyping()
+            if multiSelect {
+                picks[index, default: []].insert(Self.custom)
+            } else {
+                pick(Self.custom, in: index, multiSelect: false)
             }
         }
 
@@ -2508,10 +2606,15 @@ struct ClangNotchContentView: View {
                     .buttonStyle(.plain)
                 } else if onGo != nil {
                     // The go button beside it does the going; this only says where to answer.
-                    Text(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
-                                         : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"))
-                        .font(.system(size: 11.5 * scale))
-                        .foregroundColor(NotchPalette.ink.opacity(0.4))
+                    // With 직접 입력 there are no other answers to give elsewhere.
+                    if onSubmit == nil || !allowsCustom {
+                        Text(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
+                                             : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"))
+                            .font(.system(size: 11.5 * scale))
+                            .foregroundColor(NotchPalette.ink.opacity(0.4))
+                    }
+                } else if onSubmit != nil && allowsCustom {
+                    EmptyView()
                 } else {
                     Label(onSubmit == nil ? L("\(sourceName)에서 응답", "Answer in \(sourceName)")
                                           : L("다른 답은 \(sourceName)에서", "Other answers in \(sourceName)"),
@@ -2613,7 +2716,9 @@ struct ClangNotchContentView: View {
             guard canSend, let onSubmit else { return }
             var answers: [String: Any] = [:]
             for (index, question) in questions.enumerated() {
-                let labels = (picks[index] ?? []).sorted().map { question.options[$0].label }
+                // The typed answer last, after the options picked with it.
+                let labels = (picks[index] ?? []).sorted { $0 == Self.custom ? false : $1 == Self.custom ? true : $0 < $1 }
+                    .map { $0 == Self.custom ? customText[index] ?? "" : question.options[$0].label }
                 answers[question.question] = question.multiSelect ? labels : labels.first
             }
             onSubmit(answers)
@@ -2964,7 +3069,7 @@ struct ClangNotchContentView: View {
             questionHeader
             QuestionOptionsView(questions: questions, sourceName: sourceName, accentColor: accentColor,
                                 onSubmit: sourceName == "Claude" ? claudeQuestionAnswer : codexQuestionAnswer,
-                                goTitle: askingSessionOpenTitle, onGo: {})
+                                goTitle: askingSessionOpenTitle, onGo: {}, allowsCustom: sourceName == "Claude")
         }
         .padding(.top, 10)
         .frame(width: openNotchSize.width - expandedNotchInset * 2)

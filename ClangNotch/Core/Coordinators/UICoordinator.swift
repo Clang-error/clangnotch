@@ -143,6 +143,19 @@ public final class UICoordinator: ObservableObject {
         return NSEvent.mouseLocation.y > screen.frame.maxY - 220
     }
 
+    /// The notch takes the keyboard while a question's 직접 입력 is typed into, and gives it back
+    /// after. The panel is non-activating, so the app in front stays the active app, as with
+    /// Spotlight.
+    func notchTyping(_ on: Bool) {
+        guard let panel = notchPanel else { return }
+        panel.acceptsTyping = on
+        if on {
+            panel.makeKey()
+        } else if panel.isKeyWindow {
+            panel.resignKey()
+        }
+    }
+
     private func repositionNotchPanel() {
         guard let panel = notchPanel, let screen = NotchDetector.notchScreen else { return }
         let f = screen.frame
