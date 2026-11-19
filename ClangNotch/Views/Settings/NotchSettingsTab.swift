@@ -101,13 +101,17 @@ struct NotchSettingsTab: View {
                                   isOn: $settings.wingOpenHint)
                         .padding(.leading, 20)
                 }
-                SettingToggle(L("열릴 때 햅틱", "Haptic on open"),
-                              L("노치가 펼쳐질 때 트랙패드 햅틱", "Trackpad haptic when the notch opens"),
-                              isOn: $settings.notchHapticsEnabled)
+                // Only opening on hover taps the trackpad: with 눌러서 열기 the click is the feedback,
+                // so the switch would do nothing and isn't shown (user, 2026-11-19).
+                if !settings.notchOpensOnClick {
+                    SettingToggle(L("열릴 때 햅틱", "Haptic on open"),
+                                  L("노치가 펼쳐질 때 트랙패드 햅틱", "Trackpad haptic when the notch opens"),
+                                  isOn: $settings.notchHapticsEnabled)
+                }
                 SettingToggle(L("끝날 때 햅틱", "Haptic when done"),
                               L("세션이 작업을 끝내면 트랙패드 햅틱", "Trackpad haptic when a session finishes"),
                               isOn: $settings.doneHapticsEnabled)
-                if settings.notchHapticsEnabled || settings.doneHapticsEnabled {
+                if (settings.notchHapticsEnabled && !settings.notchOpensOnClick) || settings.doneHapticsEnabled {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text(L("햅틱 세기", "Haptic strength"))
