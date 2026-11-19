@@ -18,6 +18,16 @@ struct AppGeneralSettingsTab: View {
             }
 
             Section {
+                Picker(L("설정 창 색상", "Settings window color"), selection: $settings.settingsAppearance) {
+                    Text(L("시스템 따름", "Follow system")).tag("system")
+                    Text(L("라이트", "Light")).tag("light")
+                    Text(L("다크", "Dark")).tag("dark")
+                }
+            } header: {
+                Text(L("설정 창", "Settings window"))
+            }
+
+            Section {
                 Toggle(L("로그인 시 실행", "Launch at login"), isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in
                         LoginItem.setEnabled(newValue)

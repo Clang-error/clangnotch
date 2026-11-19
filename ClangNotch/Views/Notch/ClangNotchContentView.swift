@@ -1732,46 +1732,75 @@ struct ClangNotchContentView: View {
                              bright: useCodex ? codexBrightColor : claudeBrightColor)
     }
 
-    private var usageOverview: some View {
-        VStack(spacing: 12) {
-            // The demo's Codex-only scene has no Claude card at all.
-            if settings.showSourceClaudeCode && !(DemoMode.isActive && DemoMode.scene == .codex) {
-                NotchSection {
-                    if settings.enableClaudeUsage {
-                        ClaudeUsageNotchSection()
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Claude")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(NotchPalette.ink.opacity(0.55))
-                            Text(L("사용량 조회가 꺼져 있습니다. 설정에서 켜면 5시간·7일 사용량을 확인할 수 있습니다.", "Usage tracking is off. Turn it on in Settings to see 5-hour and 7-day usage."))
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button(L("사용량 설정 열기", "Open usage settings")) { openSettings() }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(chipAccent)
-                        }
+    /// One of the Agents tab's cards under NEEDS YOU, in the order 설정 -> 에이전트 -> Agents 탭 카드
+    /// keeps (`AgentsCard`).
+    @ViewBuilder
+    private func agentsCard(_ card: AgentsCard) -> some View {
+        switch card {
+        case .claudeUsage: claudeUsageCard
+        case .codexUsage: codexUsageCard
+        case .tasks:
+            // Show todo list if enabled and has items
+            if settings.showSourceClaudeCode && settings.showTodoList && !claudeCodeManager.state.todos.isEmpty {
+                NotchSection(title: claudeCodeManager.selectedSession.map { "Current Tasks · \($0.displayName)" } ?? "Current Tasks") {
+                    TodoListView(todos: claudeCodeManager.state.todos, maxItems: 4)
+                }
+            }
+        case .sessions:
+            // The outer AI scroll view owns scrolling, so the session list renders all rows.
+            NotchSection(title: "Sessions") {
+                ClaudeSessionListView(
+                    manager: claudeCodeManager,
+                    codexManager: codexManager,
+                    onSelect: { showSessionDetail($0) }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var claudeUsageCard: some View {
+        // The demo's Codex-only scene has no Claude card at all.
+        if settings.showSourceClaudeCode && !(DemoMode.isActive && DemoMode.scene == .codex) {
+            NotchSection {
+                if settings.enableClaudeUsage {
+                    ClaudeUsageNotchSection()
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Claude")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(NotchPalette.ink.opacity(0.55))
+                        Text(L("사용량 조회가 꺼져 있습니다. 설정에서 켜면 5시간·7일 사용량을 확인할 수 있습니다.", "Usage tracking is off. Turn it on in Settings to see 5-hour and 7-day usage."))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(L("사용량 설정 열기", "Open usage settings")) { openSettings() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(chipAccent)
                     }
                 }
             }
-            // The demo's Claude-only scenes have no Codex card at all (it read "no usage data yet").
-            if settings.showSourceCodex && settings.showCodexUsage,
-               !(DemoMode.isActive && (DemoMode.scene == .claude || DemoMode.scene == .ssh)) {
-                NotchSection {
-                    if codexManager.rateLimits.hasData {
-                        CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Codex")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(NotchPalette.ink.opacity(0.55))
-                            Text(L("아직 사용량 데이터가 없습니다. Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "No usage data yet. It appears once a Codex session reports its limits."))
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+        }
+    }
+
+    @ViewBuilder
+    private var codexUsageCard: some View {
+        // The demo's Claude-only scenes have no Codex card at all (it read "no usage data yet").
+        if settings.showSourceCodex && settings.showCodexUsage,
+           !(DemoMode.isActive && (DemoMode.scene == .claude || DemoMode.scene == .ssh)) {
+            NotchSection {
+                if codexManager.rateLimits.hasData {
+                    CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Codex")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(NotchPalette.ink.opacity(0.55))
+                        Text(L("아직 사용량 데이터가 없습니다. Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "No usage data yet. It appears once a Codex session reports its limits."))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -1847,25 +1876,7 @@ struct ClangNotchContentView: View {
                     }
                 }
 
-
-                usageOverview
-
-                // Show todo list if enabled and has items
-                if settings.showSourceClaudeCode && settings.showTodoList && !claudeCodeManager.state.todos.isEmpty {
-                    NotchSection(title: claudeCodeManager.selectedSession.map { "Current Tasks · \($0.displayName)" } ?? "Current Tasks") {
-                        TodoListView(todos: claudeCodeManager.state.todos, maxItems: 4)
-                    }
-                }
-
-                // The outer AI scroll view owns scrolling, so the session list renders all rows.
-                NotchSection(title: "Sessions") {
-                    ClaudeSessionListView(
-                        manager: claudeCodeManager,
-                        codexManager: codexManager,
-                        onSelect: { showSessionDetail($0) }
-                    )
-                }
-
+                ForEach(AgentsCard.order(from: settings.agentsCardOrder)) { agentsCard($0) }
             }
             .padding(.horizontal, 1)
             .padding(.top, 1)

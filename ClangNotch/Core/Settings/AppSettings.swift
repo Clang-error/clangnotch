@@ -136,6 +136,10 @@ public final class AppSettings: ObservableObject {
     // Reorderable from Settings; unknown/new modes are appended by NotchMode.order(from:).
     @AppStorage("notchModeOrder") public var notchModeOrder: String =
         "ai,volume,sidecar,clipboard,speed,battery,keyboardLock"
+    // Order of the Agents tab's cards under NEEDS YOU (which stays on top), as comma-joined
+    // AgentsCard rawValues; 설정 -> 에이전트 -> Agents 탭 카드 (2026-11-19). Empty: the order they
+    // always had. Unknown or new cards are appended by AgentsCard.order(from:).
+    @AppStorage("agentsCardOrder") public var agentsCardOrder: String = ""
 
 
     // Battery saver: on battery the glow is capped at 30 fps; no cap while charging.
@@ -251,6 +255,9 @@ public final class AppSettings: ObservableObject {
     /// 2026-11-13: Korean on a Korean system, English on any other), "ko" or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.
     @AppStorage("settingsLanguage") public var settingsLanguage: String = "system"
+    // 설정 -> 일반 -> 설정 창 색상: "system" (follows macOS light and dark), "light" or "dark", for
+    // the settings window alone (2026-11-19). The notch has its own 노치 색.
+    @AppStorage("settingsAppearance") public var settingsAppearance: String = "system"
 
     public init() {}
 

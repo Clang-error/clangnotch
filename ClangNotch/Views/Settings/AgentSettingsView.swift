@@ -76,7 +76,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var keywords: [String] {
         switch self {
         case .about:    return ["버전", "업데이트", "version", "updates"]
-        case .general:  return ["언어", "로그인", "메뉴 막대", "배터리 절약", "language", "login", "menu bar", "battery saver"]
+        case .general:  return ["언어", "로그인", "메뉴 막대", "배터리 절약", "설정 창", "색상", "라이트", "다크",
+                                "language", "login", "menu bar", "battery saver", "settings window", "light", "dark"]
         case .notch:    return ["노치 색", "라이트", "다크", "배경", "탭", "순서", "열기", "햅틱", "전체 화면", "표시", "메뉴바",
                                 "notch color", "light", "dark", "wallpaper", "tabs", "order", "opening", "haptic", "full screen", "visibility",
                                 "디스플레이", "모니터", "화면", "display", "monitor"]
@@ -87,7 +88,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
                                      "features", "battery alerts", "airpods", "dropdown", "wings", "headset", "macbook", "battery"]
         case .media:    return ["기능", "음악", "재생", "영상", "features", "music", "now playing"]
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
-        case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
+        case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격", "카드", "순서",
                                 "sounds", "remind", "usage", "context", "remote"]
         case .security: return ["보안", "권한", "허용", "위험", "승인", "security", "permission", "allow", "danger", "approve"]
         case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "효과음", "입력", "소리", "크기", "헤드폰", "이어폰", "블루투스", "단축키",
@@ -227,6 +228,8 @@ public struct AgentSettingsView: View {
             }
             .opacity(0)
         }
+        // 설정 -> 일반 -> 설정 창 색상: on the window, so its toolbar and sidebar follow too.
+        .background(SettingsWindowAppearance(mode: settings.settingsAppearance))
         // The window's height (600, set where it is made), not a fixed one: a fixed 600 asked for
         // 600 below the toolbar, so the window grew 52pt and that strip stayed empty (2026-11-11).
         .frame(width: 780)
@@ -456,4 +459,23 @@ private struct SettingsPageIcon: View {
 
 #Preview {
     AgentSettingsView(navigator: SettingsNavigator())
+}
+
+/// Sets the settings window's appearance from 설정 창 색상: nil follows macOS, else light or dark.
+/// Set on the NSWindow rather than with `preferredColorScheme`, which on macOS doesn't go back to
+/// following the system once it has been set to a scheme.
+private struct SettingsWindowAppearance: NSViewRepresentable {
+    let mode: String
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        let appearance: NSAppearance? = switch mode {
+        case "light": NSAppearance(named: .aqua)
+        case "dark": NSAppearance(named: .darkAqua)
+        default: nil
+        }
+        // The view joins its window after the first update.
+        DispatchQueue.main.async { view.window?.appearance = appearance }
+    }
 }

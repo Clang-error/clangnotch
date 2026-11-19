@@ -77,6 +77,12 @@ struct AgentsSettingsTab: View {
             }
 
             Section {
+                AgentsCardOrderView(settings: settings)
+            } header: {
+                Text(L("Agents 탭 카드", "Agents tab cards"))
+            }
+
+            Section {
                 Toggle(L("사용", "Enabled"), isOn: claudeEnabled)
                 Toggle(L("할 일 목록 표시 (Current Tasks 카드)", "Show todo list (Current Tasks card)"), isOn: $settings.showTodoList)
                     .disabled(!claudeEnabled.wrappedValue)
@@ -299,6 +305,69 @@ private struct CodexAccountStatus: View {
             Text(L("Codex가 이 Mac에 남긴 로그인 확인. 감지 안 되면 Codex에서 로그인", "Checks the sign-in Codex left on this Mac. Sign in with Codex if not detected"))
                 .font(.caption2)
                 .foregroundColor(.secondary.opacity(0.7))
+        }
+    }
+}
+
+/// 설정 -> 에이전트 -> Agents 탭 카드: the Agents tab's cards under NEEDS YOU (which stays on top),
+/// dragged to reorder in a plain list like 설정 › 노치 › 탭 (2026-11-19). A card that wouldn't show
+/// (its agent or its own switch off) is dimmed, as the tab list dims a tab whose feature is off.
+private struct AgentsCardOrderView: View {
+    @ObservedObject var settings: AppSettings
+
+    private var cards: [AgentsCard] { AgentsCard.order(from: settings.agentsCardOrder) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            List {
+                ForEach(cards) { card in
+                    let on = shows(card)
+                    HStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(title(card))
+                            .font(.system(size: 12))
+                            .foregroundStyle(on ? .primary : .secondary)
+                        Spacer()
+                        if !on {
+                            Text(L("꺼짐", "Off"))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .onMove { source, destination in
+                    var reordered = cards
+                    reordered.move(fromOffsets: source, toOffset: destination)
+                    settings.agentsCardOrder = AgentsCard.stored(reordered)
+                }
+            }
+            // Sized to the row count, as the tab list is.
+            .frame(height: CGFloat(cards.count) * 26 + 16)
+            Text(L("끌어서 순서 바꾸기. NEEDS YOU는 늘 맨 위", "Drag to reorder. NEEDS YOU stays on top"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func title(_ card: AgentsCard) -> String {
+        switch card {
+        case .claudeUsage: return L("Claude 사용량", "Claude usage")
+        case .codexUsage: return L("Codex 사용량", "Codex usage")
+        case .tasks: return "Current Tasks"
+        case .sessions: return "Sessions"
+        }
+    }
+
+    /// Whether the card would show in the notch at all, as `ClangNotchContentView.agentsCard` decides.
+    private func shows(_ card: AgentsCard) -> Bool {
+        switch card {
+        case .claudeUsage: return settings.showSourceClaudeCode
+        case .codexUsage: return settings.showSourceCodex && settings.showCodexUsage
+        case .tasks: return settings.showSourceClaudeCode && settings.showTodoList
+        case .sessions: return true
         }
     }
 }
