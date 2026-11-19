@@ -1,94 +1,58 @@
+import AppKit
 import SwiftUI
 
-/// Right side of the open-notch header, before the buttons: the tethering warning and the
-/// pinned devices' battery levels, each a small capsule. When they don't fit beside the
-/// 요약 줄 they shrink step by step: the warning drops its words, earbuds show only their
-/// lower side, then devices from the end fold into a "+N" capsule.
+/// The open-notch header's device chip, before the header buttons: the battery of the device
+/// pinned with 헤더에 표시 (one since 2026-11-19), while it is connected. Earbuds caught
+/// separately show L and R, or, `compact` (beside the camera, where room is short), the lower
+/// side alone.
 struct HeaderStatusChips: View {
     @ObservedObject private var battery = BatteryManager.shared
     @ObservedObject private var settings = AppSettings.shared
-    @ObservedObject private var tether = TetherPlaceMonitor.shared
+    var compact = false
 
-    private struct Fit: Hashable {
-        var tetherWords: Bool
-        var splitEarbuds: Bool
-        var shown: Int
-    }
-
-    /// The pinned devices that are connected, in the order the user set.
-    private var devices: [BatteryDevice] {
-        settings.headerBatteryDeviceIDs.split(separator: "\n").compactMap { id in
-            battery.devices.first { $0.id == id && $0.isConnected }
-        }
+    /// The pinned device, while it is connected.
+    @MainActor static var device: BatteryDevice? {
+        let id = AppSettings.shared.headerBatteryDeviceIDs.split(separator: "\n").first.map(String.init)
+        return BatteryManager.shared.devices.first { $0.id == id && $0.isConnected }
     }
 
     var body: some View {
-        let devices = self.devices
-        let tethering = tether.activePlaceName != nil
-        if tethering || !devices.isEmpty {
-            let fits = [Fit(tetherWords: true, splitEarbuds: true, shown: devices.count),
-                        Fit(tetherWords: false, splitEarbuds: true, shown: devices.count)]
-                + stride(from: devices.count, through: 0, by: -1).map {
-                    Fit(tetherWords: false, splitEarbuds: false, shown: $0)
-                }
-            ViewThatFits(in: .horizontal) {
-                ForEach(fits, id: \.self) { fit in
-                    row(fit, devices: devices, tethering: tethering)
-                }
-            }
+        // Read through the observed objects so a change redraws the chip.
+        let _ = (battery.devices.count, settings.headerBatteryDeviceIDs)
+        if let device = Self.device {
+            chip(device)
+        }
+    }
+
+    private static func earbuds(_ device: BatteryDevice) -> [BatteryPart] {
+        device.parts.filter { $0.label == "L" || $0.label == "R" }
+    }
+
+    /// The chip's width as drawn, for deciding whether the header fits beside the camera
+    /// (0 with no chip).
+    @MainActor static func width(compact: Bool) -> CGFloat {
+        guard let device else { return 0 }
+        let text = { (s: String, size: CGFloat) in HeaderChipMetrics.textWidth(s, size) }
+        let earbuds = earbuds(device)
+        var content = HeaderChipMetrics.icon
+        if !compact && earbuds.count == 2 {
+            for part in earbuds { content += 4 + text(part.label, 10) + 4 + text("\(part.percent)%", 11) }
         } else {
-            // Something must stay here: an empty body drops the caller's flexible frame
-            // with it, and the header buttons slid to the middle.
-            Color.clear.frame(height: 0)
+            content += 4 + text("\(device.displayLevel)%", 11)
         }
+        return content + 2 * HeaderChipMetrics.padding
     }
 
-    private func row(_ fit: Fit, devices: [BatteryDevice], tethering: Bool) -> some View {
-        HStack(spacing: 6) {
-            if tethering { tetherChip(words: fit.tetherWords) }
-            ForEach(devices.prefix(fit.shown)) { device in
-                deviceChip(device, splitEarbuds: fit.splitEarbuds)
-            }
-            if fit.shown < devices.count {
-                let hidden = devices.dropFirst(fit.shown)
-                Text("+\(hidden.count)")
-                    .foregroundColor(NotchPalette.ink.opacity(0.6))
-                    .modifier(HeaderChip())
-                    .help(hidden.map { "\($0.name) \($0.displayLevel)%" }.joined(separator: "\n"))
-            }
-            // Sets the chips apart from the header buttons.
-            Rectangle()
-                .fill(NotchPalette.ink.opacity(0.14))
-                .frame(width: 1, height: 14)
-                .padding(.leading, 4)
-        }
-        .font(.system(size: 11, weight: .semibold, design: .rounded))
-        .monospacedDigit()
-        .lineLimit(1)
-        .fixedSize()
-    }
-
-    private func tetherChip(words: Bool) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "personalhotspot")
-                .font(.system(size: 10, weight: .semibold))
-            if words { Text(L("테더링 중", "Tethering")) }
-        }
-        .foregroundColor(.red)
-        .modifier(Breathing(active: true))
-        .modifier(HeaderChip(fill: Color.red.opacity(0.16), stroke: Color.red.opacity(0.35)))
-        .help(L("테더링 연결 중 · 해제 권장", "Tethering on · disconnect advised"))
-    }
-
-    private func deviceChip(_ device: BatteryDevice, splitEarbuds: Bool) -> some View {
+    private func chip(_ device: BatteryDevice) -> some View {
         HStack(spacing: 4) {
             Image(systemName: device.compactSymbol)
                 .font(.system(size: 11))
                 .foregroundColor(NotchPalette.ink.opacity(0.6))
+                .frame(width: HeaderChipMetrics.icon)
             // Earbuds caught separately show L and R, so one running down first is visible.
             // One side caught: the icon already says which, so just the level.
-            let earbuds = device.parts.filter { $0.label == "L" || $0.label == "R" }
-            if splitEarbuds && earbuds.count == 2 {
+            let earbuds = Self.earbuds(device)
+            if !compact && earbuds.count == 2 {
                 ForEach(earbuds, id: \.label) { part in
                     Text(part.label)
                         .font(.system(size: 10, weight: .semibold))
@@ -99,6 +63,10 @@ struct HeaderStatusChips: View {
                 level(device.displayLevel)
             }
         }
+        .font(.system(size: 11, weight: .semibold, design: .rounded))
+        .monospacedDigit()
+        .lineLimit(1)
+        .fixedSize()
         .modifier(HeaderChip())
         .help(device.name)
     }
@@ -109,14 +77,54 @@ struct HeaderStatusChips: View {
     }
 }
 
+/// The tethering warning in the open-notch header, after the 요약 줄 (on the left in both the
+/// band and the row under it, so it never crosses the camera). `compact` drops its words.
+struct TetherHeaderChip: View {
+    var compact = false
+
+    @MainActor static func width(compact: Bool) -> CGFloat {
+        HeaderChipMetrics.icon + (compact ? 0 : 4 + HeaderChipMetrics.textWidth(L("테더링 중", "Tethering"), 11))
+            + 2 * HeaderChipMetrics.padding
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "personalhotspot")
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: HeaderChipMetrics.icon)
+            if !compact { Text(L("테더링 중", "Tethering")) }
+        }
+        .font(.system(size: 11, weight: .semibold, design: .rounded))
+        .lineLimit(1)
+        .fixedSize()
+        .foregroundColor(.red)
+        .modifier(Breathing(active: true))
+        .modifier(HeaderChip(fill: Color.red.opacity(0.16), stroke: Color.red.opacity(0.35)))
+        .help(L("테더링 연결 중 · 해제 권장", "Tethering on · disconnect advised"))
+    }
+}
+
+/// Sizes the header's chips share, so their widths can be worked out without drawing them.
+enum HeaderChipMetrics {
+    static let height: CGFloat = 24
+    static let padding: CGFloat = 8
+    static let icon: CGFloat = 14
+
+    static func textWidth(_ text: String, _ size: CGFloat) -> CGFloat {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+        let rounded = font.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? font
+        return ceil((text as NSString).size(withAttributes: [.font: rounded]).width)
+    }
+}
+
 private struct HeaderChip: ViewModifier {
     var fill = NotchPalette.ink.opacity(0.08)
     var stroke: Color? = nil
 
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, 8)
-            .frame(height: 22)
+            .padding(.horizontal, HeaderChipMetrics.padding)
+            .frame(height: HeaderChipMetrics.height)
             .background(Capsule().fill(fill))
             .overlay { if let stroke { Capsule().strokeBorder(stroke, lineWidth: 1) } }
     }

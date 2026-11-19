@@ -54,6 +54,12 @@ final class NowPlayingMonitor: ObservableObject {
     private var lingerWork: DispatchWorkItem?
     private static let lingerTime: TimeInterval = 1.5
 
+    /// The open notch's 노치 띠 shows what plays (`NotchBandNowPlaying`); while it doesn't, the
+    /// header moves up into the band. One test for both, so they never disagree.
+    var showsInBand: Bool {
+        AppSettings.shared.enableNowPlaying && nowPlaying != nil && !pausedLong
+    }
+
     /// Shown in the closed notch: something plays (or just stopped and lingers), the feature is
     /// on (it is stopped, and `nowPlaying` nil, when off), and its card is neither down nor
     /// about to drop.

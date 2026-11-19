@@ -122,7 +122,9 @@ public final class AppSettings: ObservableObject {
     /// The 복사 방울, from when it has come off (1–60: its check takes about 0.9 s to draw).
     @AppStorage("foldSecondsCopy") public var foldSecondsCopy: Int = 1
 
-    // Battery device ids shown in the open notch header, newline-separated.
+    // The battery device shown in the open notch header (Battery tab -> 헤더에 표시). One at most
+    // since 2026-11-19, so the header fits beside the camera; the key keeps its old name and its
+    // newline-separated form (`migrateHeaderDevices` keeps the first of an older list).
     @AppStorage("headerBatteryDeviceIDs") public var headerBatteryDeviceIDs: String = ""
 
     // Closed-notch low-battery priority order, newline-separated, first = highest.
@@ -263,6 +265,13 @@ public final class AppSettings: ObservableObject {
 
     /// The SSH switches came after the host lists (2026-11-12): a list someone already filled
     /// in keeps working instead of going quiet behind a switch that defaults to off.
+    /// One header device since 2026-11-19: an older list keeps its first, so the Battery tab's
+    /// pin marks and the header agree.
+    func migrateHeaderDevices() {
+        let ids = headerBatteryDeviceIDs.split(separator: "\n")
+        if ids.count > 1 { headerBatteryDeviceIDs = String(ids[0]) }
+    }
+
     func migrateRemoteSwitches() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "remoteClaudeEnabled") == nil, !SSHHost.list(remoteClaudeHosts).isEmpty { remoteClaudeEnabled = true }

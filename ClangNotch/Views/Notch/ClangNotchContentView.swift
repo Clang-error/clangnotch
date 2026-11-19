@@ -51,6 +51,10 @@ struct ClangNotchContentView: View {
     @ObservedObject private var ui = UICoordinator.shared
     @State private var expandedMode: NotchMode = .ai
     @State private var hoverTask: Task<Void, Never>?
+    /// Where the open notch's header row sits (`HeaderPlacement`), and the wait for a press to end
+    /// before it moves.
+    @State private var headerPlacement: HeaderPlacement = .rows
+    @State private var headerPlacementTask: Task<Void, Never>?
     @State private var hoverExitNotBefore = Date.distantPast
     @State private var isMenuTracking = false
     @State private var showStartupGlow = false
@@ -230,9 +234,53 @@ struct ClangNotchContentView: View {
 
     private var hasSpeedTest: Bool { settings.enableSpeedTest }
 
-    /// 열린 헤더는 요약 줄과 헤더 버튼이 물리 노치 아래에 한 줄 더 들어가야 한다.
+    /// 열린 헤더는 요약 줄과 헤더 버튼이 물리 노치 아래에 한 줄 더 들어가야 한다. 노치 띠에 올라가
+    /// 있으면(`HeaderPlacement.band`) 그 줄이 빠진다.
     private var headerHeight: CGFloat {
-        notchVM.notchState == .open ? notchVM.closedNotchSize.height + openHeaderHeight : notchVM.closedNotchSize.height
+        guard notchVM.notchState == .open else { return notchVM.closedNotchSize.height }
+        return notchVM.closedNotchSize.height + (headerPlacement == .rows ? openHeaderHeight : 0)
+    }
+
+    /// The open notch's header row (요약 줄, tethering, the device chip, the buttons): up in the
+    /// 노치 띠 beside the camera while nothing plays there, the row under it otherwise (user's
+    /// 시안 A, 2026-11-19). `compact` is the band's shorter form: the status capsule without its
+    /// words, tethering without its words, earbuds with their lower side only.
+    enum HeaderPlacement: Equatable { case band(compact: Bool), rows }
+
+    /// Where the header row should sit now. Up in the band only when it fits beside the camera,
+    /// with 4 pt to spare before going up, so a width right at the edge doesn't flap.
+    private var desiredHeaderPlacement: HeaderPlacement {
+        guard !nowPlayingMonitor.showsInBand else { return .rows }
+        // The open width also while closed, so the placement is ready before the notch opens.
+        let width = notchVM.notchState == .open ? notchVM.notchSize.width : openNotchSize.width
+        let side = (width - 2 * expandedNotchInset - notchVM.closedNotchSize.width) / 2 - 10
+        let room = side - (headerPlacement == .rows ? 4 : 0)
+        let tethering = tetherMonitor.activePlaceName != nil
+        for compact in [false, true] {
+            let left = overviewWidth(compact: compact) + (tethering ? 10 + TetherHeaderChip.width(compact: compact) : 0)
+            let chip = HeaderStatusChips.width(compact: compact)
+            let right = (chip > 0 ? chip + 8 : 0) + NotchControlGroup.width
+            if left <= room && right <= room { return .band(compact: compact) }
+        }
+        return .rows
+    }
+
+    /// Moves the header row. While the notch is open it glides with the notch's spring, but not
+    /// under a press: whatever is held in the tab (a volume pill) would slide from under the pointer.
+    private func placeHeader(_ placement: HeaderPlacement) {
+        headerPlacementTask?.cancel()
+        guard notchVM.notchState == .open else {
+            headerPlacement = placement
+            return
+        }
+        headerPlacementTask = Task { @MainActor in
+            while NSEvent.pressedMouseButtons != 0 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if Task.isCancelled { return }
+            }
+            guard headerPlacement != placement else { return }
+            withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : notchOpenSpring) { headerPlacement = placement }
+        }
     }
 
     /// 설정에서 지정한 순서대로, 지금 쓸 수 있는 탭만. 탭이 보이는지는 설정 › 기능의 스위치
@@ -771,6 +819,7 @@ struct ClangNotchContentView: View {
             // 배경 따라: catches a wallpaper changed since the last look.
             if state != .closed { appearance.refreshWallpaper() }
         }
+        .onChange(of: desiredHeaderPlacement, initial: true) { _, placement in placeHeader(placement) }
         // 날개에만: only the card, not the whole dropdown, whose hover and phase would redraw this view.
         .onReceive(AirPodsDropdown.shared.$card.combineLatest(AirPodsDropdown.shared.$inWings)
             .map { card, inWings in inWings ? card : nil }
@@ -1506,12 +1555,19 @@ struct ClangNotchContentView: View {
     }
 
     private var openHeader: some View {
-        VStack(spacing: 0) {
-            // Keep all controls below the physical camera housing. Beside it, the 노치 띠 shows
-            // what plays.
-            ZStack {
-                Color.clear
-                if settings.enableNowPlaying {
+        let band = notchVM.closedNotchSize.height
+        let row = HeaderChipMetrics.height
+        let compact: Bool = { if case .band(let compact) = headerPlacement { return compact } else { return false } }()
+        let inBand = headerPlacement != .rows
+        // One row that only moves up or down: its left group hugs the left edge and its right
+        // group the right edge in both places, so nothing crosses the camera. In the band it sits
+        // a little below the housing's middle, as the band's player does.
+        let top = inBand ? max(0, (band - row) / 2 + 2) : band + (openHeaderHeight - row) / 2
+        return ZStack(alignment: .top) {
+            // Beside the camera, the 노치 띠 shows what plays; the header row leaves it then.
+            if !inBand && settings.enableNowPlaying {
+                ZStack {
+                    Color.clear
                     NotchBandNowPlaying(housingWidth: notchVM.closedNotchSize.width) { playing in
                         notchVM.close()
                         Task { @MainActor in
@@ -1529,26 +1585,28 @@ struct ClangNotchContentView: View {
                     // (user, 2026-11-12: it floated too far above the settings buttons).
                     .offset(y: 5)
                 }
+                .frame(height: band)
+                .transition(.opacity)
             }
-            .frame(height: notchVM.closedNotchSize.height)
             HStack(spacing: 10) {
-                agentOverview
-                // Takes the width left between the 요약 줄 and the buttons, and shrinks to fit it.
-                HeaderStatusChips()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                // Apple's own mute look: the bell, struck through when the sounds are off.
-                NotchControlButton(systemName: settings.notchSoundsEnabled ? "bell" : "bell.slash",
-                                   tint: settings.notchSoundsEnabled ? nil : NotchPalette.ink.opacity(0.45)) {
-                    settings.notchSoundsEnabled.toggle()
+                HStack(spacing: 10) {
+                    agentOverview(compact: compact)
+                    if tetherMonitor.activePlaceName != nil { TetherHeaderChip(compact: compact) }
                 }
-                .help(settings.notchSoundsEnabled ? L("효과음 끄기", "Mute sounds") : L("효과음 켜기", "Turn sounds on"))
-                NotchControlButton(systemName: "gearshape") { openSettings() }
-                    .help(L("설정", "Settings"))
-                NotchControlButton(systemName: "power", tint: NotchPalette.ink.opacity(0.5)) { confirmQuit() }
-                    .help(L("ClangNotch 종료", "Quit ClangNotch"))
+                Spacer(minLength: 0)
+                HStack(spacing: 8) {
+                    HeaderStatusChips(compact: compact)
+                    NotchControlGroup(soundsOn: settings.notchSoundsEnabled,
+                                      toggleSounds: { settings.notchSoundsEnabled.toggle() },
+                                      openSettings: { openSettings() },
+                                      quit: { confirmQuit() })
+                }
             }
-            .frame(height: openHeaderHeight)
+            .frame(height: row)
+            // Padding, not an offset: an offset leaves the row's hover and click areas behind.
+            .padding(.top, top)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var expandedContent: some View {
@@ -1661,26 +1719,50 @@ struct ClangNotchContentView: View {
             || codexHasRealActivity
     }
 
-    /// 요약 줄, at the head of the open notch so it shows on every tab.
-    private var agentOverview: some View {
+    /// The 상태 캡슐's words: 대기 중, or 작업 중 and how many sessions work.
+    private var overviewStatusText: String {
+        let working = (settings.showSourceClaudeCode
+                       ? claudeCodeManager.availableSessions.filter { claudeCodeManager.sessionStates[$0.id]?.isActive == true }.count : 0)
+            + (settings.showSourceCodex
+               ? codexManager.availableSessions.filter { codexManager.sessionStates[$0.id]?.isActive == true }.count : 0)
+        return !overviewHasActivity ? L("대기 중", "Quiet")
+            : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working")
+    }
+
+    /// The 요약 줄's width as drawn, for deciding whether the header fits beside the camera.
+    private func overviewWidth(compact: Bool) -> CGFloat {
+        func text(_ string: String) -> CGFloat {
+            ceil((string as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)]).width)
+        }
+        var parts: [CGFloat] = [compact ? 6 + StatusDotView.side + 6 : 10 + StatusDotView.side + 6 + text(overviewStatusText) + 10]
+        let claudeCount = settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0
+        let codexCount = settings.showSourceCodex ? codexManager.availableSessions.count : 0
+        if claudeCount > 0 { parts.append(12 + 4 + text("\(claudeCount)")) }
+        if codexCount > 0 { parts.append(12 + 4 + text("\(codexCount)")) }
+        // The bubble's symbol is about 20 pt wide at this size.
+        if attentionCount > 0 { parts.append(10 + 20 + 6 + text("\(attentionCount)") + 10) }
+        return parts.reduce(0, +) + CGFloat(parts.count - 1) * 12
+    }
+
+    /// 요약 줄, at the head of the open notch so it shows on every tab. `compact` (beside the
+    /// camera, where room is short): the 상태 캡슐 is its lit dot alone; the counts beside it
+    /// still say how many sessions there are.
+    private func agentOverview(compact: Bool) -> some View {
         HStack(spacing: 12) {
-            // How many sessions are working right now.
-            let working = (settings.showSourceClaudeCode
-                           ? claudeCodeManager.availableSessions.filter { claudeCodeManager.sessionStates[$0.id]?.isActive == true }.count : 0)
-                + (settings.showSourceCodex
-                   ? codexManager.availableSessions.filter { codexManager.sessionStates[$0.id]?.isActive == true }.count : 0)
             let glow = overviewGlow
             HStack(spacing: 6) {
                 StatusDot(active: overviewHasActivity, color: glow.color, secondary: glow.secondary)
-                // Lit by the glow while working; the grey only reaches the text when idle.
-                SweptText(text: !overviewHasActivity ? L("대기 중", "Quiet")
-                          : working > 0 ? L("작업 중 \(working)", "Working \(working)") : L("작업 중", "Working"),
-                          glow: glow)
-                    .foregroundStyle(NotchPalette.ink.opacity(0.55))
+                if !compact {
+                    // Lit by the glow while working; the grey only reaches the text when idle.
+                    SweptText(text: overviewStatusText, glow: glow)
+                        .foregroundStyle(NotchPalette.ink.opacity(0.55))
+                }
             }
-            .padding(.horizontal, 10)
-            .frame(height: 24)
+            .padding(.horizontal, compact ? 6 : 10)
+            .frame(height: HeaderChipMetrics.height)
             .background(Capsule().fill(NotchPalette.ink.opacity(0.08)))
+            // Compact, the words are only here.
+            .help(overviewStatusText)
             // Sessions per agent, by logo; an agent with none is left out.
             let claudeCount = settings.showSourceClaudeCode ? claudeCodeManager.availableSessions.count : 0
             if claudeCount > 0 {
@@ -1698,7 +1780,7 @@ struct ClangNotchContentView: View {
                 Label("\(attentionCount)", systemImage: "bubble.left.and.exclamationmark.bubble.right")
                     .foregroundStyle(.red)
                     .padding(.horizontal, 10)
-                    .frame(height: 24)
+                    .frame(height: HeaderChipMetrics.height)
                     .background(Capsule().fill(Color.red.opacity(0.18)))
                     .modifier(Breathing(active: true))
                     .help(L("답변·승인 대기", "Waiting for your response"))
@@ -2585,24 +2667,52 @@ struct ClangNotchContentView: View {
         }
     }
 
-    private struct NotchControlButton: View {
-        let systemName: String
-        var tint: Color? = nil
-        let action: () -> Void
-        @State private var hovering = false
+    /// 헤더 버튼: the bell (효과음), the gear (설정) and power (종료) in one capsule. Each cell is
+    /// clickable whole and lights under the cursor.
+    private struct NotchControlGroup: View {
+        let soundsOn: Bool
+        let toggleSounds: () -> Void
+        let openSettings: () -> Void
+        let quit: () -> Void
+
+        private static let cell: CGFloat = 26
+        private static let inset: CGFloat = 2
+        static var width: CGFloat { 3 * cell + 2 * inset }
 
         var body: some View {
-            // Padding and circle live inside the label so the whole circle is clickable.
-            Button(action: action) {
-                Image(systemName: systemName)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(tint ?? NotchPalette.ink.opacity(0.75))
-                    .padding(6)
-                    .background(Circle().fill(NotchPalette.ink.opacity(hovering ? 0.16 : 0.08)))
-                    .contentShape(Circle())
+            HStack(spacing: 0) {
+                // Apple's own mute look: the bell, struck through when the sounds are off.
+                Cell(systemName: soundsOn ? "bell" : "bell.slash",
+                     tint: soundsOn ? nil : NotchPalette.ink.opacity(0.45), action: toggleSounds)
+                    .help(soundsOn ? L("효과음 끄기", "Mute sounds") : L("효과음 켜기", "Turn sounds on"))
+                Cell(systemName: "gearshape", action: openSettings)
+                    .help(L("설정", "Settings"))
+                Cell(systemName: "power", tint: NotchPalette.ink.opacity(0.5), action: quit)
+                    .help(L("ClangNotch 종료", "Quit ClangNotch"))
             }
-            .buttonStyle(NotchPressButtonStyle())
-            .onHover { hovering = $0 }
+            .padding(.horizontal, Self.inset)
+            .frame(height: HeaderChipMetrics.height)
+            .background(Capsule().fill(NotchPalette.ink.opacity(0.08)))
+        }
+
+        private struct Cell: View {
+            let systemName: String
+            var tint: Color? = nil
+            let action: () -> Void
+            @State private var hovering = false
+
+            var body: some View {
+                Button(action: action) {
+                    Image(systemName: systemName)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(tint ?? NotchPalette.ink.opacity(0.75))
+                        .frame(width: NotchControlGroup.cell, height: HeaderChipMetrics.height - 4)
+                        .background(Capsule().fill(NotchPalette.ink.opacity(hovering ? 0.12 : 0)))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(NotchPressButtonStyle())
+                .onHover { hovering = $0 }
+            }
         }
     }
 
