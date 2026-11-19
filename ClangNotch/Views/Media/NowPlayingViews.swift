@@ -460,7 +460,7 @@ struct NotchBandNowPlaying: View {
     let showCard: (NowPlaying) -> Void
 
     var body: some View {
-        if let playing = monitor.nowPlaying, !monitor.pausedLong {
+        if monitor.showsInBand, let playing = monitor.nowPlaying {
             HStack(spacing: 0) {
                 HStack(spacing: 6) {
                     Button { showCard(playing) } label: {

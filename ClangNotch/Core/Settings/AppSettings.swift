@@ -106,6 +106,11 @@ public final class AppSettings: ObservableObject {
     // When playback stops, the closed notch's media wings go "now" or "later" (1.5 s, the bars
     // resting meanwhile).
     @AppStorage("nowPlayingHideAfterStop") public var nowPlayingHideAfterStop: String = "later"
+    // 설정 -> 기능 -> 미디어 -> 멈춘 곡이 펼친 노치에 남는 시간, in seconds (1–600; 3 minutes, the
+    // old fixed time, by default): a paused track leaves the open notch's 노치 띠 after this, and
+    // the header moves up into it. An app such as Music keeps a paused track "now playing" until
+    // it quits (2026-11-12); settable since 2026-11-19.
+    @AppStorage("nowPlayingBandPausedSeconds") public var nowPlayingBandPausedSeconds: Int = 180
     // The few bars at the right wing's edge while the agents (or tethering) hold the wings.
     @AppStorage("nowPlayingMiniWhileWorking") public var nowPlayingMiniWhileWorking: Bool = true
 
@@ -122,7 +127,9 @@ public final class AppSettings: ObservableObject {
     /// The 복사 방울, from when it has come off (1–60: its check takes about 0.9 s to draw).
     @AppStorage("foldSecondsCopy") public var foldSecondsCopy: Int = 1
 
-    // Battery device ids shown in the open notch header, newline-separated.
+    // The battery device shown in the open notch header (Battery tab -> 헤더에 표시). One at most
+    // since 2026-11-19, so the header fits beside the camera; the key keeps its old name and its
+    // newline-separated form (`migrateHeaderDevices` keeps the first of an older list).
     @AppStorage("headerBatteryDeviceIDs") public var headerBatteryDeviceIDs: String = ""
 
     // Closed-notch low-battery priority order, newline-separated, first = highest.
@@ -263,6 +270,13 @@ public final class AppSettings: ObservableObject {
 
     /// The SSH switches came after the host lists (2026-11-12): a list someone already filled
     /// in keeps working instead of going quiet behind a switch that defaults to off.
+    /// One header device since 2026-11-19: an older list keeps its first, so the Battery tab's
+    /// pin marks and the header agree.
+    func migrateHeaderDevices() {
+        let ids = headerBatteryDeviceIDs.split(separator: "\n")
+        if ids.count > 1 { headerBatteryDeviceIDs = String(ids[0]) }
+    }
+
     func migrateRemoteSwitches() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "remoteClaudeEnabled") == nil, !SSHHost.list(remoteClaudeHosts).isEmpty { remoteClaudeEnabled = true }

@@ -146,10 +146,9 @@ struct BatteryView: View {
         settings.headerBatteryDeviceIDs.split(separator: "\n").map(String.init)
     }
 
+    /// One header device: showing another takes the place of the one there (2026-11-19).
     private func toggleHeader(_ id: String) {
-        var ids = headerIDs
-        if let index = ids.firstIndex(of: id) { ids.remove(at: index) } else { ids.append(id) }
-        settings.headerBatteryDeviceIDs = ids.joined(separator: "\n")
+        settings.headerBatteryDeviceIDs = headerIDs.contains(id) ? "" : id
     }
 
     /// 닫힌 노치 경고 순위, 앞이 1순위.
