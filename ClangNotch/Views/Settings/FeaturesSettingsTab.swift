@@ -1,9 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// The utility features behind the notch's tabs.
+/// 기능's pages: the notch's tabs, the 조절창, the 에어팟 드롭다운 and 미디어, each its own page under
+/// 기능 in the sidebar (one long page before, user 2026-11-19). One view for the four, as they
+/// share the permission notes.
 struct FeaturesSettingsTab: View {
     @ObservedObject var settings: AppSettings
+    /// Which of 기능's pages: `.notchTabs`, `.hud`, `.airpods` or `.media`.
+    let page: SettingsPage
     /// Holds the Accessibility answer the three switches below need.
     @ObservedObject private var keyboardLock = KeyboardLockManager.shared
 
@@ -26,175 +30,12 @@ struct FeaturesSettingsTab: View {
 
     var body: some View {
         Form {
-            Section {
-                SettingToggle(L("클립보드 기록", "Clipboard history"),
-                              L("최근 복사한 글, 이미지, 파일. 파일은 위치만 기억하고 이미지는 앱이 종료되면 클립보드 기록은 삭제됨",
-                                "Recently copied text, images and files. Files by their location; images leave the history when the app quits"),
-                              isOn: $settings.enableClipboardHistory)
-                    .onChange(of: settings.enableClipboardHistory) { _, _ in
-                        ClipboardManager.shared.syncWithSettings()
-                    }
-                if settings.enableClipboardHistory {
-                    CopyDropdownPicker(settings: settings)
-                        .padding(.leading, 20)
-                }
-                SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
-                              L("앱마다 소리 크기 조절", "Volume per app") + needsAudioCapture,
-                              isOn: $settings.enableAudioMixer)
-                    .onChange(of: settings.enableAudioMixer) { _, on in
-                        if on { AudioMixerManager.shared.start() } else { AudioMixerManager.shared.stop() }
-                    }
-                SettingToggle(L("Sidecar 빠른 연결", "Sidecar quick-connect"),
-                              L("iPad를 보조 화면으로 바로 연결", "Connect an iPad as a second display"),
-                              isOn: $settings.enableSidecar)
-                    .onChange(of: settings.enableSidecar) { _, on in
-                        // The Sidecar tab starts it when shown.
-                        if !on { SidecarManager.shared.stop() }
-                    }
-                SettingToggle(L("배터리 잔량", "Battery levels"),
-                              L("Mac, 블루투스 기기, iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
-                              isOn: $settings.enableBattery)
-                    .onChange(of: settings.enableBattery) { _, on in
-                        if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
-                    }
-                EnergyHelperRow()
-                    .padding(.leading, 20)
-                SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
-                              L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
-                              isOn: $settings.enableSpeedTest)
-                if !keyboardLock.hasAccessibilityPermission
-                    && (settings.enableKeyboardLock || settings.centerSystemBanners || settings.enableSoftwareVolume) {
-                    AccessibilityMissingRow(permission: keyboardLock)
-                }
-                SettingToggle(L("키보드 잠금", "Keyboard lock"),
-                              L("키보드 입력 잠금", "Locks keyboard input") + needsAccessibility,
-                              isOn: $settings.enableKeyboardLock)
-                    .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
-            } header: {
-                Text(L("노치 탭", "Notch tabs"))
-            }
-
-            // 조절창: the volume and brightness HUD and what goes with it.
-            Section {
-                SettingToggle(L("볼륨, 밝기 표시 바꾸기", "Replace volume and brightness HUD"),
-                              L("macOS 볼륨, 밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운, 제스처로 바꾼 소리는 macOS 표시도 함께 표시됨",
-                                "A HUD under the menu bar instead of macOS's volume and brightness display. Volume changed on AirPods or AirPods Max (crown, gestures) still shows macOS's display too") + needsAccessibility,
-                              isOn: $settings.centerSystemBanners)
-                    .onChange(of: settings.centerSystemBanners) { _, on in
-                        SystemBannerCenterer.shared.syncWithSettings()
-                        askForAccessibility(on)
-                    }
-                // Only means something while the HUD switch takes the keys: shown under it, indented.
-                if settings.centerSystemBanners {
-                    Picker(L("조절창 위치", "HUD position"), selection: $settings.osdPosition) {
-                        Text(L("왼쪽", "Left")).tag("left")
-                        Text(L("가운데", "Center")).tag("center")
-                        Text(L("오른쪽", "Right")).tag("right")
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.leading, 20)
-                    SettingToggle(L("밝기 조절키를 다른 앱에 넘기기", "Leave the brightness keys to other apps"),
-                                  L("MonitorControl, Lunar, BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기. 외부 모니터가 연결돼 있을 때만 넘김",
-                                    "On when MonitorControl, Lunar or BetterDisplay sets external displays too. Only while an external display is connected"),
-                                  isOn: $settings.passBrightnessKeys)
-                        .padding(.leading, 20)
-                    if settings.passBrightnessKeys {
-                        SettingToggle(L("노치앱의 밝기 조절창 보이기", "Show the notch app's brightness HUD"),
-                                      isOn: $settings.showPassedBrightnessHUD)
-                            .padding(.leading, 40)
-                    }
-                }
-                // Its own switch: it keeps the volume key tap up even with the HUD switch off.
-                SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
-                              L("HDMI, DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생",
-                                "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter") + needsAccessibility,
-                              isOn: $settings.enableSoftwareVolume)
-                    .onChange(of: settings.enableSoftwareVolume) { _, on in
-                        SoftwareVolume.shared.syncWithSettings()
-                        askForAccessibility(on)
-                    }
-                if settings.enableSoftwareVolume {
-                    SoftwareVolumeExcludedApps(settings: settings)
-                }
-            } header: {
-                Text(L("조절창", "HUD"))
-            }
-            // 에어팟 드롭다운: every switch for the card that drops under the notch, apart from the
-            // features above now that there are several of them (2026-11-12).
-            Section {
-                SettingToggle(L("에어팟 연결 알림", "AirPods connection dropdown"),
-                              L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시. 배터리 잔량이 켜져 있어야 함",
-                                "Name and battery under the notch when AirPods or a Bluetooth headset connect. Needs Battery levels"),
-                              isOn: $settings.enableAirPodsDropdown)
-                    .disabled(!settings.enableBattery)
-                // Only means something with the card on: shown under it, indented.
-                if settings.enableAirPodsDropdown {
-                    SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods dropdown by itself"),
-                                  isOn: $settings.airPodsDropdownAutoHide)
-                        .padding(.leading, 20)
-                        .disabled(!settings.enableBattery)
-                }
-                SettingToggle(L("에어팟, 헤드셋 배터리 부족 시 드롭다운", "Dropdown when AirPods or a headset run low"),
-                              L("에어팟, 에어팟 맥스, 헤드셋이 20%, 10%가 되면 한 번씩. 30% 이상으로 충전될 때까지 다시 안 뜸",
-                                "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged back to 30%"),
-                              isOn: $settings.airPodsLowBatteryDropdown)
-                    .disabled(!settings.enableBattery)
-                if settings.airPodsLowBatteryDropdown {
-                    SettingToggle(L("알림센터로 보내기", "Send to Notification Center"),
-                                  L("기기들의 배터리 부족 알림이 알림센터에도 표시됨", "These devices' low battery alerts show in Notification Center too"),
-                                  isOn: $settings.airPodsLowBatteryNotification)
-                        .padding(.leading, 20)
-                        .disabled(!settings.enableBattery)
-                }
-                SettingToggle(L("맥 배터리 부족 시 드롭다운", "Dropdown when this Mac runs low"),
-                              L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩. 충전 중엔 안 뜸",
-                                "Drawn as this Mac's model, once at 20% and once at 10%. Not while charging"),
-                              isOn: $settings.macLowBatteryDropdown)
-                    .disabled(!settings.enableBattery)
-                if settings.macLowBatteryDropdown {
-                    SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's dropdown by itself"),
-                                  isOn: $settings.macLowBatteryAutoHide)
-                        .padding(.leading, 20)
-                        .disabled(!settings.enableBattery)
-                }
-            } header: {
-                Text(L("에어팟 드롭다운", "AirPods dropdown"))
-            }
-            Section {
-                SettingToggle(L("지금 재생 표시", "Show what's playing"),
-                              L("음악, 영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파. 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만. MacOS의 '지금 재생'을 읽음",
-                                "While music or a video plays, the closed notch shows its artwork on the left and bars on the right. While the agents work or you tether, just small bars at the right edge. Reads macOS's Now Playing"),
-                              isOn: $settings.enableNowPlaying)
-                    .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
-                if settings.enableNowPlaying {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(L("미디어 드롭다운 표시", "Show the media dropdown"))
-                        MediaDropdownStylePicker(settings: settings)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.leading, 20)
-                    SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),
-                                  L("재생 중인 앱의 소리를 읽어 음파를 움직임", "Reads the sound of the app that plays to move the bars")
-                                    + needsAudioCapture + L(". 소리를 녹음하거나 저장하지 않음.", ". Nothing is recorded or saved."),
-                                  isOn: $settings.enableNowPlayingLevels)
-                        .padding(.leading, 20)
-                        .onChange(of: settings.enableNowPlayingLevels) {
-                            NowPlayingLevels.shared.follow(NowPlayingMonitor.shared.nowPlaying)
-                        }
-                    SettingToggle(L("에이전트가 일할 때도 작은 음파 표시", "Small bars while the agents work"),
-                                  L("에이전트가 일하거나 테더링 중이면 날개 오른쪽 끝에 작은 음파를 표시.",
-                                    "While the agents work or you tether, small bars show at the right wing's edge."),
-                                  isOn: $settings.nowPlayingMiniWhileWorking)
-                        .padding(.leading, 20)
-                    Picker(L("재생을 멈추면 날개 숨기기", "When playback stops, hide the wings"), selection: $settings.nowPlayingHideAfterStop) {
-                        Text(L("즉시", "Immediately")).tag("now")
-                        Text(L("잠시 뒤 (1.5초)", "After a moment (1.5 s)")).tag("later")
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.leading, 20)
-                }
-            } header: {
-                Text(L("미디어", "Media"))
+            switch page {
+            case .notchTabs: notchTabs
+            case .hud: hud
+            case .batteryAlerts: batteryAlerts
+            case .media: media
+            default: EmptyView()
             }
         }
         .formStyle(.grouped)
@@ -202,21 +43,201 @@ struct FeaturesSettingsTab: View {
         // Back from System Settings with the permission given: the note goes.
         .onAppear { audioCaptureGranted = AudioCapturePermission.isGranted }
     }
+
+    private var notchTabs: some View {
+        Section {
+            SettingToggle(L("클립보드 기록", "Clipboard history"),
+                          L("최근 복사한 글, 이미지, 파일. 파일은 위치만 기억하고 이미지는 앱이 종료되면 클립보드 기록은 삭제됨",
+                            "Recently copied text, images and files. Files by their location; images leave the history when the app quits"),
+                          isOn: $settings.enableClipboardHistory)
+                .onChange(of: settings.enableClipboardHistory) { _, _ in
+                    ClipboardManager.shared.syncWithSettings()
+                }
+            if settings.enableClipboardHistory {
+                CopyDropdownPicker(settings: settings)
+                    .padding(.leading, 20)
+            }
+            SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
+                          L("앱마다 소리 크기 조절", "Volume per app") + needsAudioCapture,
+                          isOn: $settings.enableAudioMixer)
+                .onChange(of: settings.enableAudioMixer) { _, on in
+                    if on { AudioMixerManager.shared.start() } else { AudioMixerManager.shared.stop() }
+                }
+            SettingToggle(L("Sidecar 빠른 연결", "Sidecar quick-connect"),
+                          L("iPad를 보조 화면으로 바로 연결", "Connect an iPad as a second display"),
+                          isOn: $settings.enableSidecar)
+                .onChange(of: settings.enableSidecar) { _, on in
+                    // The Sidecar tab starts it when shown.
+                    if !on { SidecarManager.shared.stop() }
+                }
+            SettingToggle(L("배터리 잔량", "Battery levels"),
+                          L("Mac, 블루투스 기기, iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
+                          isOn: $settings.enableBattery)
+                .onChange(of: settings.enableBattery) { _, on in
+                    if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
+                }
+            EnergyHelperRow()
+                .padding(.leading, 20)
+            SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
+                          L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
+                          isOn: $settings.enableSpeedTest)
+            if !keyboardLock.hasAccessibilityPermission && settings.enableKeyboardLock {
+                AccessibilityMissingRow(permission: keyboardLock,
+                                        what: L("손쉬운 사용 권한이 없어 아래 키보드 잠금이 동작하지 않습니다",
+                                                "Without Accessibility, Keyboard lock below does nothing"))
+            }
+            SettingToggle(L("키보드 잠금", "Keyboard lock"),
+                          L("키보드 입력 잠금", "Locks keyboard input") + needsAccessibility,
+                          isOn: $settings.enableKeyboardLock)
+                .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
+        }
+    }
+
+    /// 조절창: the volume and brightness HUD and what goes with it.
+    private var hud: some View {
+        Section {
+            if !keyboardLock.hasAccessibilityPermission
+                && (settings.centerSystemBanners || settings.enableSoftwareVolume) {
+                AccessibilityMissingRow(permission: keyboardLock,
+                                        what: L("손쉬운 사용 권한이 없어 아래 볼륨, 밝기 표시 바꾸기와 모니터 소리 줄이기가 동작하지 않습니다",
+                                                "Without Accessibility, the volume and brightness HUD and monitor volume below do nothing"))
+            }
+            SettingToggle(L("볼륨, 밝기 표시 바꾸기", "Replace volume and brightness HUD"),
+                          L("macOS 볼륨, 밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운, 제스처로 바꾼 소리는 macOS 표시도 함께 표시됨",
+                            "A HUD under the menu bar instead of macOS's volume and brightness display. Volume changed on AirPods or AirPods Max (crown, gestures) still shows macOS's display too") + needsAccessibility,
+                          isOn: $settings.centerSystemBanners)
+                .onChange(of: settings.centerSystemBanners) { _, on in
+                    SystemBannerCenterer.shared.syncWithSettings()
+                    askForAccessibility(on)
+                }
+            // Only means something while the HUD switch takes the keys: shown under it, indented.
+            if settings.centerSystemBanners {
+                Picker(L("조절창 위치", "HUD position"), selection: $settings.osdPosition) {
+                    Text(L("왼쪽", "Left")).tag("left")
+                    Text(L("가운데", "Center")).tag("center")
+                    Text(L("오른쪽", "Right")).tag("right")
+                }
+                .pickerStyle(.segmented)
+                .padding(.leading, 20)
+                SettingToggle(L("밝기 조절키를 다른 앱에 넘기기", "Leave the brightness keys to other apps"),
+                              L("MonitorControl, Lunar, BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기. 외부 모니터가 연결돼 있을 때만 넘김",
+                                "On when MonitorControl, Lunar or BetterDisplay sets external displays too. Only while an external display is connected"),
+                              isOn: $settings.passBrightnessKeys)
+                    .padding(.leading, 20)
+                if settings.passBrightnessKeys {
+                    SettingToggle(L("노치앱의 밝기 조절창 보이기", "Show the notch app's brightness HUD"),
+                                  isOn: $settings.showPassedBrightnessHUD)
+                        .padding(.leading, 40)
+                }
+            }
+            // Its own switch: it keeps the volume key tap up even with the HUD switch off.
+            SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
+                          L("HDMI, DisplayPort 스피커로 가는 소리를 가로채 줄여서 다시 재생",
+                            "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter") + needsAccessibility,
+                          isOn: $settings.enableSoftwareVolume)
+                .onChange(of: settings.enableSoftwareVolume) { _, on in
+                    SoftwareVolume.shared.syncWithSettings()
+                    askForAccessibility(on)
+                }
+            if settings.enableSoftwareVolume {
+                SoftwareVolumeExcludedApps(settings: settings)
+            }
+        }
+    }
+
+    /// 배터리 알림: every switch for the AirPods, headset and Mac battery cards (its own section
+    /// since 2026-11-12 as 에어팟 드롭다운, its own page since 2026-11-19).
+    private var batteryAlerts: some View {
+        Section {
+            SettingToggle(L("에어팟 연결 알림", "AirPods connection dropdown"),
+                          L("에어팟이나 블루투스 헤드셋을 연결하면 노치 아래에 이름과 잔량 표시. 배터리 잔량이 켜져 있어야 함",
+                            "Name and battery under the notch when AirPods or a Bluetooth headset connect. Needs Battery levels"),
+                          isOn: $settings.enableAirPodsDropdown)
+                .disabled(!settings.enableBattery)
+            // Only means something with the card on: shown under it, indented.
+            if settings.enableAirPodsDropdown {
+                SettingToggle(L("에어팟 연결 알림 자동으로 접기", "Fold the AirPods dropdown by itself"),
+                              isOn: $settings.airPodsDropdownAutoHide)
+                    .padding(.leading, 20)
+                    .disabled(!settings.enableBattery)
+            }
+            SettingToggle(L("에어팟, 헤드셋 배터리 부족 시 드롭다운", "Dropdown when AirPods or a headset run low"),
+                          L("에어팟, 에어팟 맥스, 헤드셋이 20%, 10%가 되면 한 번씩. 30% 이상으로 충전될 때까지 다시 안 뜸",
+                            "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged back to 30%"),
+                          isOn: $settings.airPodsLowBatteryDropdown)
+                .disabled(!settings.enableBattery)
+            if settings.airPodsLowBatteryDropdown {
+                SettingToggle(L("알림센터로 보내기", "Send to Notification Center"),
+                              L("기기들의 배터리 부족 알림이 알림센터에도 표시됨", "These devices' low battery alerts show in Notification Center too"),
+                              isOn: $settings.airPodsLowBatteryNotification)
+                    .padding(.leading, 20)
+                    .disabled(!settings.enableBattery)
+            }
+            SettingToggle(L("맥 배터리 부족 시 드롭다운", "Dropdown when this Mac runs low"),
+                          L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩. 충전 중엔 안 뜸",
+                            "Drawn as this Mac's model, once at 20% and once at 10%. Not while charging"),
+                          isOn: $settings.macLowBatteryDropdown)
+                .disabled(!settings.enableBattery)
+            if settings.macLowBatteryDropdown {
+                SettingToggle(L("맥 배터리 부족 드롭다운 자동으로 접기", "Fold this Mac's dropdown by itself"),
+                              isOn: $settings.macLowBatteryAutoHide)
+                    .padding(.leading, 20)
+                    .disabled(!settings.enableBattery)
+            }
+        }
+    }
+
+    private var media: some View {
+        Section {
+            SettingToggle(L("지금 재생 표시", "Show what's playing"),
+                          L("음악, 영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파. 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만. MacOS의 '지금 재생'을 읽음",
+                            "While music or a video plays, the closed notch shows its artwork on the left and bars on the right. While the agents work or you tether, just small bars at the right edge. Reads macOS's Now Playing"),
+                          isOn: $settings.enableNowPlaying)
+                .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
+            if settings.enableNowPlaying {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("미디어 드롭다운 표시", "Show the media dropdown"))
+                    MediaDropdownStylePicker(settings: settings)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 20)
+                SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),
+                              L("재생 중인 앱의 소리를 읽어 음파를 움직임", "Reads the sound of the app that plays to move the bars")
+                                + needsAudioCapture + L(". 소리를 녹음하거나 저장하지 않음.", ". Nothing is recorded or saved."),
+                              isOn: $settings.enableNowPlayingLevels)
+                    .padding(.leading, 20)
+                    .onChange(of: settings.enableNowPlayingLevels) {
+                        NowPlayingLevels.shared.follow(NowPlayingMonitor.shared.nowPlaying)
+                    }
+                SettingToggle(L("에이전트가 일할 때도 작은 음파 표시", "Small bars while the agents work"),
+                              L("에이전트가 일하거나 테더링 중이면 날개 오른쪽 끝에 작은 음파를 표시.",
+                                "While the agents work or you tether, small bars show at the right wing's edge."),
+                              isOn: $settings.nowPlayingMiniWhileWorking)
+                    .padding(.leading, 20)
+                Picker(L("재생을 멈추면 날개 숨기기", "When playback stops, hide the wings"), selection: $settings.nowPlayingHideAfterStop) {
+                    Text(L("즉시", "Immediately")).tag("now")
+                    Text(L("잠시 뒤 (1.5초)", "After a moment (1.5 s)")).tag("later")
+                }
+                .pickerStyle(.segmented)
+                .padding(.leading, 20)
+            }
+        }
+    }
 }
 
-/// 권한 안내 줄: 키보드 잠금, 볼륨, 밝기 표시 바꾸기 and 모니터 소리 줄이기 do nothing without
-/// Accessibility. After a signature change (a development build swapped for a release) the old
+/// 권한 안내 줄: 키보드 잠금 (노치 탭), 볼륨, 밝기 표시 바꾸기 and 모니터 소리 줄이기 (조절창) do
+/// nothing without Accessibility; `what` names the ones on the page. After a signature change (a development build swapped for a release) the old
 /// entry can still show as on in System Settings without counting, hence the remove-and-add hint.
 private struct AccessibilityMissingRow: View {
     @ObservedObject var permission: KeyboardLockManager
+    let what: String
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text(L("손쉬운 사용 권한이 없어 아래 키보드 잠금과 볼륨, 밝기 표시 바꾸기와 모니터 소리 줄이기가 동작하지 않습니다",
-                       "Without Accessibility, Keyboard lock, the volume and brightness HUD and monitor volume below do nothing"))
+                Text(what)
                 Text(L("이미 켜져 있는데도 이 줄이 보이면 목록에서 ClangNotch를 −로 지우고 다시 추가",
                        "If ClangNotch is already on there, remove it with − and add it again"))
                     .font(.caption)
@@ -287,7 +308,7 @@ private struct SoftwareVolumeExcludedApps: View {
     }
 }
 
-/// 설정 -> 기능 -> 지금 재생 -> 미디어 드롭다운: 끔, 떨어지는 카드 (the default) or 노치에 붙음,
+/// 설정 -> 기능 -> 미디어 -> 지금 재생 -> 미디어 드롭다운: 끔, 떨어지는 카드 (the default) or 노치에 붙음,
 /// picked from pictures like the 노치 색.
 /// 미디어 드롭다운 표시: off, 분리 (the card) or 붙음 (attached to the notch).
 private struct MediaDropdownStylePicker: View {

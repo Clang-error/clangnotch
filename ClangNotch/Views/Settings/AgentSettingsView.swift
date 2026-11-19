@@ -12,19 +12,27 @@ private let toolbarItemsStart: CGFloat = 96
 private let navControlWidth: CGFloat = 73
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case about, general, notch, features, network, agents, security, experimental
+    case about, general, notch, notchTabs, hud, batteryAlerts, media, network, agents, security, experimental
 
     var id: String { rawValue }
 
     /// Sidebar groups, top to bottom; 정보 is the card above them.
-    static let groups: [[SettingsPage]] = [[.general, .notch], [.features, .network], [.agents, .security], [.experimental]]
+    static let groups: [[SettingsPage]] = [[.general, .notch], [.notchTabs, .hud, .batteryAlerts, .media, .network],
+                                           [.agents, .security], [.experimental]]
+
+    /// 기능's pages, indented under its row in the sidebar (one page until 2026-11-19).
+    static let features: [SettingsPage] = [.notchTabs, .hud, .batteryAlerts, .media]
+    var isFeature: Bool { Self.features.contains(self) }
 
     var title: String {
         switch self {
         case .about:    return L("정보", "About")
         case .general:  return L("일반", "General")
         case .notch:    return L("노치", "Notch")
-        case .features: return L("기능", "Features")
+        case .notchTabs: return L("노치 탭", "Notch tabs")
+        case .hud:      return L("조절창", "HUD")
+        case .batteryAlerts: return L("배터리 알림", "Battery alerts")
+        case .media:    return L("미디어", "Media")
         case .network:  return L("네트워크", "Network")
         case .agents:   return L("에이전트", "Agents")
         case .security: return L("보안", "Security")
@@ -37,7 +45,10 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .about:    return "info"
         case .general:  return "gearshape.fill"
         case .notch:    return "macbook"
-        case .features: return "square.grid.2x2.fill"
+        case .notchTabs: return "rectangle.split.3x1.fill"
+        case .hud:      return "speaker.wave.2.fill"
+        case .batteryAlerts: return "battery.100percent.bolt"
+        case .media:    return "play.fill"
         case .network:  return "wifi"
         case .agents:   return "sparkles"
         case .security: return "lock.shield.fill"
@@ -50,7 +61,10 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .about:    return .gray
         case .general:  return .gray
         case .notch:    return Color(white: 0.22)
-        case .features: return .blue
+        case .notchTabs: return .blue
+        case .hud:      return .indigo
+        case .batteryAlerts: return .green
+        case .media:    return .pink
         case .network:  return .teal
         case .agents:   return .orange
         case .security: return .red
@@ -66,11 +80,12 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .notch:    return ["노치 색", "라이트", "다크", "배경", "탭", "순서", "열기", "햅틱", "전체 화면", "표시", "메뉴바",
                                 "notch color", "light", "dark", "wallpaper", "tabs", "order", "opening", "haptic", "full screen", "visibility",
                                 "디스플레이", "모니터", "화면", "display", "monitor"]
-        case .features: return ["클립보드", "볼륨", "믹서", "sidecar", "배터리", "속도", "키보드", "밝기",
-                                "노치 탭", "조절창", "에어팟", "드롭다운", "헤드셋", "맥 배터리",
-                                "clipboard", "volume", "mixer", "battery", "speed", "keyboard", "brightness",
-                                "notch tabs", "hud", "airpods", "headset",
-                                "미디어", "음악", "재생", "영상", "media", "music", "now playing"]
+        case .notchTabs: return ["기능", "클립보드", "볼륨", "믹서", "sidecar", "배터리", "속도", "키보드",
+                                 "features", "clipboard", "volume", "mixer", "battery", "speed", "keyboard"]
+        case .hud:      return ["기능", "볼륨", "밝기", "모니터", "features", "volume", "brightness", "monitor"]
+        case .batteryAlerts: return ["기능", "배터리 알림", "에어팟", "드롭다운", "날개", "헤드셋", "맥 배터리", "맥북", "배터리",
+                                     "features", "battery alerts", "airpods", "dropdown", "wings", "headset", "macbook", "battery"]
+        case .media:    return ["기능", "음악", "재생", "영상", "features", "music", "now playing"]
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
         case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격",
                                 "sounds", "remind", "usage", "context", "remote"]
@@ -225,7 +240,7 @@ public struct AgentSettingsView: View {
         case .about:    AboutSettingsTab(settings: settings)
         case .general:  AppGeneralSettingsTab(settings: settings)
         case .notch:    NotchSettingsTab(settings: settings)
-        case .features: FeaturesSettingsTab(settings: settings)
+        case .notchTabs, .hud, .batteryAlerts, .media: FeaturesSettingsTab(settings: settings, page: page)
         case .network:  NetworkSettingsTab(settings: settings)
         case .agents:   AgentsSettingsTab(settings: settings)
         case .security: SecuritySettingsTab(settings: settings)
@@ -256,7 +271,10 @@ private struct SettingsSidebar: View {
                     .padding(.bottom, 12)
                 ForEach(SettingsPage.groups.indices, id: \.self) { index in
                     VStack(spacing: 2) {
-                        ForEach(SettingsPage.groups[index]) { row($0) }
+                        ForEach(SettingsPage.groups[index]) { page in
+                            if page == SettingsPage.features.first { featuresRow }
+                            row(page)
+                        }
                     }
                     .padding(.bottom, 12)
                 }
@@ -356,20 +374,40 @@ private struct SettingsSidebar: View {
         .disabled(updates.isInstalling)
     }
 
-    private func row(_ page: SettingsPage) -> some View {
-        Button { open(page) } label: {
+    /// 기능 itself: opens its first page; its pages hang under it, indented. Bold while one of
+    /// them shows, which is the one highlighted.
+    private var featuresRow: some View {
+        Button { open(SettingsPage.features[0]) } label: {
             HStack(spacing: 10) {
-                SettingsPageIcon(page: page)
-                Text(page.title)
-                    .font(.system(size: 13, weight: selection == page ? .semibold : .regular))
+                SettingsPageIcon(symbol: "square.grid.2x2.fill", tint: .blue)
+                Text(L("기능", "Features"))
+                    .font(.system(size: 13, weight: selection.isFeature ? .semibold : .regular))
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8)
             .frame(height: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func row(_ page: SettingsPage) -> some View {
+        // Indented under 기능, except in search results, which have no 기능 row.
+        let indented = page.isFeature && query.trimmingCharacters(in: .whitespaces).isEmpty
+        return Button { open(page) } label: {
+            HStack(spacing: 10) {
+                SettingsPageIcon(page: page, size: indented ? 18 : 22)
+                Text(page.title)
+                    .font(.system(size: indented ? 12 : 13, weight: selection == page ? .semibold : .regular))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: indented ? 28 : 32)
             .background(selectionBackground(selection == page))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .padding(.leading, indented ? 22 : 0)
     }
 
     private func selectionBackground(_ selected: Bool) -> some View {
@@ -380,23 +418,38 @@ private struct SettingsSidebar: View {
 
 /// A white symbol on a coloured rounded square, like System Settings' sidebar.
 private struct SettingsPageIcon: View {
-    let page: SettingsPage
+    private let symbol: String?
+    private let tint: Color
+    private let size: CGFloat
+
+    /// `.about` is the app icon.
+    init(page: SettingsPage, size: CGFloat = 22) {
+        symbol = page == .about ? nil : page.symbol
+        tint = page.tint
+        self.size = size
+    }
+
+    init(symbol: String, tint: Color, size: CGFloat = 22) {
+        self.symbol = symbol
+        self.tint = tint
+        self.size = size
+    }
 
     var body: some View {
-        if page == .about {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 22, height: 22)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        } else {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(page.tint.gradient)
-                .frame(width: 22, height: 22)
+        if let symbol {
+            RoundedRectangle(cornerRadius: size * 6 / 22, style: .continuous)
+                .fill(tint.gradient)
+                .frame(width: size, height: size)
                 .overlay(
-                    Image(systemName: page.symbol)
-                        .font(.system(size: 11, weight: .semibold))
+                    Image(systemName: symbol)
+                        .font(.system(size: size / 2, weight: .semibold))
                         .foregroundStyle(.white)
                 )
+        } else {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 6 / 22, style: .continuous))
         }
     }
 }
