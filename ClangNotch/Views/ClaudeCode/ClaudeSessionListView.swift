@@ -15,29 +15,20 @@ struct ClaudeSessionListView: View {
     @ObservedObject var codexManager: CodexManager
     /// A row opens its 세션 화면.
     let onSelect: (SessionDetailTarget) -> Void
-    @State private var listAppearedAt = Date()
+    /// When the rows came on show; nil while they aren't (the Sessions card on another page), so
+    /// rows coming back with the page don't count as new sessions (user, 2026-11-19: every row
+    /// flashed its white outline on turning to the sessions' page).
+    @State private var listAppearedAt: Date?
     /// Row order captured while the cursor is over the list, so a row never moves under it.
     @State private var frozenOrder: [String]?
 
     var body: some View {
         let groups = unifiedGroups
 
-        Group {
-            if groups.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundStyle(NotchPalette.accent)
-                    Text(L("세션 없음", "Ready when you are"))
-                        .font(.system(size: 14, weight: .semibold))
-                    Text(L("작업 폴더에서 Claude Code나 Codex 세션을 시작하면 여기에 활동이 표시됩니다.", "Start a Claude Code or Codex session in your workspace. Its activity will appear here."))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
+        // The rows are the first of the card's pages; 오늘, 최근 세션 and 시작 follow, and stand
+        // alone with nothing listed (2026-11-19; a line of text before).
+        SessionCardPages(hasSessions: !groups.isEmpty) {
+            if !groups.isEmpty {
                 let rows = frozen(groups.flatMap { group in
                     group.claude.map { UnifiedWorkspaceGroup(path: group.path, claude: [$0]) }
                         + group.codex.map { UnifiedWorkspaceGroup(path: group.path, codex: [$0]) }
@@ -55,12 +46,15 @@ struct ClaudeSessionListView: View {
                         // past that the wait would be noticeable). A session that shows up
                         // later, with the list already open, swells once to say it's new.
                         .popIn(.rise, delay: Double(min(index, 8)) * 0.035)
-                        .newHighlight(cornerRadius: 9, active: Date().timeIntervalSince(listAppearedAt) > 0.6)
+                        .newHighlight(cornerRadius: 9, active: listAppearedAt.map { Date().timeIntervalSince($0) > 0.6 } ?? false)
                     }
                 }
                 .onAppear { listAppearedAt = Date() }
                 // Opening a 세션 화면 removes the list without a hover-exit.
-                .onDisappear { frozenOrder = nil }
+                .onDisappear {
+                    frozenOrder = nil
+                    listAppearedAt = nil
+                }
                 .onHover { inside in
                     if inside {
                         frozenOrder = rows.map(\.rowID)

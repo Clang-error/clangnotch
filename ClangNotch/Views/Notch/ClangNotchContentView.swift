@@ -713,10 +713,12 @@ struct ClangNotchContentView: View {
                 }
                 .onChange(of: claudeCodeManager.lastCompletedTurn) { _, turn in
                     guard let turn, settings.showSourceClaudeCode else { return }
+                    recordTurn(turn, .claude)
                     handleCompletedTurn(turn, .claude)
                 }
                 .onChange(of: codexManager.lastCompletedTurn) { _, turn in
                     guard let turn, settings.showSourceCodex else { return }
+                    recordTurn(turn, .codex)
                     handleCompletedTurn(turn, .codex)
                 }
                 .onChange(of: baseNotchActive) { wasActive, isActive in
@@ -3389,6 +3391,33 @@ struct ClangNotchContentView: View {
 
     /// A finish drops the 완료 드롭다운, unless its own app is in front (the wing's Done is
     /// enough there) or another dropdown holds the notch (it waits its turn).
+    /// 오늘 한 일 and 최근 세션 (`AgentActivityLog`), whether or not the notch is open.
+    private func recordTurn(_ turn: CompletedTurn, _ source: DoneFlash.Source) {
+        guard !DemoMode.isActive else { return }
+        let title: String? = switch source {
+        case .claude: claudeCodeManager.sessionStates[turn.sessionId]?.title
+        case .codex: codexManager.threadNames[turn.sessionId]
+        }
+        let folder = projectName(source, turn.sessionId)
+        let destination = sessionDestination(source, turn.sessionId)
+        if destination == .terminal, let terminal = sessionTerminal(source, turn.sessionId)?.bundleIdentifier {
+            AgentActivityLog.shared.terminalUsed(terminal)
+        }
+        switch source {
+        case .claude:
+            let session = claudeCodeManager.availableSessions.first { $0.id == turn.sessionId }
+            AgentActivityLog.shared.record(turn, agent: .claude,
+                                           conversationId: session.flatMap { claudeCodeManager.conversationId(for: $0) },
+                                           title: title ?? folder, folder: folder,
+                                           model: claudeCodeManager.sessionStates[turn.sessionId]?.model,
+                                           inApp: destination == .claude)
+        case .codex:
+            AgentActivityLog.shared.record(turn, agent: .codex, conversationId: nil, title: title ?? folder, folder: folder,
+                                           model: codexManager.sessionStates[turn.sessionId]?.model,
+                                           inApp: destination == .codex)
+        }
+    }
+
     private func handleCompletedTurn(_ turn: CompletedTurn, _ source: DoneFlash.Source) {
         guard notchVM.notchState != .open else { return }
         NotchSounds.playDone(for: turn.sessionId)

@@ -262,6 +262,9 @@ public final class AppSettings: ObservableObject {
     /// 2026-11-13: Korean on a Korean system, English on any other), "ko" or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.
     @AppStorage("settingsLanguage") public var settingsLanguage: String = "system"
+    // 설정 -> 에이전트 -> 터미널 앱: the bundle id of the terminal the Sessions card's 시작 opens,
+    // or "" for 자동 (the terminal the sessions last ran in, `KnownTerminals.preferred`).
+    @AppStorage("preferredTerminal") public var preferredTerminal: String = ""
     // 설정 -> 일반 -> 설정 창 색상: "system" (follows macOS light and dark), "light" or "dark", for
     // the settings window alone (2026-11-19). The notch has its own 노치 색.
     @AppStorage("settingsAppearance") public var settingsAppearance: String = "system"

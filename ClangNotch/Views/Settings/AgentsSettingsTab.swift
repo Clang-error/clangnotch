@@ -77,6 +77,16 @@ struct AgentsSettingsTab: View {
             }
 
             Section {
+                VStack(alignment: .leading, spacing: 2) {
+                    Picker(L("터미널 앱", "Terminal app"), selection: $settings.preferredTerminal) {
+                        Text(L("자동", "Automatic")).tag("")
+                        ForEach(KnownTerminals.installed, id: \.bundleID) { Text($0.name).tag($0.bundleID) }
+                    }
+                    Text(L("Sessions 카드의 시작에서 여는 터미널. 자동은 세션이 마지막으로 돌던 터미널",
+                           "The terminal the Sessions card's Start opens. Automatic: the one your sessions last ran in"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 AgentsCardOrderView(settings: settings)
             } header: {
                 Text(L("Agents 탭 카드", "Agents tab cards"))

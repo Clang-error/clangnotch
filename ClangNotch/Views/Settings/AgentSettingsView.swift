@@ -88,7 +88,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
                                      "features", "battery alerts", "airpods", "dropdown", "wings", "headset", "macbook", "battery"]
         case .media:    return ["기능", "음악", "재생", "영상", "features", "music", "now playing"]
         case .network:  return ["wi-fi", "위치", "skt", "t world", "테더링", "핫스팟", "location", "tethering", "hotspot"]
-        case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격", "카드", "순서",
+        case .agents:   return ["claude", "codex", "효과음", "알림", "사용량", "컨텍스트", "ssh", "원격", "카드", "순서", "터미널",
                                 "sounds", "remind", "usage", "context", "remote"]
         case .security: return ["보안", "권한", "허용", "위험", "승인", "security", "permission", "allow", "danger", "approve"]
         case .experimental: return ["실험", "codex", "claude", "질문", "답하기", "다음 단계", "모자", "효과음", "입력", "소리", "크기", "헤드폰", "이어폰", "블루투스", "단축키",
