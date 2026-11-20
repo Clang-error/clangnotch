@@ -165,7 +165,8 @@ struct AirPodsLevelRing: View {
     var body: some View {
         let gap = charging ? Self.boltGap : 0
         let filled = gap + (1 - 2 * gap) * CGFloat(min(max(level, 0), 100)) / 100
-        let color: Color = level <= 20 ? .red : charging ? .green : NotchPalette.ink
+        // Green whether charging or not, red when low (user, 2026-11-20: the white ring read as empty).
+        let color: Color = level <= 20 ? .red : .green
         ZStack {
             Group {
                 Circle().trim(from: gap, to: 1 - gap)
