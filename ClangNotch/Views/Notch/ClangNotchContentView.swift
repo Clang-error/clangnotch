@@ -81,6 +81,11 @@ struct ClangNotchContentView: View {
     @State private var questionDismissOpen = false
     @State private var codexInputRequest: CodexInputRequest?
     @State private var claudeInputRequest: ClaudeInputRequest?
+    /// Claude questions answered from the notch. Sending the answer lets the hook go, so the
+    /// session leaves `answerableQuestionSessions` a moment before the question itself goes;
+    /// meanwhile it kept being drawn, read-only, as the list with "Claude에서 응답" (user,
+    /// 2026-11-20). An answered one stays as answered, its pick showing, until it goes.
+    @State private var answeredClaudeQuestions: Set<String> = []
     /// Which question of the dropdown's shows (one at a time), for the wing header's "질문 1/2".
     @State private var questionStep = 0
     /// ⌘ alone is held with the notch open: the 탭 막대 shows each tab's ⌘ number.
@@ -681,7 +686,8 @@ struct ClangNotchContentView: View {
             }
             // Answer buttons and Send are taller than the read-only list: re-fit.
             .onChange(of: permissionCenter.answerableQuestionSessions) { _, _ in
-                if showQuestionNotice, !showPermissionNotice, let request = claudeInputRequest {
+                if showQuestionNotice, !showPermissionNotice, let request = claudeInputRequest,
+                   !answeredClaudeQuestions.contains(request.id) {
                     triggerClaudeInputNotice(request)
                 }
             }
@@ -2076,10 +2082,16 @@ struct ClangNotchContentView: View {
     /// 2026-11-12). The hook stays held while the notch is open.
     private func claudeQuestionAnswer(for request: ClaudeInputRequest) -> (([String: Any]) -> Void)? {
         // A next-step box's buttons send a message in the app; the notch can't press them.
-        guard !request.isWrapUp, let sessionId = claudeSessionId(asking: request),
-              permissionCenter.answerableQuestionSessions.contains(sessionId) else { return nil }
+        guard !request.isWrapUp, let sessionId = claudeSessionId(asking: request) else { return nil }
+        // Answered: still drawn as answerable, so the pick shows until the question goes. A
+        // second pick sends nothing.
+        if answeredClaudeQuestions.contains(request.id) { return { _ in } }
+        guard permissionCenter.answerableQuestionSessions.contains(sessionId) else { return nil }
         let center = permissionCenter
-        return { answers in center.answerQuestion(sessionId: sessionId, answers: answers) }
+        return { answers in
+            answeredClaudeQuestions.insert(request.id)
+            center.answerQuestion(sessionId: sessionId, answers: answers)
+        }
     }
 
     /// Set when the notch can answer the Codex question itself (`canAnswerFromNotch`); the
@@ -2667,27 +2679,32 @@ struct ClangNotchContentView: View {
         /// filled in the agent's colour with the row tinted once picked, so the pick shows.
         private func optionButton(_ option: AgentInputOption, picked: Bool, multiSelect: Bool,
                                   action: @escaping () -> Void) -> some View {
-            Button(action: action) {
-                HStack(alignment: .firstTextBaseline, spacing: 8 * scale) {
-                    Image(systemName: multiSelect ? (picked ? "checkmark.square.fill" : "square")
-                                                  : (picked ? "checkmark.circle.fill" : "circle"))
-                        .font(.system(size: 12 * scale, weight: .medium))
-                        .foregroundColor(picked ? accentColor : NotchPalette.ink.opacity(0.4))
-                    (Text(option.label).font(.system(size: 13 * scale, weight: .medium)).foregroundColor(NotchPalette.ink)
-                        + Text(option.description.isEmpty ? "" : "  " + option.description)
-                            .font(.system(size: 12 * scale)).foregroundColor(NotchPalette.ink.opacity(0.5)))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 12 * scale)
-                .padding(.vertical, 8 * scale)
-                .background(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
-                    .fill(picked ? accentColor.opacity(0.2) : NotchPalette.ink.opacity(0.06)))
-                .overlay(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
-                    .stroke(picked ? accentColor.opacity(0.7) : .clear, lineWidth: 1.2))
-                .contentShape(Rectangle())
+            // The whole row takes the click as its own tap gesture, not a Button: a Button under
+            // the surface's tap gesture (the one that opens the notch) only took clicks on its
+            // circle, the label's text passing them to the surface (user, 2026-11-20). A child's
+            // gesture goes before its ancestor's, as 직접 입력's row does.
+            HStack(alignment: .firstTextBaseline, spacing: 8 * scale) {
+                Image(systemName: multiSelect ? (picked ? "checkmark.square.fill" : "square")
+                                              : (picked ? "checkmark.circle.fill" : "circle"))
+                    .font(.system(size: 12 * scale, weight: .medium))
+                    .foregroundColor(picked ? accentColor : NotchPalette.ink.opacity(0.4))
+                (Text(option.label).font(.system(size: 13 * scale, weight: .medium)).foregroundColor(NotchPalette.ink)
+                    + Text(option.description.isEmpty ? "" : "  " + option.description)
+                        .font(.system(size: 12 * scale)).foregroundColor(NotchPalette.ink.opacity(0.5)))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 12 * scale)
+            .padding(.vertical, 8 * scale)
+            .background(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
+                .fill(picked ? accentColor.opacity(0.2) : NotchPalette.ink.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous)
+                .stroke(picked ? accentColor.opacity(0.7) : .clear, lineWidth: 1.2))
+            .contentShape(RoundedRectangle(cornerRadius: 10 * scale, style: .continuous))
+            .onTapGesture(perform: action)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { action() }
         }
 
         /// A single choice is the answer: it shows picked for a moment, then the next question
