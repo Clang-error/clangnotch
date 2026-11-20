@@ -55,19 +55,19 @@ struct AgentsSettingsTab: View {
                                 .labelsHidden()
                         }
                     }
-                    Text(L("마지막 활동 뒤 이 시간이 지나면 세션이 목록에서 빠짐(1~240분). 일하는 중이거나 답을 기다리는 세션은 유지. 세션을 우클릭해 고정하면 시간이 지나도 유지됨",
-                           "A session leaves the list this long after its last activity (1–240 min). Working or waiting sessions stay. Right-click a session to pin it and it stays whatever the time"))
+                    Text(L("마지막 활동 뒤, 설정 시간이 지나면 세션이 목록에서 제외(1~240분). 작업 중인 세션 및 고정된 세션은 유지.",
+                           "A session leaves the list this long after its last activity (1–240 min). Working and pinned sessions stay."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 SettingToggle(L("사용량 추정", "Usage forecast"),
-                              L("지금 속도로 쓰면 리셋 때 몇 %일지 예측",
-                                "Predicts the % at reset at the current pace"),
+                              L("지금 속도로 쓰면 리셋 시 몇 %일지 예측.",
+                                "Predicts the % at reset at the current pace."),
                               isOn: $settings.usagePaceEnabled)
                 SettingToggle(L("컨텍스트 막대 표시", "Show context bar"),
-                              L("세션 화면 맨 위에 컨텍스트를 얼마나 썼는지 표시",
-                                "How much context is used, atop the session view"),
+                              L("세션 화면 맨 위에 컨텍스트 사용량 표시.",
+                                "Context usage atop the session view."),
                               isOn: $settings.showContextProgress)
                 // Covers Codex approvals too, so it isn't under Claude Code.
                 Toggle(L("권한 대기 표시 (날개의 Needs OK)", "Show permission indicator (Needs OK on the wing)"), isOn: $settings.showPermissionIndicator)
@@ -82,8 +82,8 @@ struct AgentsSettingsTab: View {
                         Text(L("자동", "Automatic")).tag("")
                         ForEach(KnownTerminals.installed, id: \.bundleID) { Text($0.name).tag($0.bundleID) }
                     }
-                    Text(L("Sessions 카드의 시작에서 여는 터미널. 자동은 세션이 마지막으로 돌던 터미널",
-                           "The terminal the Sessions card's Start opens. Automatic: the one your sessions last ran in"))
+                    Text(L("Sessions 카드의 시작에서 여는 터미널. 자동은 세션이 마지막으로 돌던 터미널.",
+                           "The terminal the Sessions card's Start opens. Automatic: the one your sessions last ran in."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -98,16 +98,16 @@ struct AgentsSettingsTab: View {
                 Toggle(L("할 일 목록 표시 (Current Tasks 카드)", "Show todo list (Current Tasks card)"), isOn: $settings.showTodoList)
                     .disabled(!claudeEnabled.wrappedValue)
                 SettingToggle(L("사용량 한도 추적", "Enable usage quota tracking"),
-                              L("Claude Code 로그인 정보로 5시간, 주간 한도 확인. 키체인 확인 창이 한 번 뜰 수 있음",
-                                "Checks the 5-hour and weekly limits with Claude Code's sign-in. Keychain may ask once"),
+                              L("Claude Code 로그인 정보의 한도 확인. 키체인 확인 창이 한 번 뜰 수 있음.",
+                                "Checks the limits with Claude Code's sign-in. Keychain may ask once."),
                               isOn: $settings.enableClaudeUsage)
                 ClaudeUsageSettingsView()
                     .disabled(!settings.enableClaudeUsage)
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showClaudePlan)
                     .disabled(!claudeEnabled.wrappedValue || !settings.enableClaudeUsage)
                 SettingToggle(L("SSH 원격 세션", "Remote sessions over SSH"),
-                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Claude Code 세션도 이 노치에 표시",
-                                "Also shows Claude Code sessions running on other computers you reach over SSH"),
+                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Claude Code 세션도 이 노치에 표시.",
+                                "Also shows Claude Code sessions running on other computers you reach over SSH."),
                               isOn: $settings.remoteClaudeEnabled)
                     .disabled(!claudeEnabled.wrappedValue)
                     .onChange(of: settings.remoteClaudeEnabled) { remote.sync() }
@@ -115,14 +115,14 @@ struct AgentsSettingsTab: View {
                     RemoteHostsEditor(
                         hosts: $settings.remoteClaudeHosts, statuses: remote.statuses,
                         details: [
-                            L("리눅스, 맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함. 원래 파일은 settings.json.clangnotch-bak으로 남음. 작업 중, 질문, 권한 대기, 완료를 모두 표시함. 선택지가 있는 질문은 노치에서 바로 답할 수 있음",
-                              "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json. The original is kept as settings.json.clangnotch-bak. Working, questions, approvals and Done all show, and a question with options can be answered from the notch"),
-                            L("윈도우 컴퓨터(또는 curl, jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴. 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음",
-                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes. A question or an approval shows only as waiting, without its text"),
-                            L("어느 환경인지는 연결할 때 확인해 상태에 표시함",
-                              "The kind of computer is checked when connecting and shown in the state"),
-                            L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
-                              "One SSH connection stays open while this Mac is on"),
+                            L("리눅스, 맥 컴퓨터: 그 컴퓨터의 ~/.claude에 훅 스크립트(clangnotch-hook.sh)를 넣고 settings.json에 훅 항목을 추가함. 원래 파일은 settings.json.clangnotch-bak으로 남음. 작업 중, 질문, 권한 대기, 완료를 모두 표시함. 선택지가 있는 질문은 노치에서 바로 답할 수 있음.",
+                              "Linux and macOS: puts a hook script (clangnotch-hook.sh) in that computer's ~/.claude and adds hook entries to settings.json. The original is kept as settings.json.clangnotch-bak. Working, questions, approvals and Done all show, and a question with options can be answered from the notch."),
+                            L("윈도우 컴퓨터(또는 curl, jq가 없어 훅을 못 넣는 컴퓨터): 아무것도 설치하지 않고 Claude Code가 남기는 대화 기록과 세션 상태만 읽어 옴. 질문과 권한 대기는 기다린다는 것만 표시하고 내용은 표시할 수 없음.",
+                              "Windows (or a computer without curl and jq, where the hooks can't go): installs nothing and only reads the transcripts and session state Claude Code writes. A question or an approval shows only as waiting, without its text."),
+                            L("어느 환경인지는 연결할 때 확인해 상태에 표시함.",
+                              "The kind of computer is checked when connecting and shown in the state."),
+                            L("이 맥이 켜져 있는 동안 SSH 연결 하나를 열어 둠.",
+                              "One SSH connection stays open while this Mac is on."),
                         ],
                         sync: { remote.sync(asking: $0) }, reconnect: remote.reconnect)
                         .disabled(!claudeEnabled.wrappedValue)
@@ -134,8 +134,8 @@ struct AgentsSettingsTab: View {
             Section {
                 Toggle(L("사용", "Enabled"), isOn: codexEnabled)
                 SettingToggle(L("사용량 한도 표시", "Show usage limits"),
-                              L("Codex의 5시간, 주간 한도를 사용량 카드에 표시. 세션 기록과 이 맥의 Codex에서 읽으며 따로 로그인 없음",
-                                "Shows Codex's 5-hour and weekly limits, read from its session logs and the Codex on this Mac. No extra sign-in"),
+                              L("Codex의 한도를 사용량 카드에 표시. 따로 로그인 없이 세션 기록과 해당 맥의 Codex에서 읽음.",
+                                "Shows Codex's limits in the usage card, read from its session logs and the Codex on this Mac. No extra sign-in."),
                               isOn: $settings.showCodexUsage)
                     .disabled(!codexEnabled.wrappedValue)
                     .onChange(of: settings.showCodexUsage) { _, on in if on { CodexManager.shared.refresh() } }
@@ -143,8 +143,8 @@ struct AgentsSettingsTab: View {
                 Toggle(L("플랜 표시 (사용량 카드)", "Show plan (usage card)"), isOn: $settings.showCodexPlan)
                     .disabled(!codexEnabled.wrappedValue || !settings.showCodexUsage)
                 SettingToggle(L("SSH 원격 세션", "Remote sessions over SSH"),
-                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Codex 세션도 이 노치에 표시",
-                                "Also shows Codex sessions running on other computers you reach over SSH"),
+                              L("SSH로 접속되는 다른 컴퓨터에서 도는 Codex 세션도 이 노치에 표시.",
+                                "Also shows Codex sessions running on other computers you reach over SSH."),
                               isOn: $settings.remoteCodexEnabled)
                     .disabled(!codexEnabled.wrappedValue)
                     .onChange(of: settings.remoteCodexEnabled) { remoteCodex.sync() }
@@ -153,14 +153,14 @@ struct AgentsSettingsTab: View {
                     RemoteHostsEditor(
                         hosts: $settings.remoteCodexHosts, statuses: remoteCodex.statuses,
                         details: [
-                            L("리눅스, 맥, 윈도우 컴퓨터. 그 컴퓨터에는 아무것도 설치하거나 바꾸지 않고 Codex가 남기는 세션 기록만 읽어 옴",
-                              "Linux, macOS and Windows. Installs and changes nothing there, only reads the session logs Codex writes"),
-                            L("작업 중, 질문, 완료가 표시됨. 권한 요청 알림과 노치에서 답하기는 안 됨",
-                              "Working, questions and Done show. No approval requests or answering from the notch"),
-                            L("어느 환경인지는 연결할 때 확인함",
-                              "The kind of computer is checked when connecting"),
-                            L("이 Mac이 켜져 있는 동안 SSH 연결 하나를 열어 둠",
-                              "One SSH connection stays open while this Mac is on"),
+                            L("리눅스, 맥, 윈도우 컴퓨터. 그 컴퓨터에는 아무것도 설치하거나 바꾸지 않고 Codex가 남기는 세션 기록만 읽어 옴.",
+                              "Linux, macOS and Windows. Installs and changes nothing there, only reads the session logs Codex writes."),
+                            L("작업 중, 질문, 완료가 표시됨. 권한 요청 알림과 노치에서 답하기는 안 됨.",
+                              "Working, questions and Done show. No approval requests or answering from the notch."),
+                            L("어느 환경인지는 연결할 때 확인함.",
+                              "The kind of computer is checked when connecting."),
+                            L("이 맥이 켜져 있는 동안 SSH 연결 하나를 열어 둠.",
+                              "One SSH connection stays open while this Mac is on."),
                         ],
                         sync: { remoteCodex.sync(asking: $0) }, reconnect: remoteCodex.reconnect)
                         .disabled(!codexEnabled.wrappedValue)
@@ -182,11 +182,11 @@ struct SecuritySettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("위험 표시가 떠도 허용", "Allow despite a danger sign"),
-                              L("받은 스크립트 실행, 관리자 권한(sudo), 비밀 정보 접근 같은 위험 표시가 떠도 노치에서 허용할 수 있음.",
+                              L("받은 스크립트 실행, 관리자 권한(sudo), 비밀 정보 접근 같은 위험 표시가 떠도 노치에서 허용 가능.",
                                 "Allow from the notch even when it flags a downloaded script, administrator rights (sudo) or secrets."),
                               isOn: $settings.permissionAllowFlagged)
                 SettingToggle(L("긴 명령도 펼치지 않고 허용", "Allow long commands without opening them"),
-                              L("3줄이나 180자를 넘는 명령을 전체 보기로 끝까지 보지 않아도 허용할 수 있음.",
+                              L("3줄이나 180자를 넘는 명령을 전체 보기로 끝까지 보지 않아도 허용 가능.",
                                 "Allow a command longer than 3 lines or 180 characters without reading it to the end in Show all."),
                               isOn: $settings.permissionAllowUnread)
             } header: {
@@ -276,10 +276,10 @@ private struct RemoteHostsEditor: View {
                 .padding(.top, 4)
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(details + [
-                    L("주소: 사용자@주소 (포트가 22가 아니면 사용자@주소:포트), 또는 ~/.ssh/config에 만들어 둔 별칭",
-                      "Address: user@address (user@address:port if the port isn't 22), or an alias from ~/.ssh/config"),
-                    L("처음 연결하는 컴퓨터면 신뢰할지 묻고, 키로 로그인이 안 되면 비밀번호를 물음",
-                      "A computer seen for the first time is confirmed once, and the password is asked when key login doesn't work"),
+                    L("주소: 사용자@주소 (포트가 22가 아니면 사용자@주소:포트), 또는 ~/.ssh/config에 만들어 둔 별칭.",
+                      "Address: user@address (user@address:port if the port isn't 22), or an alias from ~/.ssh/config."),
+                    L("처음 연결하는 컴퓨터면 신뢰할지 묻고, 키로 로그인이 안 되면 비밀번호를 물음.",
+                      "A computer seen for the first time is confirmed once, and the password is asked when key login doesn't work."),
                 ], id: \.self) { line in
                     Text(line)
                 }
@@ -313,7 +313,7 @@ private struct CodexAccountStatus: View {
                         .foregroundColor(.secondary)
                 }
             }
-            Text(L("Codex가 이 Mac에 남긴 로그인 확인. 감지 안 되면 Codex에서 로그인", "Checks the sign-in Codex left on this Mac. Sign in with Codex if not detected"))
+            Text(L("Codex가 이 맥에 남긴 로그인 확인. 감지 안 되면 Codex에서 로그인.", "Checks the sign-in Codex left on this Mac. Sign in with Codex if not detected."))
                 .font(.caption2)
                 .foregroundColor(.secondary.opacity(0.7))
         }

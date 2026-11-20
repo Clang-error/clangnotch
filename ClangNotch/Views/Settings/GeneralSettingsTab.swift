@@ -39,8 +39,8 @@ struct AppGeneralSettingsTab: View {
 
             Section {
                 SettingToggle(L("배터리 절약 모드", "Battery saver mode"),
-                              L("배터리 사용 시 글로우 애니메이션을 줄여 배터리 절약",
-                                "Less glow animation on battery to save power"),
+                              L("배터리 사용 시 글로우 애니메이션을 줄여 배터리 절약.",
+                                "Less glow animation on battery to save power."),
                               isOn: $settings.batterySaverEnabled)
             } header: {
                 Text(L("성능", "Performance"))

@@ -43,7 +43,7 @@ struct NotchSettingsTab: View {
                     displays = NotchDetector.displays
                 }
                 SettingToggle(L("전체 화면에서도 표시", "Show in full screen"),
-                              L("전체 화면 앱 위에도 노치 유지", "Keeps the notch over full-screen apps"),
+                              L("전체 화면 앱 위에도 노치 유지.", "Keeps the notch over full-screen apps."),
                               isOn: $settings.keepNotchInFullScreen)
             } header: {
                 Text(L("표시", "Visibility"))
@@ -51,7 +51,7 @@ struct NotchSettingsTab: View {
 
             Section {
                 SettingToggle(L("누를 때만 열기", "Open only on click"),
-                              L("커서를 올려 두기만 해서는 열리지 않음", "Resting the cursor on the notch doesn't open it"),
+                              L("커서를 올려 두기만 해서는 열리지 않음.", "Resting the cursor on the notch doesn't open it."),
                               isOn: $settings.notchOpensOnClick)
                 if !settings.notchOpensOnClick {
                 VStack(alignment: .leading, spacing: 4) {
@@ -63,22 +63,22 @@ struct NotchSettingsTab: View {
                             .monospacedDigit()
                     }
                     Slider(value: $settings.notchOpenDelay, in: 0...1, step: 0.05)
-                    Text(L("커서를 노치에 위 시간만큼 올려 둬야 열림",
-                           "Opens after the cursor rests on the notch this long"))
+                    Text(L("커서를 노치에 위 시간만큼 올려 둬야 열림.",
+                           "Opens after the cursor rests on the notch this long."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 }
-                SettingToggle(L("노치앱으로 인해 가려진 메뉴바 아이콘 보이기", "Show menu bar icons the notch app covers"),
+                SettingToggle(L("노치앱으로 인해 가려진 메뉴 막대 아이콘 보이기", "Show menu bar icons the notch app covers"),
                               settings.notchOpensOnClick
-                                ? L("노치가 펼쳐져 가려지는 부분에 커서를 올리면, 배경이 옅어져 뒤의 메뉴바가 보이고 클릭할 수 있게 됩니다. 노치는 가운데를 눌러야 펼쳐짐.",
-                                    "With the cursor on a part the widened notch covers, its background fades so the menu bar behind it shows and can be clicked. The notch opens from a click on its middle.")
-                                : L("노치가 펼쳐져 가려지는 부분에 커서를 올리면, 배경이 옅어져 뒤의 메뉴바가 보이고 클릭할 수 있게 됩니다. 노치는 가운데에 올려야 펼쳐짐.",
-                                    "With the cursor on a part the widened notch covers, its background fades so the menu bar behind it shows and can be clicked. The notch opens from its middle."),
+                                ? L("보고자 하는 부분이 노치로 인해 가려졌을 시, 커서를 통해 메뉴 막대 조작. 노치는 가운데를 눌러 펼침.",
+                                    "Where the notch covers what you want, the cursor works the menu bar behind it. Click the notch's middle to open it.")
+                                : L("보고자 하는 부분이 노치로 인해 가려졌을 시, 커서를 통해 메뉴 막대 조작. 노치는 가운데에 올려 펼침.",
+                                    "Where the notch covers what you want, the cursor works the menu bar behind it. Rest the cursor on the notch's middle to open it."),
                               isOn: $settings.wingStepAside)
                 if settings.wingStepAside {
                     SettingToggle(L("툴팁 표시", "Show the tooltip"),
-                                  L("날개가 비켜나 있는 동안 노치 아래에 툴팁을 띄움", "While a wing is aside, a tooltip shows under the notch"),
+                                  L("날개가 옆으로 비켜 있는 동안, 노치 아래에 툴팁 표시.", "While a wing is aside, a tooltip shows under the notch."),
                                   isOn: $settings.wingOpenHint)
                         .padding(.leading, 20)
                 }
@@ -86,11 +86,11 @@ struct NotchSettingsTab: View {
                 // so the switch would do nothing and isn't shown (user, 2026-11-19).
                 if !settings.notchOpensOnClick {
                     SettingToggle(L("열릴 때 햅틱", "Haptic on open"),
-                                  L("노치가 펼쳐질 때 트랙패드 햅틱", "Trackpad haptic when the notch opens"),
+                                  L("노치가 펼쳐지면 트랙패드 햅틱 표시.", "Trackpad haptic when the notch opens."),
                                   isOn: $settings.notchHapticsEnabled)
                 }
                 SettingToggle(L("끝날 때 햅틱", "Haptic when done"),
-                              L("세션이 작업을 끝내면 트랙패드 햅틱", "Trackpad haptic when a session finishes"),
+                              L("세션이 작업을 끝내면 트랙패드 햅틱 표시.", "Trackpad haptic when a session finishes."),
                               isOn: $settings.doneHapticsEnabled)
                 if (settings.notchHapticsEnabled && !settings.notchOpensOnClick) || settings.doneHapticsEnabled {
                     VStack(alignment: .leading, spacing: 4) {
@@ -129,8 +129,8 @@ struct NotchSettingsTab: View {
                 foldRow(L("테더링", "Tethering"), $settings.foldSecondsTether)
                 foldRow(L("속도", "Speed test"), $settings.foldSecondsSpeed)
                 foldRow(L("복사", "Copy"), $settings.foldSecondsCopy, range: 1...60)
-                Text(L("다 내려온 뒤부터 카운트 시작. 커서를 올려 두면 멈춤. 에어팟, 맥 드롭다운은 '자동으로 접기'를 켰을 때만(맥스, 헤드셋, 뚜껑 닫힌 채 낀 에어팟은 늘 접힘)",
-                       "Counted from when it is all the way down. Paused while the cursor is on it. AirPods and Mac dropdowns only with their auto-fold on (Max, headsets and buds worn with the lid shut always fold)"))
+                Text(L("다 내려온 뒤부터 카운트 시작. 커서를 올려 두면 멈춤. 에어팟, 맥 드롭다운은 '자동으로 접기'를 켰을 때만(에어팟 맥스, 헤드셋, 뚜껑 닫힌 채 낀 에어팟은 늘 접힘).",
+                       "Counted from when it is all the way down. Paused while the cursor is on it. AirPods and Mac dropdowns only with their auto-fold on (AirPods Max, headsets and buds worn with the lid shut always fold)."))
                     .font(.caption).foregroundColor(.secondary)
             } header: {
                 Text(L("드롭다운 머무는 시간", "How long dropdowns stay"))
@@ -212,8 +212,8 @@ private struct WallpaperColorSource: View {
                 }
             }
         } else if appearance.wallpaperUnreadable {
-            Text(L("폴더로 바뀌는 바탕화면은 지금 사진을 알 수 없어 다크로 표시. 직접 지정 권장",
-                   "A rotating wallpaper folder doesn't say which picture is showing, so the notch stays dark. Use Custom"))
+            Text(L("폴더로 바뀌는 바탕화면은 지금 사진을 알 수 없어 다크로 표시. 직접 지정 권장.",
+                   "A rotating wallpaper folder doesn't say which picture is showing, so the notch stays dark. Use Custom."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

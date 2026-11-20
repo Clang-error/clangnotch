@@ -16,10 +16,10 @@ struct FeaturesSettingsTab: View {
     /// A caption says which permission its switch needs only while that permission is missing
     /// (user, 2026-11-15).
     private var needsAccessibility: String {
-        keyboardLock.hasAccessibilityPermission ? "" : L(". 손쉬운 사용 권한 필요", ". Needs Accessibility")
+        keyboardLock.hasAccessibilityPermission ? "" : L(" 손쉬운 사용 권한 필요.", " Needs Accessibility.")
     }
     private var needsAudioCapture: String {
-        audioCaptureGranted ? "" : L(". 오디오 캡처 권한 필요", ". Needs audio-capture permission")
+        audioCaptureGranted ? "" : L(" 오디오 캡처 권한 필요.", " Needs audio-capture permission.")
     }
 
     /// Turning on a switch that needs Accessibility asks for it straight away.
@@ -47,8 +47,8 @@ struct FeaturesSettingsTab: View {
     private var notchTabs: some View {
         Section {
             SettingToggle(L("클립보드 기록", "Clipboard history"),
-                          L("최근 복사한 글, 이미지, 파일. 파일은 위치만 기억하고 이미지는 앱이 종료되면 클립보드 기록은 삭제됨",
-                            "Recently copied text, images and files. Files by their location; images leave the history when the app quits"),
+                          L("최근 복사한 글, 이미지, 파일. 파일은 위치만 기억하고 이미지는 앱이 종료되면 클립보드 기록은 삭제됨.",
+                            "Recently copied text, images and files. Files by their location; images leave the history when the app quits."),
                           isOn: $settings.enableClipboardHistory)
                 .onChange(of: settings.enableClipboardHistory) { _, _ in
                     ClipboardManager.shared.syncWithSettings()
@@ -58,20 +58,20 @@ struct FeaturesSettingsTab: View {
                     .padding(.leading, 20)
             }
             SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
-                          L("앱마다 소리 크기 조절", "Volume per app") + needsAudioCapture,
+                          L("앱마다 소리 크기 조절.", "Volume per app.") + needsAudioCapture,
                           isOn: $settings.enableAudioMixer)
                 .onChange(of: settings.enableAudioMixer) { _, on in
                     if on { AudioMixerManager.shared.start() } else { AudioMixerManager.shared.stop() }
                 }
             SettingToggle(L("Sidecar 빠른 연결", "Sidecar quick-connect"),
-                          L("iPad를 보조 화면으로 바로 연결", "Connect an iPad as a second display"),
+                          L("아이패드를 보조 화면으로 바로 연결.", "Connect an iPad as a second display."),
                           isOn: $settings.enableSidecar)
                 .onChange(of: settings.enableSidecar) { _, on in
                     // The Sidecar tab starts it when shown.
                     if !on { SidecarManager.shared.stop() }
                 }
             SettingToggle(L("배터리 잔량", "Battery levels"),
-                          L("Mac, 블루투스 기기, iPhone의 배터리", "The Mac, Bluetooth accessories and iPhone"),
+                          L("맥, 블루투스 기기, 아이폰의 배터리.", "The Mac, Bluetooth accessories and iPhone."),
                           isOn: $settings.enableBattery)
                 .onChange(of: settings.enableBattery) { _, on in
                     if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
@@ -79,15 +79,15 @@ struct FeaturesSettingsTab: View {
             EnergyHelperRow()
                 .padding(.leading, 20)
             SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
-                          L("측정할 때만 네트워크 사용", "Uses the network only while testing"),
+                          L("측정 시에 네트워크 사용.", "Uses the network while testing."),
                           isOn: $settings.enableSpeedTest)
             if !keyboardLock.hasAccessibilityPermission && settings.enableKeyboardLock {
                 AccessibilityMissingRow(permission: keyboardLock,
-                                        what: L("손쉬운 사용 권한이 없어 아래 키보드 잠금이 동작하지 않습니다",
-                                                "Without Accessibility, Keyboard lock below does nothing"))
+                                        what: L("손쉬운 사용 권한이 없어 아래 키보드 잠금이 동작하지 않음.",
+                                                "Without Accessibility, Keyboard lock below does nothing."))
             }
             SettingToggle(L("키보드 잠금", "Keyboard lock"),
-                          L("키보드 입력 잠금", "Locks keyboard input") + needsAccessibility,
+                          L("키보드 입력 잠금.", "Locks keyboard input.") + needsAccessibility,
                           isOn: $settings.enableKeyboardLock)
                 .onChange(of: settings.enableKeyboardLock) { _, on in askForAccessibility(on) }
         }
@@ -99,12 +99,12 @@ struct FeaturesSettingsTab: View {
             if !keyboardLock.hasAccessibilityPermission
                 && (settings.centerSystemBanners || settings.enableSoftwareVolume) {
                 AccessibilityMissingRow(permission: keyboardLock,
-                                        what: L("손쉬운 사용 권한이 없어 아래 볼륨, 밝기 표시 바꾸기와 모니터 소리 줄이기가 동작하지 않습니다",
-                                                "Without Accessibility, the volume and brightness HUD and monitor volume below do nothing"))
+                                        what: L("손쉬운 사용 권한이 없어 아래 볼륨, 밝기 표시 바꾸기와 모니터 소리 줄이기가 동작하지 않음.",
+                                                "Without Accessibility, the volume and brightness HUD and monitor volume below do nothing."))
             }
             SettingToggle(L("볼륨, 밝기 표시 바꾸기", "Replace volume and brightness HUD"),
-                          L("macOS 볼륨, 밝기 표시 대신 메뉴 막대 아래 조절창 사용. 에어팟이나 맥스에서 크라운, 제스처로 바꾼 소리는 macOS 표시도 함께 표시됨",
-                            "A HUD under the menu bar instead of macOS's volume and brightness display. Volume changed on AirPods or AirPods Max (crown, gestures) still shows macOS's display too") + needsAccessibility,
+                          L("기존의 macOS 표시 대신, 메뉴 막대 아래에 조절창을 표시. 에어팟, 에어팟 맥스에서 크라운, 제스처에서 조작 시엔 기존 방식으로도 함께 표시.",
+                            "A HUD under the menu bar in place of macOS's display. Volume changed on AirPods or AirPods Max (crown, gestures) shows macOS's display too.") + needsAccessibility,
                           isOn: $settings.centerSystemBanners)
                 .onChange(of: settings.centerSystemBanners) { _, on in
                     SystemBannerCenterer.shared.syncWithSettings()
@@ -120,8 +120,8 @@ struct FeaturesSettingsTab: View {
                 .pickerStyle(.segmented)
                 .padding(.leading, 20)
                 SettingToggle(L("밝기 조절키를 다른 앱에 넘기기", "Leave the brightness keys to other apps"),
-                              L("MonitorControl, Lunar, BetterDisplay로 외부 모니터 밝기까지 조절할 때 켜기. 외부 모니터가 연결돼 있을 때만 넘김",
-                                "On when MonitorControl, Lunar or BetterDisplay sets external displays too. Only while an external display is connected"),
+                              L("MonitorControl, Lunar, BetterDisplay로 외부 모니터 밝기까지 조절. 단, 외부 모니터 연결 시에만 넘김.",
+                                "For MonitorControl, Lunar or BetterDisplay setting external displays too. Only while an external display is connected."),
                               isOn: $settings.passBrightnessKeys)
                     .padding(.leading, 20)
                 if settings.passBrightnessKeys {
@@ -132,8 +132,8 @@ struct FeaturesSettingsTab: View {
             }
             // Its own switch: it keeps the volume key tap up even with the HUD switch off.
             SettingToggle(L("볼륨 조절 안 되는 모니터 소리 줄이기", "Volume for monitors without volume control"),
-                          L("HDMI, DisplayPort 스피커로 가는 소리를 가로채, 줄여서 다시 재생",
-                            "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter") + needsAccessibility,
+                          L("HDMI, DisplayPort 스피커로 가는 소리를 가로채, 줄여서 다시 재생.",
+                            "Intercepts sound headed to HDMI or DisplayPort speakers and replays it quieter.") + needsAccessibility,
                           isOn: $settings.enableSoftwareVolume)
                 .onChange(of: settings.enableSoftwareVolume) { _, on in
                     SoftwareVolume.shared.syncWithSettings()
@@ -157,8 +157,8 @@ struct FeaturesSettingsTab: View {
             }
             .disabled(!settings.enableBattery)
             SettingToggle(L("에어팟 연결 알림", "AirPods connection dropdown"),
-                          L("에어팟이나 블루투스 헤드셋을 연결하면 잔량 표시. 배터리 잔량이 켜져 있어야 함",
-                            "Battery levels when AirPods or a Bluetooth headset connect. Needs Battery levels"),
+                          L("에어팟이나 블루투스 헤드셋을 연결하면 잔량 표시. '배터리 잔량' 활성화 시에만 가능.",
+                            "Battery levels when AirPods or a Bluetooth headset connect. Only with Battery levels on."),
                           isOn: $settings.enableAirPodsDropdown)
                 .disabled(!settings.enableBattery)
             // Only means something with the card on: under it, indented.
@@ -168,14 +168,14 @@ struct FeaturesSettingsTab: View {
                     .padding(.leading, 20)
                     .disabled(!settings.enableBattery)
             }
-            SettingToggle(L("에어팟, 헤드셋 배터리 부족 시 드롭다운", "Dropdown when AirPods or a headset run low"),
-                          L("에어팟, 에어팟 맥스, 헤드셋이 20%, 10%가 되면 한 번씩. 30% 이상으로 충전될 때까지 다시 안 뜸",
-                            "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged back to 30%"),
+            SettingToggle(L("에어팟, 헤드셋 배터리 부족 시 드롭다운 표시", "Show a dropdown when AirPods or a headset run low"),
+                          L("에어팟, 에어팟 맥스, 헤드셋이 20%, 10%마다 한 번씩. 30% 이상으로 충전될 때까지 다시 안 뜸.",
+                            "Once at 20% and once at 10% for AirPods, AirPods Max and headsets. Not again until charged back to 30%."),
                           isOn: $settings.airPodsLowBatteryDropdown)
                 .disabled(!settings.enableBattery)
             if settings.airPodsLowBatteryDropdown {
                 SettingToggle(L("알림센터로 보내기", "Send to Notification Center"),
-                              L("기기들의 배터리 부족 알림이 알림센터에도 표시됨", "These devices' low battery alerts show in Notification Center too"),
+                              L("알림센터로 표시.", "Shows in Notification Center."),
                               isOn: $settings.airPodsLowBatteryNotification)
                     .padding(.leading, 20)
                     .disabled(!settings.enableBattery)
@@ -184,8 +184,8 @@ struct FeaturesSettingsTab: View {
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("맥 배터리 부족 시 드롭다운", "Dropdown when this Mac runs low"))
-                    Text(L("이 맥의 모델 그림으로 20%, 10%가 되면 한 번씩. 충전 중엔 안 뜸",
-                           "Drawn as this Mac's model, once at 20% and once at 10%. Not while charging"))
+                    Text(L("이 맥의 모델 그림으로 20%, 10%마다 한 번씩. 충전 중엔 안 뜸.",
+                           "Drawn as this Mac's model, once at 20% and once at 10%. Not while charging."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -206,8 +206,8 @@ struct FeaturesSettingsTab: View {
     private var media: some View {
         Section {
             SettingToggle(L("지금 재생 표시", "Show what's playing"),
-                          L("음악, 영상이 재생되면 닫힌 노치 왼쪽에 앨범 그림, 오른쪽에 음파. 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만. MacOS의 '지금 재생'을 읽음",
-                            "While music or a video plays, the closed notch shows its artwork on the left and bars on the right. While the agents work or you tether, just small bars at the right edge. Reads macOS's Now Playing"),
+                          L("음악, 영상이 재생되면 닫힌 노치 왼쪽에 앨범 표지, 오른쪽에 음파 표시. 에이전트가 일하거나 테더링 중이면 오른쪽 끝에 작은 음파만. macOS의 '지금 재생'을 읽음.",
+                            "While music or a video plays, the closed notch shows the album cover on the left and bars on the right. While the agents work or you tether, just small bars at the right edge. Reads macOS's Now Playing."),
                           isOn: $settings.enableNowPlaying)
                 .onChange(of: settings.enableNowPlaying) { NowPlayingMonitor.shared.sync() }
             if settings.enableNowPlaying {
@@ -218,8 +218,8 @@ struct FeaturesSettingsTab: View {
                 }
                 .padding(.leading, 20)
                 SettingToggle(L("소리에 맞춰 음파 움직이기", "Move the bars with the sound"),
-                              L("재생 중인 앱의 소리를 읽어 음파를 움직임", "Reads the sound of the app that plays to move the bars")
-                                + needsAudioCapture + L(". 소리를 녹음하거나 저장하지 않음.", ". Nothing is recorded or saved."),
+                              L("재생 중인 앱의 소리를 읽어 음파를 표시.", "Reads the playing app's sound to draw the bars.")
+                                + needsAudioCapture + L(" 소리를 녹음하거나 저장하지 않음.", " Nothing is recorded or saved."),
                               isOn: $settings.enableNowPlayingLevels)
                     .padding(.leading, 20)
                     .onChange(of: settings.enableNowPlayingLevels) {
@@ -258,8 +258,8 @@ private struct AccessibilityMissingRow: View {
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
                 Text(what)
-                Text(L("이미 켜져 있는데도 이 줄이 보이면 목록에서 ClangNotch를 −로 지우고 다시 추가",
-                       "If ClangNotch is already on there, remove it with − and add it again"))
+                Text(L("이미 켜져 있는데도 이 줄이 보이면 목록에서 ClangNotch를 −로 지우고 다시 추가.",
+                       "If ClangNotch is already on there, remove it with − and add it again."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -286,10 +286,6 @@ private struct SoftwareVolumeExcludedApps: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(L("제외할 앱", "Apps left out"))
-            Text(L("가로채지 않아 볼륨 키로 안 줄어듦. 화면 공유에 다른 사람 소리가 섞이는 앱(디스코드 등)",
-                   "Not intercepted, so the volume keys don't turn them down. Apps whose screen share picks up other people's voices (Discord, …)"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
             ForEach(bundleIDs, id: \.self) { id in
                 HStack(spacing: 8) {
                     let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
@@ -588,8 +584,8 @@ private struct EnergyHelperRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L("에너지 모드 변경 헬퍼", "Energy mode helper"))
                         Text(battery.energyHelper == .installed
-                             ? L("배터리 탭에서 에너지 모드를 바꿀 수 있게 해줌", "Lets the Battery tab change the energy mode")
-                             : L("시스템 설정 -> 로그인 항목에서 허용을 기다리는 중", "Waiting to be allowed in System Settings -> Login Items"))
+                             ? L("배터리 탭에서 에너지 모드를 바꿀 수 있게 해줌.", "Lets the Battery tab change the energy mode.")
+                             : L("시스템 설정 -> 로그인 항목에서 허용을 기다리는 중.", "Waiting to be allowed in System Settings -> Login Items."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

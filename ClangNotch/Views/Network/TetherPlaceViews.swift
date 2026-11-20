@@ -106,8 +106,8 @@ struct TetherPlacesSettingsView: View {
                     Button(L("삭제", "Delete"), role: .destructive) { monitor.remove(place.id) }
                     Button(L("취소", "Cancel"), role: .cancel) {}
                 } message: {
-                    Text(L("다시 추가하려면 그 장소에서 '현재 위치 추가' 클릭",
-                           "To add it back, click Add current location while there"))
+                    Text(L("다시 추가하려면 그 장소에서 '현재 위치 추가' 클릭.",
+                           "To add it back, click Add current location while there."))
                 }
             }
             HStack {
@@ -122,8 +122,8 @@ struct TetherPlacesSettingsView: View {
                     Button(L("위치 권한 허용…", "Allow location access…")) { network.requestAccess() }
                 }
             }
-            Text(L("저장한 장소(집, 회사…)에서 맥이 위의 아이폰 핫스팟으로 테더링하면 노치가 알려 줌. Wi-Fi로 바꾸면 데이터를 아낄 수 있음. SKT가 아니어도 됨",
-                   "When the Mac tethers to the iPhone hotspot above at a saved place (home, office…), the notch says so. Switching to Wi-Fi saves data. Works with any carrier"))
+            Text(L("저장한 장소(집, 회사…)에서 테더링 시 노치에서 알림 표시. 통신사 제한 없음.",
+                   "Tethering at a saved place (home, office…) shows an alert in the notch. Any carrier."))
                 .font(.caption).foregroundColor(.secondary)
             if let error = monitor.lastError {
                 Text(error).font(.caption).foregroundColor(.secondary)

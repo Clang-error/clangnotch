@@ -11,8 +11,8 @@ struct ExperimentalSettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("Codex 질문에 노치에서 답하기", "Answer Codex questions from the notch"),
-                              L("Codex 앱과 터미널 Codex(Plan 모드)가 선택지로 물으면 노치에서 바로 답함. Codex 내부 연결을 써서 업데이트되면 안 될 수 있음",
-                                "Answers multiple-choice questions from the Codex app and from Codex in a terminal (Plan mode). Uses Codex's internal connections, so an update may break it"),
+                              L("Codex 앱 또는 터미널 Codex(Plan)가 질문 시 노치를 통해 대답 가능.",
+                                "Answer questions from the Codex app or Codex in a terminal (Plan) from the notch."),
                               isOn: $settings.experimentalCodexAppAnswers)
                     .disabled(!settings.showSourceCodex)
             } header: {
@@ -21,31 +21,31 @@ struct ExperimentalSettingsTab: View {
 
             Section {
                 SettingToggle(L("Claude 다음 단계에 노치에서 답하기", "Answer Claude next steps from the notch"),
-                              L("Claude 앱이 다음 단계 상자로 물으면 노치에서 버튼을 눌러 답함. Claude Code 훅으로 세션을 깨워 답을 전해서 앱에서 누른 것과 기록이 다름",
-                                "Press the Claude app's next-step buttons from the notch. A Claude Code hook wakes the session with the answer, so the record differs from pressing in the app"),
+                              L("Claude 앱이 다음 단계 상자로 질문 시 노치를 통해 대답 가능.",
+                                "Answer the Claude app's next-step box from the notch."),
                               isOn: $settings.experimentalClaudeNextStepAnswers)
                     .disabled(!settings.showSourceClaudeCode)
                     .onChange(of: settings.experimentalClaudeNextStepAnswers) { _, _ in
                         ClaudeCodeManager.shared.syncNextStepHook()
                     }
                 SettingToggle(L("Claude 아이콘에 모자 씌우기", "Hats on the Claude icon"),
-                              L("닫힌 노치 날개의 Claude 아이콘이 세션마다 하는 일에 따라 모자를 씀. 서브에이전트 1~2개는 실크해트, 3개 이상은 마법사 모자, 2분 넘게 이어지는 세션은 안전모, Done은 왕관",
-                                "Each Claude icon in the closed notch's wings wears a hat for what its session is doing: a top hat with one or two subagents, a wizard hat with three or more, a hard hat on a session past two minutes, a crown on Done"),
+                              L("닫힌 노치 날개의 Claude 아이콘이 세션마다 하는 일에 따라 모자를 씀. 서브에이전트 1~2개는 실크해트, 3개 이상은 마법사 모자, 2분 넘게 이어지는 세션은 안전모, Done은 왕관.",
+                                "Each Claude icon in the closed notch's wings wears a hat for what its session is doing: a top hat with one or two subagents, a wizard hat with three or more, a hard hat on a session past two minutes, a crown on Done."),
                               isOn: $settings.experimentalClaudeIconHats)
                     .disabled(!settings.showSourceClaudeCode)
             } header: {
                 Text("Claude Code")
             } footer: {
-                Text(L("다른 앱의 내부 동작에 의존하는 기능이라, 그 앱이 업데이트되면 안 될 수 있음.",
-                       "These lean on other apps' internals and may stop working when those apps update."))
+                Text(L("다른 앱의 내부 동작에 의존하므로, 해당 앱이 업데이트될 시 동작하지 않을 수 있음.",
+                       "These rely on other apps' internals and may stop working when those apps update."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Section {
                 SettingToggle(L("입력 효과음", "Typing sounds"),
-                              L("키보드와 마우스 버튼을 누를 때마다 소리 팩 폴더에 넣은 소리를 냄",
-                                "A sound from your sound pack folder for every key and mouse button pressed"),
+                              L("키보드와 마우스 버튼을 누를 때마다 소리 팩 폴더에 넣은 소리를 냄.",
+                                "A sound from your sound pack folder for every key and mouse button pressed."),
                               isOn: $settings.experimentalTypingSounds)
                     .onChange(of: settings.experimentalTypingSounds) { _, _ in typingSounds.syncWithSettings() }
                 // Stays while the switch is off: the shortcut is what turns it back on.
@@ -67,7 +67,7 @@ struct ExperimentalSettingsTab: View {
                         Button(L("소리 팩 폴더 열기", "Open Sound Pack Folder")) { typingSounds.openPackFolder() }
                     } label: {
                         if typingSounds.status == .noPermission {
-                            Text(L("손쉬운 사용이나 입력 모니터링 권한이 필요함", "Needs Accessibility or Input Monitoring permission"))
+                            Text(L("손쉬운 사용이나 입력 모니터링 권한이 필요함.", "Needs Accessibility or Input Monitoring permission."))
                                 .font(.callout)
                         } else if typingSounds.status == .noPack {
                             Text(L("폴더에 소리 파일이 없음", "No sound files in the folder"))

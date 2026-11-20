@@ -37,6 +37,34 @@ report() {  # level, message, hits
 report error 'Settings text: write menu paths with "->" and lists with commas, not ›, → or ·. The notch screens are the exception.' \
     "$(lines "ClangNotch/Views/Settings" 'L\("[^"]*(›|→|·)')"
 
+# Settings window wording (user's review, 2026-11-20): one word per thing, written the same way
+# on every page. The settings views plus the two network ones that live outside Settings/.
+SETTINGS_TEXT="ClangNotch/Views/Settings ClangNotch/Views/Network/TWorldUsageView.swift ClangNotch/Views/Network/TetherPlaceViews.swift"
+report error 'Settings text: in Korean write 맥, 아이폰, 아이패드 and 메뉴 막대 (not Mac, iPhone, iPad, 메뉴바); macOS stays macOS.' \
+    "$(lines "$SETTINGS_TEXT" 'L\("[^"]*(Mac|iPhone|iPad|메뉴바)')"
+report error 'Settings text: write 에어팟 맥스 in full, never 맥스 alone.' \
+    "$(lines "$SETTINGS_TEXT" 'L\("[^"]*맥스' | awk '{ s = $0; gsub(/에어팟 맥스/, "", s); if (s ~ /맥스/) print }')"
+
+# A settings description ends with a period, Korean and English (user, 2026-11-20: "온점 좀 붙여라").
+# Checked by file, since a caption spans lines: a SettingToggle's caption and a Text(L(…)) styled
+# .caption, of three words or more (labels and statuses like 감지됨 stay bare).
+if [ "${1:-}" = "--all" ]; then
+    caption_files=$(ls ClangNotch/Views/Settings/*.swift; echo "$SETTINGS_TEXT" | tr ' ' '\n' | grep '\.swift$')
+else
+    caption_files=$(git diff --cached --name-only --diff-filter=AM -- $SETTINGS_TEXT | grep '\.swift$')
+fi
+report error 'Settings text: end a description with a period, in both languages ("… 표시.", "… shows.").' \
+    "$([ -n "$caption_files" ] && perl -0777 -ne '
+        my $L = qr/L\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)/;
+        my ($s, @hits) = ($_);
+        while (/SettingToggle\(\s*$L\s*,\s*(?:[^,]*?\?\s*)?$L/g) { push @hits, [$-[3], $3, $4] }
+        while (/Text\(\s*$L\s*\)\s*\.font\(\.caption\)/g) { push @hits, [$-[1], $1, $2] }
+        for (@hits) {
+            my ($pos, $ko, $en) = @$_;
+            next if (() = $ko =~ / /g) < 2 or ($ko =~ /[.…]$/ and $en =~ /[.…]$/);
+            print "$ARGV:", 1 + (() = substr($s, 0, $pos) =~ /\n/g), ":$ko\n";
+        }' $caption_files)"
+
 # No explaining sentences in the notch or the menu bar popover (2026-11-20): an empty state
 # shows nothing or hides its part, it never says what will appear there; the user reviews every
 # line and won't read prose. The settings window (its own review) is left out.

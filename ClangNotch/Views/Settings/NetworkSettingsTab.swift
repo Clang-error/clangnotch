@@ -10,8 +10,8 @@ struct NetworkSettingsTab: View {
         Form {
             Section {
                 SettingToggle(L("Wi-Fi 이름 표시", "Show Wi-Fi name"),
-                              L("Speed 탭과 아래 기능에 사용. MacOS가 위치 권한 요구(위치는 다른 곳에 사용하지 않음)",
-                                "Used by the Speed tab and the features below. MacOS requires Location access (used for nothing else)"),
+                              L("macOS의 '위치 권한' 설정 필요.",
+                                "Needs macOS's Location access."),
                               isOn: $settings.enableNetworkName)
                     .onChange(of: settings.enableNetworkName) { _, on in
                         if on { network.requestAccess() } else { network.refresh() }
