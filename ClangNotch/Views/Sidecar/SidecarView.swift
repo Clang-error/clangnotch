@@ -55,7 +55,7 @@ struct SidecarView: View {
             Text(L("연결할 수 있는 iPad 없음", "No available iPad"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(NotchPalette.ink.opacity(0.5))
-            Text(L("같은 Apple 계정과 Wi-Fi가 필요합니다", "Same Apple Account & Wi-Fi required"))
+            Text(L("같은 Apple 계정, 같은 Wi-Fi", "Same Apple Account and Wi-Fi"))
                 .font(.system(size: 10))
                 .foregroundColor(NotchPalette.ink.opacity(0.5))
         }

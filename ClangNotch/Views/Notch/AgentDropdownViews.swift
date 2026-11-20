@@ -109,12 +109,10 @@ struct DismissPill: View {
             if expanded {
                 HStack(spacing: 0) {
                     DismissPillOption(title: L("알림도 지우기", "Clear notice too"), scale: scale, action: onClear)
-                        .help(L("알림도 지웁니다 — 다시 뜨지 않습니다", "Clears the notice too — it won't come back"))
                     Rectangle()
                         .fill(NotchPalette.ink.opacity(0.14))
                         .frame(width: 1, height: 12 * scale)
                     DismissPillOption(title: L("창만 닫기", "Close only"), scale: scale, action: onCollapse)
-                        .help(L("알림 접기 — 질문 대기는 유지됩니다", "Collapse — the question stays pending"))
                 }
                 .background(NotchPalette.ink.opacity(0.09))
                 .clipShape(Capsule())
@@ -275,10 +273,10 @@ struct PermissionDropdownView: View {
         .buttonStyle(.plain)
         .disabled(!canAllow)
         .help(canAllow ? "" : blockedByRisk
-              ? L("위험 표시가 뜬 요청은 터미널에서 확인해 주세요", "Check a flagged request in the terminal")
+              ? L("터미널에서 확인", "Check it in the terminal")
               : text.isTooLong
-              ? L("명령이 너무 길어 노치에서는 허용할 수 없습니다 (보안)", "The command is too long to allow from the notch (security)")
-              : L("전체 보기로 끝까지 본 뒤 허용할 수 있습니다", "Show all of it, to the end, before allowing"))
+              ? L("노치에서 허용하기엔 긴 명령 (보안)", "Too long to allow from the notch (security)")
+              : L("전체 보기로 끝까지 본 뒤 허용", "Show all of it before allowing"))
         .onAppear {
             let remaining = max(0, PermissionRequestCenter.waitLimit - Date().timeIntervalSince(item.receivedAt))
             timeLeft = remaining / PermissionRequestCenter.waitLimit
@@ -348,7 +346,7 @@ struct PermissionDropdownView: View {
                 if bottom <= expandedHeight + 1 { seenEnd = true }
             }
             // Kept in place once read, so the dropdown's measured height still fits.
-            Text(L("↓ 끝까지 내려 보면 허용할 수 있습니다", "↓ Scroll to the end to allow"))
+            Text(L("↓ 끝까지 내리면 허용", "↓ Scroll to the end to allow"))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(NotchPalette.ink.opacity(0.5))
                 .opacity(seenEnd || settings.permissionAllowUnread ? 0 : 1)
@@ -462,7 +460,7 @@ struct DoneDropdownView: View {
                         .font(.system(size: 12))
                         .foregroundColor(NotchPalette.ink.opacity(0.5))
                         .lineLimit(1)
-                    Text(turn.headline ?? L("작업을 마쳤습니다.", "Finished."))
+                    Text(turn.headline ?? L("작업 완료", "Finished"))
                         .font(.system(size: 13.5, weight: .semibold))
                         .foregroundColor(NotchPalette.ink)
                         .lineLimit(2)

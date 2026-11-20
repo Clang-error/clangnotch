@@ -19,9 +19,6 @@ struct ClipboardHistoryView: View {
                     Text(L("클립보드 기록 없음", "No clipboard history yet"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(NotchPalette.ink.opacity(0.5))
-                    Text(L("글·이미지·파일을 복사하면 여기에 쌓입니다. 누르면 다시 복사합니다.", "Text, images and files you copy collect here. Click one to copy it again."))
-                        .font(.system(size: 10))
-                        .foregroundColor(NotchPalette.ink.opacity(0.35))
                 }
                 Spacer(minLength: 0)
             } else {

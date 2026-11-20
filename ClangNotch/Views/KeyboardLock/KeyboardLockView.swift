@@ -31,7 +31,7 @@ struct KeyboardLockView: View {
             Image(systemName: "lock.shield")
                 .font(.system(size: 22))
                 .foregroundColor(NotchPalette.ink.opacity(0.7))
-            Text(L("키보드 입력을 막으려면 손쉬운 사용 권한이 필요합니다.", "Needs Accessibility access to block keyboard input."))
+            Text(L("손쉬운 사용 권한 필요", "Accessibility access needed"))
                 .font(.system(size: 11))
                 .foregroundColor(NotchPalette.ink.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -72,7 +72,7 @@ struct KeyboardLockView: View {
             .buttonStyle(.plain)
 
             if manager.isLocked {
-                Text(L("위 버튼이나 메뉴바 아이콘으로 잠금을 풉니다", "Click above or use the menu bar icon to unlock"))
+                Text(L("메뉴바 아이콘으로도 해제", "Or unlock from the menu bar icon"))
                     .font(.system(size: 10))
                     .foregroundColor(NotchPalette.ink.opacity(0.5))
                     .multilineTextAlignment(.center)

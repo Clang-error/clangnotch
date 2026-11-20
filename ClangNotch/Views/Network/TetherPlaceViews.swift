@@ -43,7 +43,7 @@ struct TetherPeekContent: View {
             Text(L("\(placeName)에서 아이폰 테더링 사용 중", "Tethering to iPhone at \(placeName)"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(NotchPalette.ink)
-            Text(L("Wi-Fi로 바꾸면 데이터를 아낄 수 있어요", "Switch to Wi-Fi to save data"))
+            Text(L("Wi-Fi로 바꾸면 데이터 절약", "Switch to Wi-Fi to save data"))
                 .font(.system(size: 11))
                 .foregroundColor(NotchPalette.ink.opacity(0.55))
         }

@@ -230,7 +230,7 @@ struct SessionDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     let all = steps
                     if all.isEmpty {
-                        Text(L("아직 기록된 도구가 없습니다.", "No tool calls yet."))
+                        Text(L("도구 기록 없음", "No tool calls yet"))
                             .font(.system(size: 11))
                             .foregroundColor(NotchPalette.ink.opacity(0.5))
                             .padding(8)

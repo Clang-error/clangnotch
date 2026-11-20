@@ -62,10 +62,6 @@ struct TWorldUsageView: View {
                 .foregroundColor(NotchPalette.ink.opacity(0.65))
             } else if session.isRefreshing {
                 Text(L("잔여량 확인 중…", "Checking balance…")).font(.system(size: 10))
-            } else if session.errorMessage == nil {
-                Text(L("T world에 연결하면 공유 잔여량이 표시됩니다.", "Connect T world to see the shared balance."))
-                    .font(.system(size: 10))
-                    .foregroundColor(NotchPalette.ink.opacity(0.7))
             }
             if let error = session.errorMessage {
                 Text((session.balance == nil ? "" : L("이전 조회값 · ", "Last reading · ")) + error)

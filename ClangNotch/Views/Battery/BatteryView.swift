@@ -77,7 +77,7 @@ struct BatteryView: View {
                     .foregroundColor(NotchPalette.ink)
                     .lineLimit(1)
                 if snoozed {
-                    Text(L("20%를 넘으면 다시 켜집니다", "Turns back on above 20%"))
+                    Text(L("20% 넘으면 다시 켜짐", "Back on above 20%"))
                         .font(.system(size: 10))
                         .foregroundColor(NotchPalette.ink.opacity(0.5))
                 }
@@ -106,11 +106,11 @@ struct BatteryView: View {
                 .font(.system(size: 11))
                 .foregroundColor(NotchPalette.ink.opacity(0.6))
             VStack(alignment: .leading, spacing: 2) {
-                Text(L("USB 연결 없이도 보려면", "To see it without a USB connection"))
+                Text(L("USB 없이 보기", "Without USB"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(NotchPalette.ink.opacity(0.85))
-                Text(L("Finder에서 이 \(model)을 고르고 'Wi-Fi에 연결되어 있을 때 이 \(model) 보기'를 켜세요",
-                       "Select this \(model) in Finder and turn on 'Show this \(model) when on Wi-Fi'"))
+                Text(L("Finder에서 이 \(model) -> 'Wi-Fi에 연결되어 있을 때 이 \(model) 보기' 켜기",
+                       "Finder, this \(model) -> 'Show this \(model) when on Wi-Fi'"))
                     .font(.system(size: 11))
                     .foregroundColor(NotchPalette.ink.opacity(0.65))
                     .fixedSize(horizontal: false, vertical: true)
@@ -127,14 +127,14 @@ struct BatteryView: View {
             Image(systemName: "iphone")
                 .font(.system(size: 11))
                 .foregroundColor(NotchPalette.ink.opacity(0.6))
-            Text(L("아이폰·아이패드 배터리를 보려면 도구 설치가 필요합니다", "Install a tool to see iPhone and iPad batteries"))
+            Text(L("아이폰·아이패드 배터리 도구", "iPhone and iPad battery tool"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(NotchPalette.ink.opacity(0.8))
                 .lineLimit(1)
             Spacer(minLength: 0)
             Button(L("설치", "Install")) { BatteryManager.installIOSTools() }
                 .controlSize(.small)
-                .help(L("터미널에서 Homebrew와 libimobiledevice를 설치합니다", "Installs Homebrew and libimobiledevice in Terminal"))
+                .help(L("Homebrew, libimobiledevice 설치 (터미널)", "Homebrew and libimobiledevice, in Terminal"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -201,7 +201,7 @@ struct BatteryView: View {
             Image(systemName: "battery.0")
                 .font(.system(size: 30, weight: .light))
                 .foregroundColor(NotchPalette.ink.opacity(0.25))
-            Text(L("기기를 찾지 못했습니다", "No devices found"))
+            Text(L("기기 없음", "No devices"))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(NotchPalette.ink.opacity(0.5))
         }

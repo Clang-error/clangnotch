@@ -37,7 +37,7 @@ struct AudioMixerView: View {
                 Text(L("\(app) 마이크 사용 중", "\(app) is using the mic"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(NotchPalette.ink.opacity(0.9))
-                Text(L("블루투스로 볼륨 줄이면 통화가 끊길 수 있어요", "Lowering volume over Bluetooth can drop the call"))
+                Text(L("블루투스 통화 끊김 주의", "Bluetooth call may drop"))
                     .font(.system(size: 10))
                     .foregroundColor(NotchPalette.ink.opacity(0.5))
             }

@@ -1875,10 +1875,6 @@ struct ClangNotchContentView: View {
                         Text("Claude")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(NotchPalette.ink.opacity(0.55))
-                        Text(L("사용량 조회가 꺼져 있습니다. 설정에서 켜면 5시간·7일 사용량을 확인할 수 있습니다.", "Usage tracking is off. Turn it on in Settings to see 5-hour and 7-day usage."))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                         Button(L("사용량 설정 열기", "Open usage settings")) { openSettings() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11, weight: .semibold))
@@ -1891,23 +1887,12 @@ struct ClangNotchContentView: View {
 
     @ViewBuilder
     private var codexUsageCard: some View {
-        // The demo's Claude-only scenes have no Codex card at all (it read "no usage data yet").
-        if settings.showSourceCodex && settings.showCodexUsage,
+        // Shown once a Codex session has reported its limits; until then nothing, not a line
+        // saying so (2026-11-20). The demo's Claude-only scenes have no Codex card at all.
+        if settings.showSourceCodex && settings.showCodexUsage, codexManager.rateLimits.hasData,
            !(DemoMode.isActive && (DemoMode.scene == .claude || DemoMode.scene == .ssh)) {
             NotchSection {
-                if codexManager.rateLimits.hasData {
-                    CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Codex")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(NotchPalette.ink.opacity(0.55))
-                        Text(L("아직 사용량 데이터가 없습니다. Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "No usage data yet. It appears once a Codex session reports its limits."))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
             }
         }
     }
@@ -2124,7 +2109,7 @@ struct ClangNotchContentView: View {
     /// the wing header (`AskPeekHeader`).
     private var questionHeader: some View {
         HStack(spacing: 4) {
-            Text(codexInputRequest == nil ? L("Claude가 질문했습니다", "Claude asked a question") : L("Codex가 질문했습니다", "Codex asked a question"))
+            Text(codexInputRequest == nil ? "Claude" : "Codex")
             if let origin = askingSessionOrigin {
                 if let host = origin.host {
                     Text("·")
@@ -2472,7 +2457,7 @@ struct ClangNotchContentView: View {
                 }
 
                 if questions.isEmpty {
-                    Text(L("질문 내용은 \(sourceName)에서 확인해 주세요.", "See \(sourceName) for the question."))
+                    Text(L("\(sourceName)에서 확인", "See \(sourceName)"))
                         .font(.system(size: 11 * scale))
                         .foregroundColor(NotchPalette.ink.opacity(0.7))
                 }

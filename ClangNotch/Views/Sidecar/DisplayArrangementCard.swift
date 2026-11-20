@@ -56,9 +56,6 @@ struct DisplayArrangementCard: View {
                 map(in: geometry.size)
             }
             .frame(height: Self.mapHeight)
-            Text(L("화면을 끌어 위치를 바꿉니다", "Drag a screen to move it"))
-                .font(.system(size: 10))
-                .foregroundColor(NotchPalette.ink.opacity(0.5))
         }
         .padding(14)
         .frame(maxWidth: .infinity)

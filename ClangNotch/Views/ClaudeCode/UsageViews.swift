@@ -404,13 +404,13 @@ struct ClaudeUsageNotchSection: View {
 
     private var statusText: String {
         if needsReauth { return L("눌러서 인증하기 (사용량 새로고침)", "Click to sign in (refreshes usage)") }
-        if !usageManager.isConfigured { return L("Claude Code 로그인이 필요해요", "Sign in to Claude Code first") }
+        if !usageManager.isConfigured { return L("Claude Code 로그인 필요", "Sign in to Claude Code") }
         if let error = usageManager.lastError {
             switch error {
             case .tokenExpired: return L("토큰 만료 — Claude Code 실행 후 누르기", "Token expired — run Claude Code, then click")
-            case .unauthorized: return L("인증이 거부됐어요 — 눌러서 재시도", "Sign-in rejected — click to retry")
+            case .unauthorized: return L("인증 거부됨 — 눌러서 재시도", "Sign-in rejected — click to retry")
             case .rateLimited: return L("요청 한도 도달 — 잠시 후 재시도", "Rate limited — retrying shortly")
-            default: return L("사용량을 불러오지 못했어요", "Couldn't load usage")
+            default: return L("사용량 불러오기 실패", "Couldn't load usage")
             }
         }
         return L("사용량 불러오는 중…", "Loading usage…")

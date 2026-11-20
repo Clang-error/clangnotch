@@ -126,17 +126,14 @@ struct AgentMenuBarContentView: View {
                 if settings.enableClaudeUsage {
                     ClaudeUsageNotchSection()
                 } else {
-                    hint("Claude", L("설정에서 사용량 조회를 켜면 5시간·7일 한도가 표시됩니다.", "Turn on usage tracking in Settings to see the 5-hour and 7-day limits."))
+                    hint("Claude", L("사용량 조회 꺼짐", "Usage tracking off"))
                 }
             }
 
-            if settings.showSourceCodex && settings.showCodexUsage {
+            // Once a Codex session has reported its limits, as in the notch.
+            if settings.showSourceCodex && settings.showCodexUsage, codexManager.rateLimits.hasData {
                 MenuSection {
-                    if codexManager.rateLimits.hasData {
-                        ClangNotchContentView.CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
-                    } else {
-                        hint("Codex", L("Codex 세션에서 한도 정보가 수신되면 표시됩니다.", "Appears once a Codex session reports its limits."))
-                    }
+                    ClangNotchContentView.CodexUsageNotchSection(rateLimits: codexManager.rateLimits)
                 }
             }
 
