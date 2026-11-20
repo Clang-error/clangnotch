@@ -88,6 +88,7 @@ struct AgentsSettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
                 AgentsCardOrderView(settings: settings)
+                SessionCardPageOrderView(settings: settings)
             } header: {
                 Text(L("Agents 탭 카드", "Agents tab cards"))
             }
@@ -319,6 +320,40 @@ private struct CodexAccountStatus: View {
     }
 }
 
+/// 설정 -> 에이전트 -> Sessions 카드 페이지: the Sessions card's pages (세션, 오늘, 완료 기록, 시작),
+/// dragged to reorder in the same plain list (2026-11-19).
+private struct SessionCardPageOrderView: View {
+    @ObservedObject var settings: AppSettings
+
+    private var pages: [SessionCardPage] { SessionCardPage.order(from: settings.sessionCardPageOrder) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("Sessions 카드 페이지", "Sessions card pages"))
+            List {
+                ForEach(pages) { page in
+                    HStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(page.title)
+                            .font(.system(size: 12))
+                        Spacer()
+                    }
+                    .padding(.vertical, 1)
+                }
+                .onMove { source, destination in
+                    var reordered = pages
+                    reordered.move(fromOffsets: source, toOffset: destination)
+                    settings.sessionCardPageOrder = SessionCardPage.stored(reordered)
+                }
+            }
+            // Sized to the row count, with no room left under the last row.
+            .frame(height: CGFloat(pages.count) * 26 + 6)
+        }
+    }
+}
+
 /// 설정 -> 에이전트 -> Agents 탭 카드: the Agents tab's cards under NEEDS YOU (which stays on top),
 /// dragged to reorder in a plain list like 설정 › 노치 › 탭 (2026-11-19). A card that wouldn't show
 /// (its agent or its own switch off) is dimmed, as the tab list dims a tab whose feature is off.
@@ -354,11 +389,8 @@ private struct AgentsCardOrderView: View {
                     settings.agentsCardOrder = AgentsCard.stored(reordered)
                 }
             }
-            // Sized to the row count, as the tab list is.
-            .frame(height: CGFloat(cards.count) * 26 + 16)
-            Text(L("끌어서 순서 바꾸기.", "Drag to reorder."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            // Sized to the row count, with no room left under the last row.
+            .frame(height: CGFloat(cards.count) * 26 + 6)
         }
     }
 

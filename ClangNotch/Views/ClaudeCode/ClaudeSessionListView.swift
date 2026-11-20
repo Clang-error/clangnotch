@@ -27,7 +27,7 @@ struct ClaudeSessionListView: View {
 
         // The rows are the first of the card's pages; 오늘, 최근 세션 and 시작 follow, and stand
         // alone with nothing listed (2026-11-19; a line of text before).
-        SessionCardPages(hasSessions: !groups.isEmpty) {
+        SessionCardPages(hasSessions: !groups.isEmpty, listed: listedKeys(groups), openSession: { open($0) }) {
             if !groups.isEmpty {
                 let rows = frozen(groups.flatMap { group in
                     group.claude.map { UnifiedWorkspaceGroup(path: group.path, claude: [$0]) }
@@ -64,6 +64,22 @@ struct ClaudeSessionListView: View {
                 }
             }
         }
+    }
+
+    /// The sessions on the list, as 완료 기록 names them (agent:id).
+    private func listedKeys(_ groups: [UnifiedWorkspaceGroup]) -> Set<String> {
+        Set(groups.flatMap { $0.claude.map { "claude:\($0.id)" } + $0.codex.map { "codex:\($0.id)" } })
+    }
+
+    /// 완료 기록's row for a session still listed: what clicking its row here does.
+    private func open(_ target: SessionDetailTarget) {
+        switch target.agent {
+        case .claude:
+            if let session = manager.availableSessions.first(where: { $0.id == target.sessionId }) { manager.selectSession(session) }
+        case .codex:
+            if let session = codexManager.availableSessions.first(where: { $0.id == target.sessionId }) { codexManager.selectSession(session) }
+        }
+        onSelect(target)
     }
 
     private var unifiedGroups: [UnifiedWorkspaceGroup] {

@@ -3496,7 +3496,7 @@ struct ClangNotchContentView: View {
 
     /// A finish drops the 완료 드롭다운, unless its own app is in front (the wing's Done is
     /// enough there) or another dropdown holds the notch (it waits its turn).
-    /// 오늘 한 일 and 최근 세션 (`AgentActivityLog`), whether or not the notch is open.
+    /// 오늘 and 완료 기록 (`AgentActivityLog`), whether or not the notch is open.
     private func recordTurn(_ turn: CompletedTurn, _ source: DoneFlash.Source) {
         guard !DemoMode.isActive else { return }
         let title: String? = switch source {

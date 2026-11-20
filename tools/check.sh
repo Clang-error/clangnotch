@@ -37,6 +37,17 @@ report() {  # level, message, hits
 report error 'Settings text: write menu paths with "->" and lists with commas, not ›, → or ·. The notch screens are the exception.' \
     "$(lines "ClangNotch/Views/Settings" 'L\("[^"]*(›|→|·)')"
 
+# No explaining sentences in the notch (2026-11-20): an empty state shows nothing or hides its
+# page, it never says what will appear there; the user reviews every line and won't read prose.
+# Staged lines stop the commit; --all only lists the older ones.
+report "$([ "${1:-}" = "--all" ] && echo warning || echo error)" \
+    'Notch text: no guide sentences ("~하면 여기에 표시됩니다"). Hide the empty part or leave it blank; keep labels to a few words.' \
+    "$(lines "ClangNotch/Views/Notch ClangNotch/Views/ClaudeCode ClangNotch/Views/Codex" 'L\("[^"]*(니다|세요|어요|해요)\.?"')"
+
+# The user speaks of sessions, not turns (2026-11-19): 턴 is Claude Code's word. Code may say "turn".
+report error 'App text: write 세션 ("세션이 작업을 끝내면", "끝낸 세션"), not 턴.' \
+    "$(lines "ClangNotch" 'L\("[^"]*턴' | grep -v '패턴')"
+
 # What comes down from the notch is a 드롭다운 in the settings text; 방울 is a code name.
 report error 'Settings text: call it a 드롭다운 (복사 드롭다운), not 방울.' \
     "$(lines "ClangNotch/Views/Settings" 'L\("[^"]*방울')"

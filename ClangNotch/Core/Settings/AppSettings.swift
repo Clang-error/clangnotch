@@ -147,6 +147,9 @@ public final class AppSettings: ObservableObject {
     // AgentsCard rawValues; 설정 -> 에이전트 -> Agents 탭 카드 (2026-11-19). Empty: the order they
     // always had. Unknown or new cards are appended by AgentsCard.order(from:).
     @AppStorage("agentsCardOrder") public var agentsCardOrder: String = ""
+    // Order of the Sessions card's pages (SessionCardPage rawValues, comma-joined); 설정 -> 에이전트
+    // -> Sessions 카드 페이지 (2026-11-19). Empty: sessions, 오늘, 완료 기록, 시작.
+    @AppStorage("sessionCardPageOrder") public var sessionCardPageOrder: String = ""
 
 
     // Battery saver: on battery the glow is capped at 30 fps; no cap while charging.

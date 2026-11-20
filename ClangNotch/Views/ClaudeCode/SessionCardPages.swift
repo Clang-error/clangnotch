@@ -3,9 +3,10 @@ import SwiftUI
 
 /// The Agents tab's Sessions card as pages, one on show at a time (user, 2026-11-19):
 /// - the sessions themselves, first, while there are any (`sessions`)
-/// - 오늘: sessions that finished a turn today, the agents' working time and the folder used most
-/// - 최근: the last sessions that finished a turn; an app's session opens in its app again, a
-///   terminal's copies the command that resumes it
+/// - 오늘: sessions that finished work today, the agents' working time and the folder used most
+/// - 완료 기록: the latest finishes with their answer's first line (the 완료 드롭다운 goes by in a
+///   few seconds, or doesn't come at all with the notch open). One still listed opens its 세션
+///   화면; one gone opens in its app again, or a terminal's copies the command that resumes it
 /// - 시작: the Claude app, a terminal, the Codex app
 /// Only the page on show is drawn: laid side by side in a paging scroll view, a working row's
 /// outline (a layer view, past SwiftUI's clipping) showed at the edge of the page next to it,
@@ -14,30 +15,47 @@ import SwiftUI
 /// last to the first; the card opens on the page last seen (without sessions, 오늘 in their place).
 struct SessionCardPages<Sessions: View>: View {
     let hasSessions: Bool
+    /// The sessions listed now (agent:id), and what opens one's 세션 화면.
+    var listed: Set<String> = []
+    var openSession: (SessionDetailTarget) -> Void = { _ in }
     @ViewBuilder let sessions: () -> Sessions
 
     @ObservedObject private var log = AgentActivityLog.shared
     @ObservedObject private var settings = AppSettings.shared
-    @AppStorage("idleSessionsPage") private var savedPage = Page.today.rawValue
+    /// The page last seen; empty until one has been turned to.
+    @AppStorage("idleSessionsPage") private var savedPage = ""
     @State private var page: Page?
     /// Which way the last change went, for the side the new page comes in from.
     @State private var direction = 1
-    /// The 최근 row whose resume command was just copied.
-    @State private var copied: String?
+    /// The 완료 기록 row whose resume command was just copied.
+    @State private var copied: UUID?
     /// The cursor is on the card: the arrows show and a sideways swipe turns the page.
     @State private var hovering = false
     @State private var swipe = SidewaysSwipe()
 
-    enum Page: String, CaseIterable, Identifiable {
-        case sessions, today, recent, start
-        var id: String { rawValue }
+    typealias Page = SessionCardPage
+
+    /// In the order set in Settings; the sessions' page only while there are sessions, 완료 기록
+    /// only once something has finished.
+    private var pages: [Page] {
+        Page.order(from: settings.sessionCardPageOrder).filter {
+            switch $0 {
+            case .sessions: return hasSessions
+            case .finished: return !log.finishes.isEmpty
+            case .today, .start: return true
+            }
+        }
     }
 
-    private var pages: [Page] { hasSessions ? Page.allCases : Page.allCases.filter { $0 != .sessions } }
+    /// Nothing finished yet, ever: a first run.
+    private var noHistory: Bool { log.finishes.isEmpty && log.today.sessions.isEmpty }
 
-    /// The page last seen, or 오늘 while that one isn't there (no sessions listed).
+    /// The page last seen. Before any: 시작 on a first run (user, 2026-11-19: a row of zeros
+    /// said nothing to someone new), else 오늘. 오늘 too while the one last seen isn't there
+    /// (the sessions' page with none listed).
     private var lastSeen: Page {
-        Page(rawValue: savedPage).flatMap { pages.contains($0) ? $0 : nil } ?? .today
+        if let saved = Page(rawValue: savedPage), pages.contains(saved) { return saved }
+        return savedPage.isEmpty && noHistory ? .start : .today
     }
 
     private var current: Page { page.flatMap { pages.contains($0) ? $0 : nil } ?? lastSeen }
@@ -124,21 +142,14 @@ struct SessionCardPages<Sessions: View>: View {
         }
     }
 
-    private func title(_ page: Page) -> String {
-        switch page {
-        case .sessions: return L("세션", "Sessions")
-        case .today: return L("오늘", "Today")
-        case .recent: return L("최근 세션", "Recent sessions")
-        case .start: return L("시작", "Start")
-        }
-    }
+    private func title(_ page: Page) -> String { page.title }
 
     @ViewBuilder
     private func content(_ page: Page) -> some View {
         switch page {
         case .sessions: sessions()
         case .today: today
-        case .recent: recent
+        case .finished: finished
         case .start: start
         }
     }
@@ -153,14 +164,6 @@ struct SessionCardPages<Sessions: View>: View {
                 stat("\(day.sessions.count)", L("세션", "Sessions"))
                 stat(Self.duration(day.seconds), L("일한 시간", "Agents at work"))
                 stat(day.topFolder ?? "-", L("가장 많이 쓴 폴더", "Busiest folder"))
-            }
-            if !hasSessions {
-                HStack(spacing: 6) {
-                    Circle().fill(NotchPalette.ink.opacity(0.35)).frame(width: 6, height: 6)
-                    Text(L("지금은 쉬는 중. 세션을 시작하면 여기에 나옵니다", "Quiet now. A session shows here once it starts"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(NotchPalette.ink.opacity(0.45))
-                }
             }
         }
         .padding(.vertical, 4)
@@ -187,56 +190,58 @@ struct SessionCardPages<Sessions: View>: View {
         return hours > 0 ? L("\(hours)시간 \(minutes % 60)분", "\(hours)h \(minutes % 60)m") : L("\(minutes)분", "\(minutes)m")
     }
 
-    // MARK: 최근
+    // MARK: 완료 기록
 
-    private var recent: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            label(L("최근 세션", "Recent sessions"))
-            let entries = Array(log.recent.prefix(3))
-            if entries.isEmpty {
-                Text(L("턴을 끝낸 세션이 여기에 남습니다", "Sessions that finish a turn stay here"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(NotchPalette.ink.opacity(0.45))
-                    .padding(.top, 6)
-            }
+    private var finished: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            label(L("완료 기록", "Finished"))
+            let entries = Array(log.finishes.prefix(4))
             ForEach(entries) { entry in
-                Button { resume(entry) } label: { recentRow(entry) }
+                let isListed = listed.contains(entry.sessionKey)
+                Button { open(entry, listed: isListed) } label: { finishRow(entry, listed: isListed) }
                     .buttonStyle(NotchHoverButtonStyle())
-                    .help(entry.inApp ? L("앱에서 이어 가기", "Continue in the app") : L("이어 가는 명령 복사", "Copy the command that resumes it"))
+                    .help(isListed ? L("세션 화면 열기", "Open the session")
+                          : entry.inApp ? L("앱에서 이어 가기", "Continue in the app") : L("이어 가는 명령 복사", "Copy the command that resumes it"))
             }
         }
     }
 
-    private func recentRow(_ entry: AgentActivityLog.Recent) -> some View {
-        HStack(spacing: 8) {
+    private func finishRow(_ entry: AgentActivityLog.Finish, listed: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
             Image(entry.agent == .claude ? "ClaudeIcon" : "ChatGPTIcon")
                 .resizable()
                 .foregroundColor(NotchPalette.ink)
                 .frame(width: 11, height: 11)
                 .opacity(0.7)
-            Text(entry.title)
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(NotchPalette.ink.opacity(0.8))
-                .lineLimit(1)
-            Text([entry.folder, entry.model.flatMap(ModelName.short)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                .font(.system(size: 10))
-                .foregroundStyle(NotchPalette.ink.opacity(0.4))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Text(copied == entry.id ? L("복사됨", "Copied") : entry.finished.formatted(.relative(presentation: .named)))
-                .font(.system(size: 10))
-                .foregroundStyle(copied == entry.id ? Color.green : NotchPalette.ink.opacity(0.4))
-            Image(systemName: entry.inApp ? "arrow.up.forward.app" : "doc.on.doc")
-                .font(.system(size: 9))
-                .foregroundStyle(NotchPalette.ink.opacity(0.4))
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(entry.title)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(NotchPalette.ink.opacity(0.85))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(copied == entry.id ? L("복사됨", "Copied") : entry.finished.formatted(.relative(presentation: .named)))
+                        .font(.system(size: 10))
+                        .foregroundStyle(copied == entry.id ? Color.green : NotchPalette.ink.opacity(0.4))
+                }
+                Text(entry.headline ?? entry.folder)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(NotchPalette.ink.opacity(0.5))
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
     }
 
-    /// An app's session opens in that app again; a terminal's resume command is copied, since
-    /// nothing says which terminal to run it in.
-    private func resume(_ entry: AgentActivityLog.Recent) {
+    /// Still listed: its 세션 화면. Gone: an app's session opens in that app again; a terminal's
+    /// resume command is copied, since nothing says which terminal to run it in.
+    private func open(_ entry: AgentActivityLog.Finish, listed: Bool) {
+        if listed {
+            openSession(SessionDetailTarget(agent: entry.agent == .claude ? .claude : .codex, sessionId: entry.sessionId))
+            return
+        }
         switch entry.agent {
         case .claude:
             if entry.inApp,
@@ -255,7 +260,7 @@ struct SessionCardPages<Sessions: View>: View {
         }
     }
 
-    private func copy(_ command: String, for entry: AgentActivityLog.Recent) {
+    private func copy(_ command: String, for entry: AgentActivityLog.Finish) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
         withAnimation(.easeOut(duration: 0.15)) { copied = entry.id }
@@ -313,6 +318,33 @@ struct SessionCardPages<Sessions: View>: View {
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(NotchPalette.ink.opacity(0.4))
     }
+}
+
+/// The Sessions card's pages, in the order 설정 -> 에이전트 -> Sessions 카드 페이지 keeps.
+enum SessionCardPage: String, CaseIterable, Identifiable {
+    case sessions, today, finished, start
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sessions: return L("세션 목록", "Session list")
+        case .today: return L("오늘", "Today")
+        case .finished: return L("완료 기록", "Finished")
+        case .start: return L("시작", "Start")
+        }
+    }
+
+    /// The saved order, then any page it doesn't name yet in the order they first had.
+    static func order(from stored: String) -> [SessionCardPage] {
+        var saved: [SessionCardPage] = []
+        for name in stored.split(separator: ",") {
+            if let page = SessionCardPage(rawValue: String(name)), !saved.contains(page) { saved.append(page) }
+        }
+        return saved + allCases.filter { !saved.contains($0) }
+    }
+
+    static func stored(_ pages: [SessionCardPage]) -> String { pages.map(\.rawValue).joined(separator: ",") }
 }
 
 /// A sideways two-finger swipe over the Sessions card, while the cursor is on it: one page per
