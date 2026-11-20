@@ -118,13 +118,28 @@ When your Mac runs low, the same dropdown comes down at 20% and again at 10%, dr
 - Battery saver mode with less glow on battery
 - Menu bar icon (session count, keyboard lock, settings)
 - Settings search, and Check Now in Settings -> About
-- Light: about 2% of one CPU core while an agent works, under 1% when nothing runs (measured on an M5 Pro)
 
 <p align="center">
   <img src="assets/demo-wings.webp" width="60%" alt="Pointing at a closed wing: it fades to show the menu bar icons under it, and a tab under the notch says where to point to open">
 </p>
 
 The app's interface follows your system language: Korean on a Korean system, English on any other. To pick one yourself, use **Settings -> General -> Display language**.
+
+## Performance
+
+ClangNotch is made to stay in the notch all day without being noticed.
+
+| | CPU, one core | CPU, whole chip | Memory |
+|---|---|---|---|
+| Nothing running | about 0.9% | about 0.06% | about 35 MB |
+| An agent working, notch closed | about 2% | about 0.13% | about 40 MB |
+
+Measured on an M5 Pro, on battery, release build, a one-minute `top` average. While the notch is open its animations cost more; closing it brings it back down.
+
+- Everything that moves (the glow, the wing's tool line, the status dot) is a Core Animation layer: the system draws it at the display's rate and the app does no work per frame
+- Session files are watched with file system events and read only when they change
+- No third-party libraries, only system frameworks; a 7.8 MB download
+- On battery, battery saver mode caps the glow at 30 fps
 
 ## Permissions
 
