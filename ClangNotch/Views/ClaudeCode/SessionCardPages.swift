@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The Agents tab's Sessions card as pages, one on show at a time (user, 2026-11-19):
 /// - the sessions themselves, first, while there are any (`sessions`)
-/// - 오늘: sessions that finished work today, the agents' working time and the folder used most
+/// - 오늘: sessions that finished work, the agents' working time and the folder used most, for
+///   오늘, 7일 or 전체 picked in a pill bar at its top (2026-11-21); the pick stays
 /// - 완료 기록: the latest finishes with their answer's first line (the 완료 드롭다운 goes by in a
 ///   few seconds, or doesn't come at all with the notch open). One still listed opens its 세션
 ///   화면; one gone opens in its app again, or a terminal's copies the command that resumes it
@@ -24,6 +25,9 @@ struct SessionCardPages<Sessions: View>: View {
     @ObservedObject private var settings = AppSettings.shared
     /// The page last seen; empty until one has been turned to.
     @AppStorage("idleSessionsPage") private var savedPage = ""
+    /// The 오늘 page's span, kept across closing the notch and relaunches.
+    @AppStorage("sessionCardTodaySpan") private var savedSpan = AgentActivityLog.Span.today.rawValue
+    @Namespace private var spanPill
     @State private var page: Page?
     /// Which way the last change went, for the side the new page comes in from.
     @State private var direction = 1
@@ -48,7 +52,7 @@ struct SessionCardPages<Sessions: View>: View {
     }
 
     /// Nothing finished yet, ever: a first run.
-    private var noHistory: Bool { log.finishes.isEmpty && log.today.sessions.isEmpty }
+    private var noHistory: Bool { log.isEmpty }
 
     /// The page last seen. Before any: 시작 on a first run (user, 2026-11-19: a row of zeros
     /// said nothing to someone new), else 오늘. 오늘 too while the one last seen isn't there
@@ -157,16 +161,46 @@ struct SessionCardPages<Sessions: View>: View {
     // MARK: 오늘
 
     private var today: some View {
-        let day = log.today
-        return VStack(alignment: .leading, spacing: 14) {
-            label(L("오늘", "Today"))
+        let span = AgentActivityLog.Span(rawValue: savedSpan) ?? .today
+        let totals = log.totals(span)
+        return VStack(alignment: .leading, spacing: 12) {
+            spanBar(span)
             HStack(alignment: .top, spacing: 0) {
-                stat("\(day.sessions.count)", L("세션", "Sessions"))
-                stat(Self.duration(day.seconds), L("일한 시간", "Agents at work"))
-                stat(day.topFolder ?? "-", L("가장 많이 쓴 폴더", "Busiest folder"))
+                stat("\(totals.sessions)", L("세션", "Sessions"))
+                stat(Self.duration(totals.seconds), L("일한 시간", "Agents at work"))
+                stat(totals.topFolder ?? "-", L("가장 많이 쓴 폴더", "Busiest folder"))
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// 오늘, 7일, 전체 as one pill bar, the pick a pill of its own sliding inside it.
+    private func spanBar(_ selected: AgentActivityLog.Span) -> some View {
+        HStack(spacing: 0) {
+            ForEach(AgentActivityLog.Span.allCases) { span in
+                let on = span == selected
+                Button {
+                    withAnimation(.smooth(duration: 0.25)) { savedSpan = span.rawValue }
+                } label: {
+                    Text(span.title)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(NotchPalette.ink.opacity(on ? 0.9 : 0.45))
+                        .padding(.horizontal, 10)
+                        .frame(height: 20)
+                        .background {
+                            if on {
+                                Capsule()
+                                    .fill(NotchPalette.ink.opacity(0.16))
+                                    .matchedGeometryEffect(id: "span", in: spanPill)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(NotchPalette.ink.opacity(0.07)))
     }
 
     private func stat(_ value: String, _ name: String) -> some View {

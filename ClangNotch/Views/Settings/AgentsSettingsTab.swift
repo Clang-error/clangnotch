@@ -89,6 +89,7 @@ struct AgentsSettingsTab: View {
                 }
                 AgentsCardOrderView(settings: settings)
                 SessionCardPageOrderView(settings: settings)
+                SessionCardHistoryReset()
             } header: {
                 Text(L("Agents 탭 카드", "Agents tab cards"))
             }
@@ -316,6 +317,32 @@ private struct CodexAccountStatus: View {
             Text(L("Codex가 이 맥에 남긴 로그인 확인. 감지 안 되면 Codex에서 로그인.", "Checks the sign-in Codex left on this Mac. Sign in with Codex if not detected."))
                 .font(.caption2)
                 .foregroundColor(.secondary.opacity(0.7))
+        }
+    }
+}
+
+/// 설정 -> 에이전트 -> Sessions 카드 기록: clears what the 오늘 and 완료 기록 pages keep, all of it
+/// at once (user, 2026-11-21).
+private struct SessionCardHistoryReset: View {
+    @ObservedObject private var log = AgentActivityLog.shared
+    @State private var confirming = false
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("Sessions 카드 기록", "Sessions card history"))
+                Text(L("오늘, 7일, 전체 숫자와 완료 기록.", "The Today, 7 days and All numbers and Finished."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(L("초기화…", "Reset…")) { confirming = true }
+                .disabled(log.isEmpty)
+        }
+        .confirmationDialog(L("Sessions 카드 기록을 모두 지울까요?", "Clear all Sessions card history?"),
+                            isPresented: $confirming) {
+            Button(L("초기화", "Reset"), role: .destructive) { log.reset() }
+            Button(L("취소", "Cancel"), role: .cancel) {}
         }
     }
 }
