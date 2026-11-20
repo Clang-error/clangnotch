@@ -91,6 +91,12 @@ final class AgentActivityLog: ObservableObject {
     private static let keptDays = 7
 
     private init() {
+        // A demo (README takes, the promo) shows made-up numbers and never reads or writes the
+        // real ones: the pages would otherwise put this Mac's session titles and folders on camera.
+        if DemoMode.isActive {
+            (days, earlier, finishes) = Self.demoHistory()
+            return
+        }
         let defaults = UserDefaults.standard
         let decoder = JSONDecoder()
         var days = defaults.data(forKey: Self.daysKey).flatMap { try? decoder.decode([Day].self, from: $0) } ?? []
@@ -184,11 +190,40 @@ final class AgentActivityLog: ObservableObject {
     }
 
     private func save() {
+        guard !DemoMode.isActive else { return }
         let defaults = UserDefaults.standard
         let encoder = JSONEncoder()
         defaults.set(try? encoder.encode(days), forKey: Self.daysKey)
         defaults.set(try? encoder.encode(earlier), forKey: Self.earlierKey)
         defaults.set(try? encoder.encode(finishes), forKey: Self.finishesKey)
+    }
+
+    /// The demo's history: a working day today, a week before it, and a month folded behind that,
+    /// in the demo sessions' folders.
+    private static func demoHistory() -> ([Day], Totals, [Finish]) {
+        let names = ["orbit-api", "lumen-web", "atlas-cli", "prism-app", "nova-docs", "pulse-ios"]
+        let shapes: [(back: Int, sessions: Int, hours: Double)] = [(6, 4, 2.1), (5, 5, 3.4), (4, 2, 0.8), (3, 6, 4.2), (1, 3, 1.6), (0, 6, 3.2)]
+        let days = shapes.map { shape -> Day in
+            let date = dateString(Calendar.current.date(byAdding: .day, value: -shape.back, to: Date()) ?? Date())
+            let used = Array(names.prefix(shape.sessions))
+            let seconds = shape.hours * 3600
+            var folders: [String: Double] = [:]
+            for (index, name) in used.enumerated() { folders[name] = seconds * Double(used.count - index) / Double(used.count * (used.count + 1) / 2) }
+            return Day(date: date, sessions: used.map { "demo:\(shape.back):\($0)" }, seconds: seconds, folders: folders)
+        }
+        let earlier = Totals(sessions: 87, seconds: 61 * 3600,
+                             folders: ["orbit-api": 22 * 3600, "lumen-web": 15 * 3600, "atlas-cli": 12 * 3600, "prism-app": 12 * 3600])
+        let finished: [(Agent, String, String, String, Double)] = [
+            (.claude, "lumen-web", "Fix flaky checkout test", "The checkout test no longer races the cart fetch.", 4),
+            (.codex, "atlas-cli", "Add --json output", "Every command now takes --json.", 18),
+            (.claude, "orbit-api", "Speed up invoice export", "Export runs in 1.2 s, down from 9 s.", 47),
+            (.codex, "prism-app", "Dark mode for settings", "Settings follow the system appearance.", 95),
+        ]
+        let finishes = finished.map { agent, folder, title, headline, minutes in
+            Finish(agent: agent, sessionId: "demo-finished-\(folder)", title: title, folder: folder, model: nil,
+                   inApp: agent == .claude, headline: headline, finished: Date().addingTimeInterval(-minutes * 60))
+        }
+        return (days, earlier, finishes)
     }
 
     /// The first date of the last 7 days, today included.
