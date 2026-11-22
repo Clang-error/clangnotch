@@ -144,9 +144,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
 
         let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         let current = Self.currentVersion
-        // Opened with NSWorkspace: only a GitHub page, never a file or another app's scheme.
-        if let page = (json["html_url"] as? String).flatMap(URL.init(string:)),
-           page.scheme == "https", page.host == "github.com" { releaseURL = page }
+        if let page = Self.releasePage(json) { releaseURL = page }
         guard Self.isNewer(latest, than: current) else {
             availableVersion = nil
             availableNotes = nil
@@ -319,6 +317,14 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
         return Self.offer(.stable, from: release).map(OfferSearch.found) ?? .failed
     }
 
+    /// A release's page, opened with NSWorkspace: only a GitHub page, never a file or another
+    /// app's scheme.
+    private static func releasePage(_ release: [String: Any]) -> URL? {
+        guard let page = (release["html_url"] as? String).flatMap(URL.init(string:)),
+              page.scheme == "https", page.host == "github.com" else { return nil }
+        return page
+    }
+
     private static func fetchJSON(_ url: URL) async -> Any? {
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -329,8 +335,7 @@ final class UpdateChecker: NSObject, ObservableObject, UNUserNotificationCenterD
 
     private static func offer(_ kind: Offer.Kind, from release: [String: Any]) -> Offer? {
         guard let tag = release["tag_name"] as? String else { return nil }
-        let page = (release["html_url"] as? String).flatMap(URL.init(string:))
-            ?? URL(string: "https://github.com/Clang-error/clangnotch/releases")!
+        let page = releasePage(release) ?? URL(string: "https://github.com/Clang-error/clangnotch/releases")!
         return Offer(kind: kind, version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag,
                      notes: release["body"] as? String ?? "", image: diskImage(in: release), page: page)
     }

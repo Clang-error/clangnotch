@@ -48,16 +48,14 @@ final class RemoteCodexManager: ObservableObject {
         let settings = AppSettings.shared
         let wanted = settings.showSourceCodex && settings.remoteCodexEnabled && !DemoMode.isActive
             ? SSHHost.list(settings.remoteCodexHosts) : []
-        for host in hosts where !wanted.contains(host) { stop(host) }
-        for host in wanted where !hosts.contains(host) {
-            guard SSHHost.isValid(host) else {
-                statuses[host] = L("잘못된 주소", "Invalid address")
-                continue
-            }
-            connect(host, interactive: host == asking)
-        }
-        hosts = wanted
-        statuses = statuses.filter { wanted.contains($0.key) }
+        // An invalid name never becomes a host: its folder would be a path like `../../..`,
+        // which `stop` deletes.
+        let valid = wanted.filter(SSHHost.isValid)
+        for host in hosts where !valid.contains(host) { stop(host) }
+        for host in valid where !hosts.contains(host) { connect(host, interactive: host == asking) }
+        hosts = valid
+        statuses = statuses.filter { valid.contains($0.key) }
+        for host in wanted where !SSHHost.isValid(host) { statuses[host] = L("잘못된 주소", "Invalid address") }
     }
 
     /// 다시 연결: this host again, and this time it may ask.
@@ -78,7 +76,7 @@ final class RemoteCodexManager: ObservableObject {
     }
 
     private func connect(_ host: String, interactive: Bool) {
-        let directory = CodexSession.remoteMirrorRoot.appendingPathComponent(host, isDirectory: true)
+        let directory = mirror(host)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let follower = RemoteSessionFollower(host: host, source: .codex, sink: .files(directory)) { [weak self] event in
             self?.handle(event, host: host)
@@ -113,8 +111,15 @@ final class RemoteCodexManager: ObservableObject {
     private func emptyMirror(_ host: String, keepFolder: Bool) {
         hostsWithCodex.remove(host)
         CodexManager.shared.removeRemoteSessions(host: host)
-        let directory = CodexSession.remoteMirrorRoot.appendingPathComponent(host, isDirectory: true)
+        let directory = mirror(host)
         try? FileManager.default.removeItem(at: directory)
         if keepFolder { try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+    }
+
+    /// The host's folder under the mirror root; only for a name `SSHHost.isValid` passed, which has
+    /// no `/`, so the folder can't be outside the root.
+    private func mirror(_ host: String) -> URL {
+        precondition(SSHHost.isValid(host), "mirror folder for an invalid host name")
+        return CodexSession.remoteMirrorRoot.appendingPathComponent(host, isDirectory: true)
     }
 }

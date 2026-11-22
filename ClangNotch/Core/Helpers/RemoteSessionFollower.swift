@@ -488,6 +488,9 @@ final class RemoteFollowerStream: @unchecked Sendable {
     private var stopped = false
 
     private static let maxFrame = 64 * 1024 * 1024
+    /// A line longer than this is dropped, up to its line break: a host sending bytes with no
+    /// line break would otherwise grow the carry without end. Codex lines of 46 MB exist.
+    private static let maxLine = 64 * 1024 * 1024
     private static let maxState = 256 * 1024
     private static let timestampPrefix = Data(#"{"timestamp":""#.utf8)
     private let formatter: ISO8601DateFormatter = {
@@ -647,7 +650,12 @@ final class RemoteFollowerStream: @unchecked Sendable {
             midLine.remove(name)
         }
         guard let last = carry.lastIndex(of: 0x0A) else {
-            carries[name] = carry
+            if carry.count > Self.maxLine {
+                carries[name] = Data()
+                midLine.insert(name)
+            } else {
+                carries[name] = carry
+            }
             return
         }
         let lines = carry.subdata(in: carry.startIndex..<carry.index(after: last))

@@ -114,5 +114,7 @@ report error 'sqlite3: pass "-init", "/dev/null" first; the sqlite3 shell runs ~
     "$(lines "ClangNotch" '"/usr/bin/sqlite3"' | grep -v '"-init", "/dev/null"')"
 report error 'Hooks reach the app on HookSocket (a Unix socket), not a 127.0.0.1 port another account could take.' \
     "$(lines "ClangNotch" 'http://127\.0\.0\.1|hostPort\(host: "127')"
+report error 'An SSH tunnel (-R) ends at HookSocket.remotePath: on HookSocket.path a host'"'"'s request looks like one from this Mac (an approval it never asked for).' \
+    "$(lines "ClangNotch" '"-R".*HookSocket\.path')"
 
 exit $((errors > 0))

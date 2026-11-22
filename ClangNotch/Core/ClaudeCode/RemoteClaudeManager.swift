@@ -155,7 +155,7 @@ final class RemoteClaudeManager: ObservableObject {
             // A per-user socket rather than a TCP port: no clash with anything on the host, and
             // `install` deletes a stale one first. A TCP bind left by a half-dead session (after
             // sleep) would block reconnecting until the host's sshd noticed, possibly for hours.
-            "-R", "\(remoteHome)/.claude/clangnotch.sock:\(HookSocket.path)",
+            "-R", "\(remoteHome)/.claude/clangnotch.sock:\(HookSocket.remotePath)",
         ]) + [
             // What keeps the tunnel up is a follower of the host's registry records
             // (`~/.claude/sessions/*.json`), fed in on stdin. The hooks say nothing when a

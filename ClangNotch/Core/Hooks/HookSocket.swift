@@ -8,13 +8,21 @@ import Foundation
 /// 4318 is also OTLP's standard port, so a telemetry collector could hold it by accident. The
 /// SSH tunnel's host end was already a socket.
 enum HookSocket {
-    /// `~/Library/Application Support/ClangNotch/hook.sock`, or the user's temporary folder when
-    /// a long home path would pass a socket path's 104 bytes.
-    static let path: String = {
-        let preferred = NSHomeDirectory() + "/Library/Application Support/ClangNotch/hook.sock"
+    /// `~/Library/Application Support/ClangNotch/hook.sock`: this Mac's own agents.
+    static let path = socket("hook.sock")
+
+    /// Where the SSH tunnels end (`RemoteClaudeManager`). Everything there came from a host, so it
+    /// can only be that host's events and questions: posted to `path`, a host's `/permission-hook`
+    /// looked like an approval for this Mac (2026-11-22).
+    static let remotePath = socket("remote-hook.sock")
+
+    /// In the app's folder, or the user's temporary folder when a long home path would pass a
+    /// socket path's 104 bytes.
+    private static func socket(_ name: String) -> String {
+        let preferred = NSHomeDirectory() + "/Library/Application Support/ClangNotch/" + name
         if preferred.utf8.count < 104 { return preferred }
-        return FileManager.default.temporaryDirectory.appendingPathComponent("clangnotch-hook.sock").path
-    }()
+        return FileManager.default.temporaryDirectory.appendingPathComponent("clangnotch-" + name).path
+    }
 
     /// The curl a hook command runs: its stdin posted to `route`. The path goes in single quotes:
     /// it has a space in it, and the command is a shell line.

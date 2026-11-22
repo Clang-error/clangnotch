@@ -2,19 +2,26 @@ import Foundation
 
 /// Listens on `HookSocket.path` for what the agents post: Claude Code's
 /// `Notification` and AskUserQuestion hooks, the status line bridge, the permission and
-/// next-step hooks (held open until the notch answers) and hooks forwarded from SSH hosts.
+/// next-step hooks (held open until the notch answers). Hooks forwarded from SSH hosts come
+/// in on `HookSocket.remotePath`.
 @MainActor
 final class HookReceiver {
     static let shared = HookReceiver()
 
     private let server = HookHTTPServer()
+    private let remoteServer = HookHTTPServer()
 
     private init() {
         server.onRequest = { [weak self] request in
             Task { @MainActor in self?.handle(request) }
         }
-        server.onError = { message in
-            debugLog("[Hooks] server error: \(message)")
+        remoteServer.onRequest = { [weak self] request in
+            Task { @MainActor in self?.handleRemote(request) }
+        }
+        for each in [server, remoteServer] {
+            each.onError = { message in
+                debugLog("[Hooks] server error: \(message)")
+            }
         }
     }
 
@@ -24,13 +31,14 @@ final class HookReceiver {
     /// socket: tried again every 2 s for a minute instead of going without hooks until a relaunch.
     func start() {
         retry?.cancel()
-        retry = Task { @MainActor [server] in
+        retry = Task { @MainActor [server, remoteServer] in
             for _ in 0..<30 {
                 do {
-                    try server.start(socketPath: HookSocket.path)
+                    if !server.isListening { try server.start(socketPath: HookSocket.path) }
+                    if !remoteServer.isListening { try remoteServer.start(socketPath: HookSocket.remotePath) }
                     return
                 } catch {
-                    debugLog("[Hooks] could not listen on \(HookSocket.path): \(error)")
+                    debugLog("[Hooks] could not listen: \(error)")
                 }
                 try? await Task.sleep(for: .seconds(2))
                 if Task.isCancelled { return }
@@ -41,6 +49,7 @@ final class HookReceiver {
     func stop() {
         retry?.cancel()
         server.stop()
+        remoteServer.stop()
     }
 
     private func handle(_ request: HookHTTPServer.Request) {
@@ -60,22 +69,33 @@ final class HookReceiver {
         }
     }
 
+    /// From an SSH host, through its tunnel: the host's own events and its AskUserQuestion, only
+    /// for a host the user set up, with the feature on. Anything else gets no answer, so a host
+    /// can't raise an approval or a next-step box that looks like this Mac's.
+    private func handleRemote(_ request: HookHTTPServer.Request) {
+        let settings = AppSettings.shared
+        guard let json = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any],
+              let host = json["clangnotch_host"] as? String,
+              settings.remoteClaudeEnabled, SSHHost.list(settings.remoteClaudeHosts).contains(host) else {
+            request.reply?.send(nil)
+            return
+        }
+        switch request.route {
+        case .claudeHook:
+            ClaudeCodeManager.shared.handleRemoteHook(host: host, json: json)
+        case .permissionHook:
+            if let reply = request.reply { PermissionRequestCenter.shared.receiveRemoteQuestion(json, reply: reply) }
+        case .nextStepHook, .other:
+            request.reply?.send(nil)
+        }
+    }
+
     /// Handles a `Notification` hook POST from Claude Code (configured in
     /// `~/.claude/settings.json`) — a deterministic signal that Claude is waiting on
     /// the user (permission prompt, or a blocked background agent), instead of inferring
     /// it from JSONL tool_use/tool_result timing.
     private func handleClaudeHook(_ data: Data) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        // Events forwarded from an SSH host carry the host alias the hook script was installed
-        // with. Only a host the user set up, with the feature on: before the socket, anything
-        // that reached 127.0.0.1 could post one (another account, a sandboxed app).
-        if let host = json["clangnotch_host"] as? String {
-            let settings = AppSettings.shared
-            if settings.remoteClaudeEnabled, SSHHost.list(settings.remoteClaudeHosts).contains(host) {
-                ClaudeCodeManager.shared.handleRemoteHook(host: host, json: json)
-            }
-            return
-        }
         if let sessionId = json["session_id"] as? String,
            let size = (json["context_window"] as? [String: Any])?["context_window_size"] as? Int {
             ClaudeCodeManager.shared.receiveStatusline(sessionId: sessionId, contextWindowSize: size,

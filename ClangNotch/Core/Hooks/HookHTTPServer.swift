@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-/// Plain HTTP on `HookSocket.path` for the hook curls: one request per connection, `Content-Length` bodies.
+/// Plain HTTP on a Unix socket (`HookSocket`) for the hook curls: one request per connection, `Content-Length` bodies.
 final class HookHTTPServer {
     enum Route {
         case claudeHook
@@ -102,6 +102,8 @@ final class HookHTTPServer {
         listener.start(queue: queue)
         self.listener = listener
     }
+
+    var isListening: Bool { listener != nil }
 
     func stop() {
         listener?.cancel()
