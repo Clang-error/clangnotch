@@ -136,7 +136,7 @@ final class RemoteSessionFollower {
         case .sh:
             // The script goes in on stdin: whatever the login shell is (fish, csh), nothing of
             // it has to survive that shell's quoting.
-            process.arguments = SSHHost.options + SSHHost.destination(host) + ["sh"]
+            process.arguments = SSHHost.arguments(host, interactive: interactive) + ["sh"]
         case .powershell:
             // -EncodedCommand reads the same from cmd.exe and from PowerShell as the default shell.
             let encoded = script(Self.powerShellTemplate).data(using: .utf16LittleEndian)!.base64EncodedString()
@@ -144,11 +144,11 @@ final class RemoteSessionFollower {
             assert(encoded.count < 8050, "the PowerShell follower no longer fits cmd.exe's command line")
             // Through `sshWatch`, which ends ssh when this app is gone: see below.
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", Self.sshWatch, "sh"] + SSHHost.options + SSHHost.destination(host) + [
+            process.arguments = ["-c", Self.sshWatch, "sh"] + SSHHost.arguments(host, interactive: interactive) + [
                 "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand \(encoded)",
             ]
         }
-        process.environment = SSHHost.environment(for: host, interactive: interactive)
+        process.environment = SSHHost.environment(for: host)
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errors
@@ -233,7 +233,7 @@ final class RemoteSessionFollower {
             retry(reason: L("호스트에서 sh 또는 PowerShell을 실행하지 못했습니다", "Neither sh nor PowerShell ran on the host"))
             return
         }
-        let failure = SSHHost.failure(stderr, host: host)
+        let failure = SSHHost.failure(stderr, host: host, arguments: process.arguments ?? [])
         // Waiting on the user (a host to confirm, a password): trying again alone can't help.
         if failure.needsUser, !hadGreeted {
             onEvent(.status(failure.message))

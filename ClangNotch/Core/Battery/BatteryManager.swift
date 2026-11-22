@@ -959,8 +959,8 @@ private enum Collector {
     /// 무선 기기가 응답하지 않으면 lockdownd 연결이 매달릴 수 있어 워치독을 건다.
     private static func shell(_ path: String, _ args: [String], timeout: TimeInterval = 5) -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = args
+        // libimobiledevice sits in the Homebrew folder, which the user (and so any program) can write.
+        DisclaimedLaunch.configure(process, executable: path, arguments: args)
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice

@@ -141,6 +141,9 @@ final class NowPlayingMonitor: ObservableObject {
         let process = Process()
         process.executableURL = perl
         process.arguments = ["-e", Self.perlScript, library.path]
+        // Not the app's environment: `PERL5OPT` or `PERL5LIB` set for every app
+        // (`launchctl setenv`) would load code into the bridge (found 2026-11-21).
+        process.environment = ["PATH": "/usr/bin:/bin"]
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice

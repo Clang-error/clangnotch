@@ -10,11 +10,11 @@ enum PermissionHooks {
     /// fails at once and the agent asks in its own dialog. `maxTime` outlasts the longest
     /// hold: 35s fits Codex's 30s permission wait; Claude gets 600s because a question can
     /// sit open for minutes while its own picker shows alongside.
-    static func command(port: UInt16, maxTime: Int) -> String {
-        "curl -s --connect-timeout 0.2 --max-time \(maxTime) -X POST http://127.0.0.1:\(port)/permission-hook -H 'Content-Type: application/json' --data-binary @- 2>/dev/null || true \(marker)"
+    static func command(socket: String, maxTime: Int) -> String {
+        "\(HookSocket.curl("/permission-hook", socket: socket, maxTime: maxTime)) 2>/dev/null || true \(marker)"
     }
 
-    static func install(in file: URL, port: UInt16, maxTime: Int) throws {
+    static func install(in file: URL, socket: String, maxTime: Int) throws {
         let existing = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
         var settings: [String: Any] = [:]
         if let existing {
@@ -24,7 +24,7 @@ enum PermissionHooks {
             settings = parsed
         }
 
-        let command = command(port: port, maxTime: maxTime)
+        let command = command(socket: socket, maxTime: maxTime)
         let timeout = maxTime + 5
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
         var groups = hooks["PermissionRequest"] as? [[String: Any]] ?? []

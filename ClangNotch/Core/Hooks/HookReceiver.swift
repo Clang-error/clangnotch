@@ -1,6 +1,6 @@
 import Foundation
 
-/// Listens on 127.0.0.1 (port 4318 unless changed) for what the agents post: Claude Code's
+/// Listens on `HookSocket.path` for what the agents post: Claude Code's
 /// `Notification` and AskUserQuestion hooks, the status line bridge, the permission and
 /// next-step hooks (held open until the notch answers) and hooks forwarded from SSH hosts.
 @MainActor
@@ -18,16 +18,28 @@ final class HookReceiver {
         }
     }
 
+    private var retry: Task<Void, Never>?
+
+    /// The copy this one replaces (`SingleInstance`) may take a moment to quit and let go of the
+    /// socket: tried again every 2 s for a minute instead of going without hooks until a relaunch.
     func start() {
-        guard let port = UInt16(exactly: AppSettings.shared.hookPort) else { return }
-        do {
-            try server.start(port: port)
-        } catch {
-            debugLog("[Hooks] could not listen on \(port): \(error)")
+        retry?.cancel()
+        retry = Task { @MainActor [server] in
+            for _ in 0..<30 {
+                do {
+                    try server.start(socketPath: HookSocket.path)
+                    return
+                } catch {
+                    debugLog("[Hooks] could not listen on \(HookSocket.path): \(error)")
+                }
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { return }
+            }
         }
     }
 
     func stop() {
+        retry?.cancel()
         server.stop()
     }
 
@@ -54,9 +66,14 @@ final class HookReceiver {
     /// it from JSONL tool_use/tool_result timing.
     private func handleClaudeHook(_ data: Data) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        // Events forwarded from an SSH host carry the host alias the hook script was installed with.
+        // Events forwarded from an SSH host carry the host alias the hook script was installed
+        // with. Only a host the user set up, with the feature on: before the socket, anything
+        // that reached 127.0.0.1 could post one (another account, a sandboxed app).
         if let host = json["clangnotch_host"] as? String {
-            ClaudeCodeManager.shared.handleRemoteHook(host: host, json: json)
+            let settings = AppSettings.shared
+            if settings.remoteClaudeEnabled, SSHHost.list(settings.remoteClaudeHosts).contains(host) {
+                ClaudeCodeManager.shared.handleRemoteHook(host: host, json: json)
+            }
             return
         }
         if let sessionId = json["session_id"] as? String,

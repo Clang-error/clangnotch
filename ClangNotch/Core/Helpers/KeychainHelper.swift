@@ -41,4 +41,13 @@ enum KeychainHelper {
     static func exists(key: String) -> Bool {
         load(key: key) != nil
     }
+
+    /// Whether the item is there, from its attributes only: unlike reading its data, this never
+    /// makes the keychain ask for approval.
+    static func contains(key: String) -> Bool {
+        var item = query(key)
+        item[kSecReturnAttributes as String] = true
+        item[kSecMatchLimit as String] = kSecMatchLimitOne
+        return SecItemCopyMatching(item as CFDictionary, nil) == errSecSuccess
+    }
 }

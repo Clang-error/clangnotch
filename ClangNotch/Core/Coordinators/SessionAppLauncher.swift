@@ -158,8 +158,8 @@ enum SessionAppLauncher {
             for command in commands {
                 guard let executable = command.first else { continue }
                 let process = Process()
-                process.executableURL = URL(fileURLWithPath: executable)
-                process.arguments = Array(command.dropFirst())
+                // A terminal's CLI comes from the session process's environment.
+                DisclaimedLaunch.configure(process, executable: executable, arguments: Array(command.dropFirst()))
                 process.standardOutput = FileHandle.nullDevice
                 process.standardError = FileHandle.nullDevice
                 do {

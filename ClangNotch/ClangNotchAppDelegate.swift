@@ -22,7 +22,7 @@ final class ClangNotchAppDelegate: NSObject, NSApplicationDelegate {
         if SSHAskpass.runIfRequested() { return }
 
         // Recording mode: only the notch and the scripted sessions. No hook receiver
-        // (the real instance owns port 4318), no update checks.
+        // (the real instance owns the hook socket), no update checks.
         if DemoMode.isActive {
             Task { @MainActor in
                 UICoordinator.shared.setupUI()

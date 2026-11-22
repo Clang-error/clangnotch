@@ -5,6 +5,10 @@ import Foundation
 /// purpose: it catches the common tricks, not every one, and an everyday command must never trip it.
 enum PermissionRisk: CaseIterable, Equatable {
     case runsDownload, runsEncoded, admin, secrets, wipes, loginConfig
+    /// Past `PermissionText.maxCharacters` nothing is scanned (a 32 MB body on the main thread),
+    /// so it counts as flagged. With "allow unread" on and this left out, padding a `curl | sh`
+    /// past the limit got it through the flagged lock too (found 2026-11-21).
+    case tooLongToCheck
 
     /// What the dropdown says, in words a non-programmer follows.
     var reason: String {
@@ -15,6 +19,7 @@ enum PermissionRisk: CaseIterable, Equatable {
         case .secrets: L("SSH 키나 비밀번호 같은 비밀 정보에 접근합니다", "Touches secrets such as SSH keys or passwords")
         case .wipes: L("홈 폴더나 디스크 전체를 지웁니다", "Deletes the home folder or the whole disk")
         case .loginConfig: L("로그인할 때마다 실행되는 설정을 바꿉니다", "Changes what runs every time you log in")
+        case .tooLongToCheck: L("너무 길어서 위험한 부분이 숨어 있는지 확인할 수 없습니다", "Too long to check for anything dangerous hidden in it")
         }
     }
 
@@ -40,12 +45,14 @@ enum PermissionRisk: CaseIterable, Equatable {
             [#"\brm\s+(-[a-zA-Z]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\s+(-[a-zA-Z]+\s+)*(["']?(~|\$HOME|\$\{HOME\})["']?/?\*?|/\*?)(\s|$|;|&)"#]
         case .loginConfig:
             [#"(>>?|\btee\b(\s+-a)?|\bcp\b[^\n]*|\bmv\b[^\n]*|\bsed\s+-i[^\n]*)\s*\S*("# + Self.loginFiles + ")"]
+        case .tooLongToCheck:
+            []
         }
     }
 
     /// The signs in what the dropdown shows: a command, a path, or an MCP tool's input.
     static func found(in text: String, toolName: String) -> [PermissionRisk] {
-        guard text.utf8.count <= PermissionText.maxCharacters else { return [] }
+        guard text.utf8.count <= PermissionText.maxCharacters else { return [.tooLongToCheck] }
         let range = NSRange(text.startIndex..., in: text)
         func matches(_ pattern: String) -> Bool {
             (try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]))?

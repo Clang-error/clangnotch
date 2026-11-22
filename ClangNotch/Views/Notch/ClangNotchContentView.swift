@@ -3271,6 +3271,9 @@ struct ClangNotchContentView: View {
                 focusSession(item.agent == .codex ? .codex : .claude, sessionId)
             }
         }
+        // Each request starts unread: the queue's next one is drawn in the same place, and its
+        // `seenEnd` and `shownAt` carried over from the one before (found 2026-11-21).
+        .id(item.id)
     }
 
     private func mediaDropdown(_ playing: NowPlaying) -> some View {

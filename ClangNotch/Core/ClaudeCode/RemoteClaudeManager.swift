@@ -148,16 +148,15 @@ final class RemoteClaudeManager: ObservableObject {
     }
 
     private func openTunnel(_ host: String, remoteHome: String, interactive: Bool) {
-        let port = AppSettings.shared.hookPort
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = SSHHost.options + [
+        process.arguments = SSHHost.arguments(host, interactive: interactive, extra: [
             "-o", "ExitOnForwardFailure=yes",
             // A per-user socket rather than a TCP port: no clash with anything on the host, and
             // `install` deletes a stale one first. A TCP bind left by a half-dead session (after
             // sleep) would block reconnecting until the host's sshd noticed, possibly for hours.
-            "-R", "\(remoteHome)/.claude/clangnotch.sock:127.0.0.1:\(port)",
-        ] + SSHHost.destination(host) + [
+            "-R", "\(remoteHome)/.claude/clangnotch.sock:\(HookSocket.path)",
+        ]) + [
             // What keeps the tunnel up is a follower of the host's registry records
             // (`~/.claude/sessions/*.json`), fed in on stdin. The hooks say nothing when a
             // question or an approval is cancelled with Esc, so the question stayed in the
@@ -166,7 +165,7 @@ final class RemoteClaudeManager: ObservableObject {
             // next heartbeat finds nobody reading and it ends, and the tunnel with it.
             "sh",
         ]
-        process.environment = SSHHost.environment(for: host, interactive: interactive)
+        process.environment = SSHHost.environment(for: host)
         let input = Pipe()
         let output = Pipe()
         let errors = Pipe()
@@ -217,7 +216,7 @@ final class RemoteClaudeManager: ObservableObject {
         tunnels[host] = nil
         // No more events (not even Stop) can arrive; don't leave rows reading as working.
         ClaudeCodeManager.shared.removeRemoteSessions(host: host)
-        let failure = SSHHost.failure(stderr, host: host)
+        let failure = SSHHost.failure(stderr, host: host, arguments: process.arguments ?? [])
         if failure.needsUser {
             statuses[host] = failure.message
         } else {
@@ -310,8 +309,8 @@ final class RemoteClaudeManager: ObservableObject {
         try await Task.detached {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-            process.arguments = SSHHost.options + SSHHost.destination(host) + [command]
-            process.environment = SSHHost.environment(for: host, interactive: interactive)
+            process.arguments = SSHHost.arguments(host, interactive: interactive) + [command]
+            process.environment = SSHHost.environment(for: host)
             let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
             process.standardInput = stdin
             process.standardOutput = stdout
@@ -328,7 +327,7 @@ final class RemoteClaudeManager: ObservableObject {
                 let stderr = String(decoding: errors, as: UTF8.self)
                 // 255 is ssh itself (no connection, no login).
                 if process.terminationStatus == 255 {
-                    let failure = SSHHost.failure(stderr, host: host)
+                    let failure = SSHHost.failure(stderr, host: host, arguments: process.arguments ?? [])
                     throw RemoteClaudeError(failure.message, needsUser: failure.needsUser)
                 }
                 // The host ran the command and it failed. Our own complaints (no curl, a cut

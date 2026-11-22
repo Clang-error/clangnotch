@@ -11,13 +11,13 @@ enum NextStepHooks {
 
     /// With nothing to answer, or ClangNotch not running, curl prints nothing and the hook
     /// ends quietly.
-    static func command(port: UInt16, maxTime: Int) -> String {
-        "out=$(curl -s --connect-timeout 0.2 --max-time \(maxTime) -X POST http://127.0.0.1:\(port)/next-step-hook -H 'Content-Type: application/json' --data-binary @- 2>/dev/null); if [ -n \"$out\" ]; then printf '%s\\n' \"$out\" >&2; exit 2; fi \(marker)"
+    static func command(socket: String, maxTime: Int) -> String {
+        "out=$(\(HookSocket.curl("/next-step-hook", socket: socket, maxTime: maxTime)) 2>/dev/null); if [ -n \"$out\" ]; then printf '%s\\n' \"$out\" >&2; exit 2; fi \(marker)"
     }
 
     /// Adds the hook, or with `enabled` false takes it out. Everything else in the file
     /// stays as it was.
-    static func sync(in file: URL, port: UInt16, maxTime: Int, enabled: Bool) throws {
+    static func sync(in file: URL, socket: String, maxTime: Int, enabled: Bool) throws {
         let existing = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
         var settings: [String: Any] = [:]
         if let existing {
@@ -40,7 +40,7 @@ enum NextStepHooks {
         }
         if enabled {
             groups.append(["hooks": [[
-                "type": "command", "command": command(port: port, maxTime: maxTime),
+                "type": "command", "command": command(socket: socket, maxTime: maxTime),
                 "asyncRewake": true, "timeout": maxTime + 5,
             ] as [String: Any]]])
         }

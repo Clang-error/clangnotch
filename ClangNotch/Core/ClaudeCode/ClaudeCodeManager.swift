@@ -547,10 +547,10 @@ final class ClaudeCodeManager: ObservableObject {
     /// Puts the next-step `Stop` hook in `~/.claude/settings.json` while its 실험 기능 switch
     /// is on, and takes it out otherwise.
     func syncNextStepHook() {
-        guard !DemoMode.isActive, let port = UInt16(exactly: AppSettings.shared.hookPort) else { return }
+        guard !DemoMode.isActive else { return }
         let settings = AppSettings.shared
         do {
-            try NextStepHooks.sync(in: claudeDir.appendingPathComponent("settings.json"), port: port, maxTime: 600,
+            try NextStepHooks.sync(in: claudeDir.appendingPathComponent("settings.json"), socket: HookSocket.path, maxTime: 600,
                                    enabled: settings.showSourceClaudeCode && settings.experimentalClaudeNextStepAnswers)
         } catch {
             debugLog("[ClaudeCode] Could not update the next-step hook: \(error.localizedDescription)")
@@ -562,26 +562,26 @@ final class ClaudeCodeManager: ObservableObject {
     private func startSessionScanning() {
         // The demo never reads real transcripts or touches ~/.claude/settings.json.
         guard !DemoMode.isActive else { return }
-        if AppSettings.shared.showSourceClaudeCode,
-           let port = UInt16(exactly: AppSettings.shared.hookPort) {
+        if AppSettings.shared.showSourceClaudeCode {
+            let socket = HookSocket.path
             do {
-                try ClaudeQuestionHooks.install(in: claudeDir, port: port)
+                try ClaudeQuestionHooks.install(in: claudeDir, socket: socket)
             } catch {
                 debugLog("[ClaudeCode] Could not install question hooks: \(error.localizedDescription)")
             }
             do {
-                try PermissionHooks.install(in: claudeDir.appendingPathComponent("settings.json"), port: port, maxTime: 600)
+                try PermissionHooks.install(in: claudeDir.appendingPathComponent("settings.json"), socket: socket, maxTime: 600)
             } catch {
                 debugLog("[ClaudeCode] Could not install permission hook: \(error.localizedDescription)")
             }
             do {
-                try ClaudeNotificationHooks.install(in: claudeDir.appendingPathComponent("settings.json"), port: port,
+                try ClaudeNotificationHooks.install(in: claudeDir.appendingPathComponent("settings.json"), socket: socket,
                                                     types: Self.attentionNotificationTypes.sorted())
             } catch {
                 debugLog("[ClaudeCode] Could not install notification hook: \(error.localizedDescription)")
             }
             do {
-                try StatuslineBridge.install(in: claudeDir.appendingPathComponent("settings.json"), port: port)
+                try StatuslineBridge.install(in: claudeDir.appendingPathComponent("settings.json"), socket: socket)
             } catch {
                 debugLog("[ClaudeCode] Could not wrap the status line: \(error.localizedDescription)")
             }

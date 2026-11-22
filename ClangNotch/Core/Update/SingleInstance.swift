@@ -17,7 +17,7 @@ enum SingleInstance {
             other.activate()
             return true
         }
-        // Newer here: the other one goes. Its port (4318) and notch are free once it has quit.
+        // Newer here: the other one goes. Its hook socket and notch are free once it has quit.
         other.terminate()
         let deadline = Date().addingTimeInterval(5)
         while !other.isTerminated, Date() < deadline {

@@ -29,6 +29,7 @@ struct PermissionRiskChecks {
         precondition(risks("rm -rf ~") == [.wipes], "Home")
         precondition(risks("rm -rf ~/") == [.wipes] && risks("rm -fr \"$HOME\"") == [.wipes], "Home, other spellings")
         precondition(risks("rm -rf /") == [.wipes] && risks("rm -r -f /*") == [.wipes], "Root")
+        precondition(risks(String(repeating: "echo ok\n", count: 3_000)) == [.tooLongToCheck], "Too long to scan counts as flagged")
         precondition(risks("rm -rf node_modules dist").isEmpty, "An ordinary cleanup is fine")
         precondition(risks("rm -rf ~/project/build").isEmpty, "A folder inside home is fine")
 

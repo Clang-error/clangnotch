@@ -2,7 +2,7 @@ import Foundation
 
 /// Installs only the question lifecycle hooks; existing Claude settings stay intact.
 enum ClaudeQuestionHooks {
-    static func install(in directory: URL, port: UInt16) throws {
+    static func install(in directory: URL, socket: String) throws {
         let file = directory.appendingPathComponent("settings.json")
         let existing = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
         var settings: [String: Any] = [:]
@@ -14,7 +14,7 @@ enum ClaudeQuestionHooks {
         }
 
         let marker = "# ClangNotch AskUserQuestion"
-        let command = "curl -s --connect-timeout 0.2 --max-time 1 -X POST http://127.0.0.1:\(port)/claude-hook -H 'Content-Type: application/json' --data-binary @- >/dev/null 2>&1 || true \(marker)"
+        let command = "\(HookSocket.curl("/claude-hook", socket: socket, maxTime: 1)) >/dev/null 2>&1 || true \(marker)"
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
         var changed = false
         for event in ["PreToolUse", "PostToolUse", "PostToolUseFailure"] {

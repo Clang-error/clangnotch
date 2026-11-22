@@ -215,7 +215,9 @@ enum SessionAppResolver {
               let names = try? FileManager.default.contentsOfDirectory(atPath: codexDirectory.path),
               let name = names.filter({ $0.hasPrefix("logs_") && $0.hasSuffix(".sqlite") }).max() else { return nil }
         func query(_ sql: String) -> String {
-            output("/usr/bin/sqlite3", ["-readonly", codexDirectory.appendingPathComponent(name).path, sql])
+            // `-init /dev/null`: the sqlite3 shell otherwise runs ~/.sqliterc first, and its
+            // `.shell` lines would run as a child of this app (found 2026-11-21).
+            output("/usr/bin/sqlite3", ["-init", "/dev/null", "-readonly", codexDirectory.appendingPathComponent(name).path, sql])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
         let row = query("""
@@ -334,8 +336,10 @@ enum SessionAppResolver {
 
     private static func output(_ executable: String, _ arguments: [String]) -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
+        // tmux comes from another process's pid: not under this app's privacy grants.
+        DisclaimedLaunch.configure(process, executable: executable, arguments: arguments)
+        // Not the app's: variables set for every app (`launchctl setenv`) can steer a tool.
+        process.environment = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice

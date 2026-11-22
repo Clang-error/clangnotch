@@ -185,6 +185,10 @@ struct PermissionDropdownView: View {
     let onDecide: (PermissionRequestCenter.Decision) -> Void
     @State private var timeLeft: CGFloat = 1
     @State private var seenEnd = false
+    /// When this request was first drawn. A click meant for the one before it (gone by timeout
+    /// or answered in the terminal) can land on 허용 right after it is replaced.
+    @State private var shownAt = Date()
+    static let clickGuard: TimeInterval = 0.5
     /// 설정 -> 보안 can let a flagged or unread command through for someone who knows the risk.
     @ObservedObject private var settings = AppSettings.shared
 
@@ -236,13 +240,12 @@ struct PermissionDropdownView: View {
             .popIn(delay: 0.07)
         }
         .padding(.top, 6)
-        .id(item.id)
     }
 
     /// 허용, filled for the time left (it drains to empty when the request goes back to the
     /// agent's prompt), or locked with the reason in two or three words.
     private var allowButton: some View {
-        Button { if canAllow { onDecide(.allow) } } label: {
+        Button { if canAllow, Date().timeIntervalSince(shownAt) >= Self.clickGuard { onDecide(.allow) } } label: {
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(canAllow ? Self.allowBlue.opacity(0.35) : NotchPalette.ink.opacity(0.07))

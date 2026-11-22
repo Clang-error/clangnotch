@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-/// Plain HTTP on 127.0.0.1 for the hook curls: one request per connection, `Content-Length` bodies.
+/// Plain HTTP on `HookSocket.path` for the hook curls: one request per connection, `Content-Length` bodies.
 final class HookHTTPServer {
     enum Route {
         case claudeHook
@@ -27,7 +27,8 @@ final class HookHTTPServer {
     static let maxBodyBytes = 32 * 1024 * 1024
 
     /// The hook curls send no Origin and name the loopback in Host. A browser page always sends
-    /// Origin, and a DNS-rebound page names its own host, so both are refused.
+    /// Origin, and a DNS-rebound page names its own host, so both are refused. Kept from when this
+    /// listened on 127.0.0.1, where a page could reach it; a socket file a page can't.
     static func verdict(forHeader header: String) -> HeaderVerdict {
         let lines = header.split(separator: "\r\n", omittingEmptySubsequences: false)
         guard let requestLine = lines.first else { return .reject }
@@ -76,11 +77,25 @@ final class HookHTTPServer {
     private let queue = DispatchQueue(label: "com.clangerror.ClangNotch.hook.server", qos: .userInitiated)
     private var activeHandlers: [ObjectIdentifier: HTTPConnectionHandler] = [:]
 
-    func start(port: UInt16) throws {
+    struct InUse: Error {}
+
+    /// Another copy of this app already answering at `path` keeps it (a Debug run beside the
+    /// installed one); a socket left by one that has quit is replaced. The folder is the user's
+    /// alone: connecting takes write access to it and to the socket.
+    func start(socketPath path: String) throws {
+        let folder = (path as NSString).deletingLastPathComponent
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        // A folder that was already there keeps its mode otherwise.
+        chmod(folder, 0o700)
+        if Self.answers(at: path) { throw InUse() }
+        unlink(path)
         let params = NWParameters.tcp
-        guard let endpointPort = NWEndpoint.Port(rawValue: port) else { return }
-        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: endpointPort)
+        params.requiredLocalEndpoint = .unix(path: path)
         let listener = try NWListener(using: params)
+        listener.stateUpdateHandler = { [weak self] state in
+            if case .failed(let error) = state { self?.onError?("listener failed: \(error)") }
+        }
         listener.newConnectionHandler = { [weak self] connection in
             self?.handleConnection(connection)
         }
@@ -91,6 +106,23 @@ final class HookHTTPServer {
     func stop() {
         listener?.cancel()
         listener = nil
+    }
+
+    private static func answers(at path: String) -> Bool {
+        var address = sockaddr_un()
+        let bytes = Array(path.utf8)
+        guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else { return false }
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
+        let socket = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        guard socket >= 0 else { return false }
+        defer { close(socket) }
+        return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(socket, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        } == 0
     }
 
     private func handleConnection(_ connection: NWConnection) {

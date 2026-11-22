@@ -270,7 +270,10 @@ struct SessionCardPages<Sessions: View>: View {
     }
 
     /// Still listed: its 세션 화면. Gone: an app's session opens in that app again; a terminal's
-    /// resume command is copied, since nothing says which terminal to run it in.
+    /// resume command is copied, since nothing says which terminal to run it in. Only with a
+    /// real session id: the id comes from transcripts and hooks (an SSH host's too), and one
+    /// like `0; curl … | sh` was pasted into a shell as it was (found 2026-11-21). Checked here,
+    /// where it is used, so an entry saved before the check can't get through either.
     private func open(_ entry: AgentActivityLog.Finish, listed: Bool) {
         if listed {
             openSession(SessionDetailTarget(agent: entry.agent == .claude ? .claude : .codex, sessionId: entry.sessionId))
@@ -284,12 +287,15 @@ struct SessionCardPages<Sessions: View>: View {
                 SessionAppLauncher.open(.claude, at: link)
                 return
             }
-            copy("claude --resume \(entry.conversationId ?? entry.sessionId)", for: entry)
+            let id = entry.conversationId ?? entry.sessionId
+            guard UUID(uuidString: id) != nil else { return }
+            copy("claude --resume \(id)", for: entry)
         case .codex:
             if entry.inApp, let link = SessionAppLauncher.codexLink(thread: entry.sessionId) {
                 SessionAppLauncher.open(.codex, at: link)
                 return
             }
+            guard UUID(uuidString: entry.sessionId) != nil else { return }
             copy("codex resume \(entry.sessionId)", for: entry)
         }
     }

@@ -11,7 +11,7 @@ enum ClaudeNotificationHooks {
 
     /// `types` are the notification kinds the notch acts on; they become the matcher, so
     /// Claude Code runs the hook for those only.
-    static func install(in file: URL, port: UInt16, types: [String]) throws {
+    static func install(in file: URL, socket: String, types: [String]) throws {
         let existing = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
         var settings: [String: Any] = [:]
         if let existing {
@@ -21,7 +21,7 @@ enum ClaudeNotificationHooks {
             settings = parsed
         }
 
-        let command = "curl -s --connect-timeout 0.2 --max-time 1 -X POST http://127.0.0.1:\(port)/claude-hook -H 'Content-Type: application/json' --data-binary @- >/dev/null 2>&1 || true \(marker)"
+        let command = "\(HookSocket.curl("/claude-hook", socket: socket, maxTime: 1)) >/dev/null 2>&1 || true \(marker)"
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
         var groups = hooks["Notification"] as? [[String: Any]] ?? []
         var installed = false
@@ -37,9 +37,10 @@ enum ClaudeNotificationHooks {
                         groups[index]["hooks"] = handlers
                         changed = true
                     }
-                } else if current.contains("/claude-hook") {
+                } else if current.contains("/claude-hook"), current.contains("--unix-socket") {
                     // A hook set up by hand already posts here: a second one would report
-                    // every prompt twice. It is the user's, so it is left as it is.
+                    // every prompt twice. It is the user's, so it is left as it is. One that
+                    // posts to the old 127.0.0.1 port reaches nothing since 2026-11-21.
                     installed = true
                 }
             }

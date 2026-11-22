@@ -530,12 +530,10 @@ final class CodexManager: ObservableObject {
 
     private func startSessionScanning() {
         guard sessionScanTimer == nil, !DemoMode.isActive else { return }
-        if let port = UInt16(exactly: AppSettings.shared.hookPort) {
-            do {
-                try PermissionHooks.install(in: codexDir.appendingPathComponent("hooks.json"), port: port, maxTime: 35)
-            } catch {
-                debugLog("[Codex] Could not install permission hook: \(error.localizedDescription)")
-            }
+        do {
+            try PermissionHooks.install(in: codexDir.appendingPathComponent("hooks.json"), socket: HookSocket.path, maxTime: 35)
+        } catch {
+            debugLog("[Codex] Could not install permission hook: \(error.localizedDescription)")
         }
         scanForSessions()
         sessionScanTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
@@ -581,8 +579,7 @@ final class CodexManager: ObservableObject {
         guard rateLimitProcess == nil, let executableURL = codexExecutableURL() else { return }
 
         let process = Process()
-        process.executableURL = executableURL
-        process.arguments = ["app-server"]
+        DisclaimedLaunch.configure(process, executable: executableURL.path, arguments: ["app-server"])
 
         let input = Pipe()
         let output = Pipe()

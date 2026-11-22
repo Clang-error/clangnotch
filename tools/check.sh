@@ -106,4 +106,13 @@ report warning 'notchVM.fold(): a dropdown that ends goes through restorePeek() 
 report warning 'print(: app logging goes through debugLog() so release builds stay quiet. A print that must stay (debugLog itself, a script in a string) gets an allow-print comment on its line.' \
     "$(lines "ClangNotch" '^[[:space:]]*print\(' | grep -v 'allow-print')"
 
+# Security review, 2026-11-21. A program from outside macOS's own folders (Homebrew, ~/.local/bin,
+# a path from another process) started straight from a Process ran with this app's privacy grants.
+report error 'Process: start a program by a path that is not a literal /usr/bin, /bin, /usr/sbin or /sbin one through DisclaimedLaunch.configure, so it does not get this app'"'"'s privacy grants (Accessibility, Input Monitoring, Location).' \
+    "$(lines "ClangNotch" 'executableURL = (URL\(fileURLWithPath: [a-z]|[a-z][A-Za-z]*URL$|[a-z][A-Za-z]*$)' | grep -v 'Core/Update/UpdateInstaller.swift:.*fileURLWithPath: executable)' | grep -v 'Core/Helpers/DisclaimedLaunch.swift' | grep -v 'Core/Media/NowPlayingMonitor.swift:.*executableURL = perl$')"
+report error 'sqlite3: pass "-init", "/dev/null" first; the sqlite3 shell runs ~/.sqliterc otherwise.' \
+    "$(lines "ClangNotch" '"/usr/bin/sqlite3"' | grep -v '"-init", "/dev/null"')"
+report error 'Hooks reach the app on HookSocket (a Unix socket), not a 127.0.0.1 port another account could take.' \
+    "$(lines "ClangNotch" 'http://127\.0\.0\.1|hostPort\(host: "127')"
+
 exit $((errors > 0))

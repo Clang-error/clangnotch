@@ -244,6 +244,12 @@ private struct RemoteHostsEditor: View {
                         .help(L("다시 연결 (처음 보는 호스트 확인과 비밀번호를 물을 수 있음)", "Reconnect (may ask to confirm a new host, or for a password)"))
                     Button {
                         hosts = list.filter { $0 != host }.joined(separator: ", ")
+                        // Its saved password and host keys go with it once neither agent lists it:
+                        // removing and adding again is what a changed host key asks for.
+                        let settings = AppSettings.shared
+                        if !SSHHost.list(settings.remoteClaudeHosts).contains(host), !SSHHost.list(settings.remoteCodexHosts).contains(host) {
+                            SSHLogin.forget(host)
+                        }
                         sync(nil)
                     } label: { Image(systemName: "minus.circle") }
                         .help(L("목록에서 빼기", "Remove from the list"))

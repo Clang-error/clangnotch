@@ -5,8 +5,6 @@ import SwiftUI
 public final class AppSettings: ObservableObject {
     public static let shared = AppSettings()
 
-    /// `HookReceiver`'s port. The key predates the receiver, so a changed port carries over.
-    @AppStorage("telemetryOtlpPort") public var hookPort: Int = 4318
     @AppStorage("showMenuBarItem") public var showMenuBarItem: Bool = false
     @AppStorage("showSourceCodex") public var showSourceCodex: Bool = true
     @AppStorage("showSourceClaudeCode") public var showSourceClaudeCode: Bool = true
