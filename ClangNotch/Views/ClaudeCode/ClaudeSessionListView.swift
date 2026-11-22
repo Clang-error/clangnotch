@@ -520,6 +520,7 @@ private struct UnifiedWorkspaceSessionRow: View {
 /// only show; going anywhere is the session's row.
 private struct SubagentRows: View {
     let subagents: [ClaudeSubagent]
+    @ObservedObject private var settings = AppSettings.shared
     /// As many as the Current Tasks 카드 lists before "+N개 더".
     private let limit = 4
 
@@ -539,6 +540,12 @@ private struct SubagentRows: View {
                             .foregroundColor(NotchPalette.ink)
                             .frame(width: 10, height: 10)
                             .shadow(color: Color.orange.opacity(0.8), radius: 3)
+                            // 아이콘 모자: a subagent wears the propeller, as its copy in the wing does.
+                            .overlay {
+                                if settings.experimentalClaudeIconHats {
+                                    ClaudeIconHatView(hat: .propeller, iconSize: 10)
+                                }
+                            }
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
                                 Text(subagent.description.isEmpty ? subagent.agentType : subagent.description)

@@ -3,7 +3,7 @@ import SwiftUI
 /// 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기": a small hat on a closed wing's Claude
 /// icon that says what its session is busy with (아이콘 모자).
 enum ClaudeIconHat: Equatable {
-    case hardhat, wizard, tophat, crown
+    case hardhat, wizard, tophat, crown, propeller
 
     /// A turn that has run this long wears the hard hat.
     static let longTurn: TimeInterval = 120
@@ -11,7 +11,7 @@ enum ClaudeIconHat: Equatable {
     static let orchestraSubagents = 3
 
     /// The hat of a working session, the most telling first. The crown isn't here: it goes
-    /// on the Done icon.
+    /// on the Done icon; nor is the propeller, which each subagent's icon copy wears.
     static func wearing(_ state: ClaudeCodeState, now: Date) -> ClaudeIconHat? {
         if state.subagents.count >= orchestraSubagents { return .wizard }
         if !state.subagents.isEmpty { return .tophat }
@@ -94,6 +94,20 @@ struct ClaudeIconHatView: View {
             return [(box(-2.5, -5, 2.5, 0.3, 0.55), rgb(0x5A5A64)),
                     (box(-2.5, -1.75, 2.5, -0.55, 0), rgb(0xF3F1EC)),
                     (box(-4, -0.35, 4, 0.85, 0.6), rgb(0x5A5A64))]
+        case .propeller:
+            var dome = Path()
+            dome.move(to: CGPoint(x: -3.0, y: 0.4))
+            dome.addCurve(to: CGPoint(x: 3.0, y: 0.4), control1: CGPoint(x: -3.0, y: -4.4), control2: CGPoint(x: 3.0, y: -4.4))
+            dome.closeSubpath()
+            var wedge = Path()
+            wedge.move(to: CGPoint(x: 0, y: 0.4))
+            wedge.addLine(to: CGPoint(x: -1.2, y: -3.2))
+            wedge.addCurve(to: CGPoint(x: 1.2, y: -3.2), control1: CGPoint(x: -0.6, y: -3.5), control2: CGPoint(x: 0.6, y: -3.5))
+            wedge.closeSubpath()
+            let blade = rgb(0x3B82F6)
+            return [(dome, rgb(0xF6C624)), (wedge, rgb(0xE5484D)), (box(-0.3, -5, 0.3, -3, 0.2), rgb(0x5A5A64)),
+                    (Path(ellipseIn: CGRect(x: -3.6, y: -5.75, width: 3.4, height: 1.1)), blade),
+                    (Path(ellipseIn: CGRect(x: 0.2, y: -5.75, width: 3.4, height: 1.1)), blade)]
         case .crown:
             var points = Path()
             points.addLines([CGPoint(x: -3.2, y: 0.5), CGPoint(x: -3.7, y: -3.3), CGPoint(x: -1.75, y: -1.7),

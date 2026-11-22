@@ -994,22 +994,24 @@ struct ClangNotchContentView: View {
     /// The hat of every working Claude session, in the order the wing draws its icons. The
     /// front icon is the selected session while it works (the wing names its tool first);
     /// the others keep their places by turn start, so a hat doesn't hop between icons as
-    /// sessions report in.
+    /// sessions report in. The subagents' copies come after the sessions' and wear the propeller.
     private var claudeWingHats: [ClaudeIconHat?] {
         guard settings.experimentalClaudeIconHats else { return [] }
         _ = hatClock
         let now = Date()
         let selected = claudeCodeManager.selectedSession?.id
-        return claudeCodeManager.availableSessions
+        let working = claudeCodeManager.availableSessions
             .compactMap { session in claudeCodeManager.sessionStates[session.id].map { (id: session.id, state: $0) } }
             .filter { $0.state.isActive }
+        let sessions: [ClaudeIconHat?] = working
             .sorted { a, b in
                 if (a.id == selected) != (b.id == selected) { return a.id == selected }
                 let (x, y) = (a.state.turnStartTime ?? .distantPast, b.state.turnStartTime ?? .distantPast)
                 return x != y ? x < y : a.id < b.id
             }
-            .prefix(ClosedAgentIconStack.maxIcons)
             .map { ClaudeIconHat.wearing($0.state, now: now) }
+        let subagents = working.reduce(0) { $0 + $1.state.subagents.count }
+        return Array((sessions + Array(repeating: .propeller, count: subagents)).prefix(ClosedAgentIconStack.maxIcons))
     }
 
     private var claudeHardhatDue: Date? {
@@ -1138,10 +1140,14 @@ struct ClangNotchContentView: View {
         // gets one zigzag copy behind it per extra session.
         let claudeWorkingCount = claudeCodeManager.availableSessions
             .filter { claudeCodeManager.sessionStates[$0.id]?.isActive == true }.count
+        // Claude's icon gets a copy per subagent at work too, as for a session (user, 2026-11-22:
+        // only the experimental hats said subagents were running).
+        let claudeIconCount = claudeWorkingCount + claudeCodeManager.availableSessions
+            .reduce(0) { $0 + (claudeCodeManager.sessionStates[$1.id].map { $0.isActive ? $0.subagents.count : 0 } ?? 0) }
         let codexWorkingCount = codexManager.availableSessions
             .filter { codexManager.sessionStates[$0.id]?.isActive == true }.count
         let leftIconWidth: CGFloat = showsCodexIcon ? ClosedAgentIconStack.width(for: codexWorkingCount)
-            : showsClaudeIcon ? ClosedAgentIconStack.width(for: claudeWorkingCount)
+            : showsClaudeIcon ? ClosedAgentIconStack.width(for: claudeIconCount)
             : 8
         let leftWingWidth: CGFloat = showsDone ? 12 + 6 + measuredTextWidth("Done", 10, .medium)
             : showsCodexQuestionOnLeft ? 58
@@ -1171,7 +1177,7 @@ struct ClangNotchContentView: View {
             if showsDone { return DoneCheckmarkView.size }
             if showsSimultaneousClaudeWing {
                 return min(Self.wingLabelCap, measuredTextWidth(simultaneousClaudeLabel, 10, .medium) + 12) + 6
-                    + ClosedAgentIconStack.width(for: claudeWorkingCount)
+                    + ClosedAgentIconStack.width(for: claudeIconCount)
             }
             if showsQuestionOnRight || hasPermissionNeeded { return 58 }
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {
@@ -1334,7 +1340,7 @@ struct ClangNotchContentView: View {
                             let indicatorColor = isCodexActive ? codexIndicatorColor : claudeGlowColor
                             let isActive = isCodexActive || isClaudeActive
                             if showsClaudeIcon {
-                                claudeWingIcons(count: claudeWorkingCount, spreadsLeading: true, glowColor: indicatorColor)
+                                claudeWingIcons(count: claudeIconCount, spreadsLeading: true, glowColor: indicatorColor)
                                     .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)
                             } else if showsCodexIcon {
                                 ClosedAgentIconStack(agent: .codex, count: codexWorkingCount,
@@ -1417,7 +1423,7 @@ struct ClangNotchContentView: View {
                                         foregroundOpacity: currentClaudeTool != nil ? 0.85 : 0.7,
                                         glowColor: claudeGlowColor
                                     )
-                                    claudeWingIcons(count: claudeWorkingCount, spreadsLeading: false, glowColor: claudeGlowColor)
+                                    claudeWingIcons(count: claudeIconCount, spreadsLeading: false, glowColor: claudeGlowColor)
                                         // Same id as the left wing's Claude icon: when Codex joins,
                                         // Claude's icon glides across the notch instead of popping.
                                         .matchedGeometryEffect(id: "claudeWingIcon", in: wingIconNamespace)

@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
 
-func check(_ condition: @autoclosure () -> Bool, _ message: String = "Check failed") {
+func check(_ condition: @autoclosure () -> Bool, _ message: String = "Check failed", line: Int = #line) {
     guard condition() else {
-        print("FAIL: \(message)")
+        print("FAIL: \(message) (NotchLayoutChecks.swift:\(line))")
         exit(1)
     }
 }

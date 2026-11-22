@@ -29,8 +29,8 @@ struct ExperimentalSettingsTab: View {
                         ClaudeCodeManager.shared.syncNextStepHook()
                     }
                 SettingToggle(L("Claude 아이콘에 모자 씌우기", "Hats on the Claude icon"),
-                              L("닫힌 노치 날개의 Claude 아이콘이 세션마다 하는 일에 따라 모자를 씀. 서브에이전트 1~2개는 실크해트, 3개 이상은 마법사 모자, 2분 넘게 이어지는 세션은 안전모, Done은 왕관.",
-                                "Each Claude icon in the closed notch's wings wears a hat for what its session is doing: a top hat with one or two subagents, a wizard hat with three or more, a hard hat on a session past two minutes, a crown on Done."),
+                              L("닫힌 노치 날개의 Claude 아이콘이 세션마다 하는 일에 따라 모자를 씀. 서브에이전트 1~2개는 실크해트, 3개 이상은 마법사 모자, 2분 넘게 이어지는 세션은 안전모, 서브에이전트 아이콘은 프로펠러 모자, Done은 왕관.",
+                                "Each Claude icon in the closed notch's wings wears a hat for what its session is doing: a top hat with one or two subagents, a wizard hat with three or more, a hard hat on a session past two minutes, a propeller cap on each subagent's icon, a crown on Done."),
                               isOn: $settings.experimentalClaudeIconHats)
                     .disabled(!settings.showSourceClaudeCode)
             } header: {
