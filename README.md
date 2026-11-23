@@ -12,6 +12,8 @@
   Watch Claude Code and Codex work, right in your Mac's notch.
 </p>
 
+https://github.com/user-attachments/assets/ebf8a9fd-c5c3-4229-9d4b-ad6334a392b5
+
 <p align="center">
   <img src="assets/demo-both.webp" width="100%" alt="Claude Code and Codex working together: answering a question from the notch, then done">
 </p>

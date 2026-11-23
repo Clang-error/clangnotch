@@ -12,6 +12,8 @@
   Claude Code와 Codex가 일하는 걸 맥 노치에서.
 </p>
 
+https://github.com/user-attachments/assets/1b434b70-7c75-45b8-865c-400d34873deb
+
 <p align="center">
   <img src="assets/demo-both.webp" width="100%" alt="Claude Code와 Codex가 함께 작업: 질문에 노치에서 답하고 완료까지">
 </p>
