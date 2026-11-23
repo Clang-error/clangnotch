@@ -45,7 +45,7 @@ Requires macOS 14.2 or later. On a Mac without a notch, it appears in the same s
 - A session waiting on you is announced again every 3, 5 or 10 minutes. The done and waiting sounds stay quiet while the screen is locked
 - Sessions grouped by folder. Click one for its session view with each step and the file changes, and jump from there to its terminal or app
 - Quiet sessions stay listed for a time you set (five minutes by default). Pin a session from its right-click menu and it stays
-- Subagents Claude starts show under their session. Codex sessions go by their thread names from the Codex app
+- Subagents Claude starts show under their session, and as one more Claude icon each in the closed notch. Codex sessions go by their thread names from the Codex app
 - A context bar at the top of the session view, with a note when the session is about to compact
 - 5-hour and weekly usage for Claude and Codex
 - Claude Code sessions running on an SSH host: hooks over a reverse tunnel on Linux and macOS, the transcripts read on Windows
@@ -151,7 +151,7 @@ Measured on an M5 Pro, on battery, release build, a one-minute `top` average. Wh
 | Audio capture | Per-app volume |
 | Automation (Terminal) | Going to a session's tab, only if the session runs in Terminal |
 
-Approving from the notch adds hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, and backs up the original files first. Codex only runs a new hook after you trust it once in `/hooks`.
+Approving from the notch adds hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`, and backs up the original files first. The hooks post to a socket in `~/Library/Application Support/ClangNotch`, a folder only your account can open. Codex only runs a new hook after you trust it once in `/hooks`.
 
 iPhone and iPad battery needs [libimobiledevice](https://libimobiledevice.org). The install button in the Battery tab runs `brew install libimobiledevice` in Terminal.
 
