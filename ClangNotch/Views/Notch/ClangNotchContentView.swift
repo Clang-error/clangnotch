@@ -526,6 +526,12 @@ struct ClangNotchContentView: View {
         return notchVM.closedNotchSize.width + topCornerRadius * 2
     }
 
+    /// Past the glow's three stacked halos (8, 16 and 24 pt), whose faint tail reached about
+    /// 140 pt out in a screenshot.
+    static let captureMargin = CGSize(width: 180, height: 140)
+    /// One step above clear in 8-bit alpha.
+    static let captureSheetOpacity = 1.5 / 255
+
     private var notchVisual: some View {
         notchBody
             .padding(.horizontal, isExpanded ? expandedNotchInset : cornerRadiusInsets.closed.bottom)
@@ -602,6 +608,18 @@ struct ClangNotchContentView: View {
                     // Switching state swaps the glow for a new view that appears at its
                     // final size, ahead of the still-resizing surface; fade it in after.
                     .opacity(isGlowSettled || tetherGlowGrowsWithSurface ? 1 : 0)
+            }
+            // A window screenshot (⌘⇧4, space) keeps only the pixels that aren't fully clear, so
+            // the glow's halos, wherever its band was, made the shot lean that way: wide on the
+            // glowing side, cut at the surface on the other (user, 2026-11-26). A 1/255 sheet
+            // wider than the halos on both sides keeps the shot centred on the notch; no one
+            // can see it.
+            .background(alignment: .top) {
+                Rectangle()
+                    .fill(Color.black.opacity(Self.captureSheetOpacity))
+                    .frame(width: notchSurfaceSize.width + Self.captureMargin.width * 2,
+                           height: notchSurfaceSize.height + Self.captureMargin.height)
+                    .allowsHitTesting(false)
             }
             .modifier(IdleLandingFade(height: notchSurfaceSize.height,
                                       closedHeight: notchVM.closedNotchSize.height,
