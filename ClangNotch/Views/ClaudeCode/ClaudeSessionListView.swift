@@ -681,20 +681,18 @@ private struct FolderElbow: Shape {
     }
 }
 
+/// The model the session runs, in its agent's colour. No dot before the name (user, 2026-11-26).
 private struct SourceBadge: View {
     let label: String
     let color: Color
     let active: Bool
 
     var body: some View {
-        HStack(spacing: 3) {
-            Circle().fill(color).frame(width: 4, height: 4)
-            Text(label)
-        }
-        .font(.system(size: 10, weight: .medium))
-        .foregroundColor(color.opacity(active ? 1 : 0.75))
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        .background(color.opacity(active ? 0.18 : 0.08), in: Capsule())
+        Text(label)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(color.opacity(active ? 1 : 0.75))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(color.opacity(active ? 0.18 : 0.08), in: Capsule())
     }
 }
