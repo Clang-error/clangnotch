@@ -242,6 +242,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("notchSoundsVolume") public var notchSoundsVolume: Double = 0.7
     /// Newline-separated session IDs muted from the 세션 줄's context menu.
     @AppStorage("mutedSoundSessionIDs") public var mutedSoundSessionIDs: String = ""
+    /// Sessions whose finishes and shell failures drop no dropdown, one id per line (`QuietSessions`).
+    @AppStorage("quietDropdownSessionIDs") public var quietDropdownSessionIDs: String = ""
     /// Minutes a quiet session stays in the Sessions 카드 (`SessionRetention`, 1–240).
     @AppStorage(SessionRetention.minutesKey) public var sessionKeepMinutes: Int = SessionRetention.defaultMinutes
     /// Newline-separated session IDs pinned from the 세션 줄's context menu: they stay listed

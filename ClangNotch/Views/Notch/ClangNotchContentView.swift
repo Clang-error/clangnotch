@@ -3617,7 +3617,9 @@ struct ClangNotchContentView: View {
         if settings.doneHapticsEnabled, !NotchSounds.isMuted(turn.sessionId) {
             TrackpadHaptics.tap(strength: settings.notchHapticStrength)
         }
-        if isSessionAppFrontmost(source, turn.sessionId) {
+        // In front, the finish is on screen; a session with its dropdowns off (이 세션 드롭다운
+        // 끄기) gets the wing's Done alone too.
+        if isSessionAppFrontmost(source, turn.sessionId) || QuietSessions.isQuiet(turn.sessionId) {
             showDoneFlash(source, turn: turn)
             return
         }
@@ -3634,7 +3636,8 @@ struct ClangNotchContentView: View {
     /// within a minute) updates it and starts its time again. Not while the session's app is
     /// in front: the failure is on screen there.
     private func handleShellFailure(_ failure: ShellFailure) {
-        guard notchVM.notchState != .open, !isSessionAppFrontmost(.claude, failure.sessionId) else { return }
+        guard notchVM.notchState != .open, !isSessionAppFrontmost(.claude, failure.sessionId),
+              !QuietSessions.isQuiet(failure.sessionId) else { return }
         let shown = [doneNotice, pendingDoneNotice].compactMap { $0 }.first { $0.failure?.id == failure.id }
         // A merged one only updates the dropdown still down or waiting; once that has gone,
         // the loop it belongs to drops nothing more.

@@ -314,6 +314,10 @@ private struct UnifiedWorkspaceSessionRow: View {
         (group.claude.map(\.id) + group.codex.map(\.id)).contains(where: NotchSounds.isMuted)
     }
 
+    private var isQuiet: Bool {
+        (group.claude.map(\.id) + group.codex.map(\.id)).contains(where: QuietSessions.isQuiet)
+    }
+
     /// 세션 고정: the row stays in the list whatever 쉬는 세션이 목록에 남는 시간 says
     /// (`SessionRetention`). A row can hold a Claude and a Codex session; both are pinned.
     private var sessionIDs: [String] { group.claude.map(\.id) + group.codex.map(\.id) }
@@ -447,6 +451,12 @@ private struct UnifiedWorkspaceSessionRow: View {
                         .foregroundStyle(.secondary)
                         .help(L("소리 꺼둔 세션", "Sounds muted"))
                 }
+                if isQuiet {
+                    Image(systemName: "rectangle.slash.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .help(L("드롭다운 꺼둔 세션", "Dropdowns off"))
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
@@ -472,10 +482,12 @@ private struct UnifiedWorkspaceSessionRow: View {
                     Button(L("Claude 세션 ID 복사 (\(id.prefix(8)))", "Copy Claude Session ID (\(id.prefix(8)))")) { copyToPasteboard(id) }
                 }
                 muteButton(session.id)
+                quietButton(session.id)
             }
             ForEach(group.codex) { session in
                 Button(L("Codex 세션 ID 복사 (\(session.id.prefix(8)))", "Copy Codex Session ID (\(session.id.prefix(8)))")) { copyToPasteboard(session.id) }
                 muteButton(session.id)
+                quietButton(session.id)
             }
         }
     }
@@ -484,6 +496,14 @@ private struct UnifiedWorkspaceSessionRow: View {
         // `settings` is observed so the label flips right after a toggle.
         Button(NotchSounds.isMuted(sessionId) ? L("이 세션 소리 켜기", "Unmute This Session") : L("이 세션 소리 끄기", "Mute This Session")) {
             NotchSounds.toggleMute(sessionId)
+        }
+    }
+
+    /// 이 세션 드롭다운 끄기: no 완료 or 셸 실패 드롭다운 for it (`QuietSessions`).
+    private func quietButton(_ sessionId: String) -> some View {
+        Button(QuietSessions.isQuiet(sessionId) ? L("이 세션 드롭다운 켜기", "Show Dropdowns for This Session")
+                                                : L("이 세션 드롭다운 끄기", "Hide Dropdowns for This Session")) {
+            QuietSessions.toggle(sessionId)
         }
     }
 
