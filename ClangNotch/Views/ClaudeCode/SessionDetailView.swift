@@ -388,11 +388,7 @@ struct SessionDetailView: View {
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     if let shell = step.shell {
-                        // Fixed text: nothing in the notch ticks.
-                        Text(L("\(shell.startTime.formatted(date: .omitted, time: .shortened))부터",
-                               "Since \(shell.startTime.formatted(date: .omitted, time: .shortened))"))
-                            .font(.system(size: 10))
-                            .foregroundColor(NotchPalette.ink.opacity(0.4))
+                        ElapsedText(since: shell.startTime, color: NotchPalette.ink.opacity(0.4))
                     }
                 }
                 .padding(.horizontal, 10)

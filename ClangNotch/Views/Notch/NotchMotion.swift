@@ -357,6 +357,24 @@ final class StatusDotView: NSView {
     }
 }
 
+/// How long something has run in a row's small print ("42s", "1m 05s", `ClosedElapsedLabel.text`),
+/// counted up once a second like the wing's 경과 시간. Every one ticks on the whole second, so
+/// several rows on screen redraw together, once a second, not each on its own beat.
+struct ElapsedText: View {
+    let since: Date
+    var size: CGFloat = 10
+    var color: Color = .secondary
+
+    var body: some View {
+        TimelineView(.periodic(from: Date(timeIntervalSinceReferenceDate: 0), by: 1)) { context in
+            Text(ClosedElapsedLabel.text(context.date.timeIntervalSince(since)))
+                .font(.system(size: size).monospacedDigit())
+                .foregroundColor(color)
+                .lineLimit(1)
+        }
+    }
+}
+
 /// A status word that slowly fades and comes back while `active`. Driven by a paused
 /// TimelineView, so nothing redraws once it goes quiet; Reduce Motion keeps it still.
 struct Breathing: ViewModifier {

@@ -619,7 +619,7 @@ private struct SubagentRows: View {
     }
 
     /// A 셸 줄: a 서브에이전트 줄 with a terminal for the icon and blue for orange. Under the
-    /// name, a Monitor's latest line, or since when it runs (fixed text: nothing here ticks).
+    /// name, a Monitor's latest line, or how long it has run ("1m 05s", once a second).
     /// A press opens its session's 세션 화면 on it (`openShell`).
     private func shellRow(_ shell: ClaudeBackgroundShell) -> some View {
         HStack(spacing: 6) {
@@ -648,11 +648,14 @@ private struct SubagentRows: View {
                             .fixedSize()
                     }
                 }
-                Text(shell.lastEvent ?? L("\(shell.startTime.formatted(date: .omitted, time: .shortened))부터",
-                                          "Since \(shell.startTime.formatted(date: .omitted, time: .shortened))"))
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                if let event = shell.lastEvent {
+                    Text(event)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                } else {
+                    ElapsedText(since: shell.startTime)
+                }
             }
             Spacer(minLength: 0)
         }
