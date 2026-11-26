@@ -140,13 +140,12 @@ final class RemoteSessionFollower {
         case .powershell:
             // -EncodedCommand reads the same from cmd.exe and from PowerShell as the default shell.
             let encoded = script(Self.powerShellTemplate).data(using: .utf16LittleEndian)!.base64EncodedString()
-            // cmd.exe, the usual default shell there, takes 8191 characters.
-            assert(encoded.count < 8050, "the PowerShell follower no longer fits cmd.exe's command line")
+            // cmd.exe, the usual default shell there, takes 8191 characters (short flags save room).
+            let command = "powershell -NoP -NonI -Ex Bypass -e \(encoded)"
+            assert(command.count < 8150, "the PowerShell follower no longer fits cmd.exe's command line")
             // Through `sshWatch`, which ends ssh when this app is gone: see below.
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", Self.sshWatch, "sh"] + SSHHost.arguments(host, interactive: interactive) + [
-                "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand \(encoded)",
-            ]
+            process.arguments = ["-c", Self.sshWatch, "sh"] + SSHHost.arguments(host, interactive: interactive) + [command]
         }
         process.environment = SSHHost.environment(for: host)
         process.standardInput = input
@@ -380,8 +379,15 @@ final class RemoteSessionFollower {
         #"exec 3<&0; /usr/bin/ssh "$@" </dev/null 3<&- & s=$!; (cat <&3; kill $s) >/dev/null 2>&1 & exec 3<&-; wait $s"#
 
     /// Windows' sshd leaves the command running when the connection goes, and its writes keep
-    /// succeeding (measured 2026-11-12), so it ends when the sshd above it is gone. Kept short:
-    /// encoded, it must fit cmd.exe's 8191-character command line.
+    /// succeeding (measured 2026-11-12), so it ends when the sshd above it is gone. That check
+    /// runs on a thread of its own (a second runspace), every 15 s, and ends the whole process:
+    /// in the main loop it never came round once a write blocked, which a link that died
+    /// quietly (the Mac asleep, the network gone) leaves behind, and the follower and the
+    /// `powershell -c` above it stayed for days (14 on one laptop, 2026-11-26; reproduced
+    /// by ending ssh while the main thread was blocked). The sshd is matched by its start time
+    /// too, as Windows hands a dead process's id out again. Kept short: encoded, it must fit
+    /// cmd.exe's 8191-character command line: aliases (`gci`, `ps`, `gcim`) and enum numbers
+    /// (`FileStream($p,3,1,7)`: Open, Read, ReadWrite|Delete) where the names don't fit.
     ///
     /// What it costs was measured on a 16-core Windows 11 laptop (2026-11-12), by CPU cycles:
     /// the clock-tick times `Get-Process` shows read about half. A pass a second apart costs
@@ -389,9 +395,9 @@ final class RemoteSessionFollower {
     /// looking a process up 12 ms), so what counts is how much each pass touches:
     /// - Every pass: the files already followed, the state files, and with no state folder
     ///   today's dated folder, where Codex puts a new session.
-    /// - Every 15 s, in one listing of the processes: whether the sshd above is still there
-    ///   and whether the agent runs. `Get-Process` every 3 s took the process from 59 MB to
-    ///   104 MB.
+    /// - Every 15 s, in one listing of the processes: whether the agent runs; and, on the
+    ///   watch thread, a look up of the sshd above by its id. `Get-Process` every 3 s took the
+    ///   process from 59 MB to 104 MB.
     /// - The walk of the whole tree only as often as its own time allows, about 1% of a core:
     ///   every 5 to 60 seconds, or a fifth of that after a state file changed, which is how a
     ///   new Claude Code session shows. With 3000 session files `Get-ChildItem -Recurse`
@@ -404,12 +410,13 @@ final class RemoteSessionFollower {
         $h=$env:__ENV__;if(!$h){$h=Join-Path $env:USERPROFILE '__HOME__'}
         $d=Join-Path $h '__SUB__'
         $o=[Console]::OpenStandardOutput()
-        $z=$PID;for($y=0;$y -lt 4;$y++){$c=Get-CimInstance Win32_Process -Filter "ProcessId=$z";if(!$c){break};if($c.Name -eq 'sshd.exe'){break};$z=$c.ParentProcessId}
+        $z=$PID;for($y=0;$y -lt 4;$y++){$c=gcim Win32_Process -F "ProcessId=$z";if(!$c -or $c.Name -eq 'sshd.exe'){break};$z=$c.ParentProcessId}
         if(!$c -or $y -ge 4){$z=0}
+        if($z){$s=(ps -Id $z).StartTime.Ticks;$null=[powershell]::Create().AddScript("for(;;){sleep 15;if((ps -Id $z -EA 0).StartTime.Ticks -ne $s){[Environment]::Exit(0)}}").BeginInvoke()}
         function W($s){try{$b=[Text.Encoding]::ASCII.GetBytes($s+"`n");$o.Write($b,0,$b.Length);$o.Flush()}catch{exit}}
-        function F($p){New-Object IO.FileStream($p,'Open','Read','ReadWrite,Delete')}
+        function F($p){[IO.FileStream]::new($p,3,1,7)}
         function L($p){try{$f=F $p;$l=$f.Length;$f.Close();$l}catch{-1}}
-        function S($k,$y,$p,$a,$e){$n=[int]($e-$a);$b=New-Object byte[] $n;$r=0
+        function S($k,$y,$p,$a,$e){$n=[int]($e-$a);$b=[byte[]]::new($n);$r=0
         try{$f=F $p;$f.Position=$a;while($r -lt $n){$c=$f.Read($b,$r,$n-$r);if($c -le 0){break};$r+=$c};$f.Close()}catch{}
         W "@F $k $y $r";try{$o.Write($b,0,$r);$o.Flush()}catch{exit}}
         function N($q){$p=$q.FullName;if($t.ContainsKey($p) -or $p -like '*\subagents\*' -or $q.Name -like 'agent-*'){return};$t[$p]=-1;$g[$p]=$w}
@@ -417,9 +424,9 @@ final class RemoteSessionFollower {
         $t=@{};$g=@{};$m=(Get-Date).AddMinutes(-5);$n=0;$i=0;$e=15;$sd=Join-Path $h '__STATE__';$st=@{};$v=0;$nx=$m;$nf=$m
         for(;;){
         $w=Get-Date;$y=($w -ge $nx -or ($v -and $w -ge $nf))
-        if(!'__STATE__'){foreach($q in @(Get-ChildItem (Join-Path $d $w.ToString('yyyy\\MM\\dd')) -Filter '__FILTER__' -EA 0|?{$_.LastWriteTime -gt $m -or $_.CreationTime -gt $m})){N $q}}
+        if(!'__STATE__'){foreach($q in @(gci (Join-Path $d $w.ToString('yyyy\\MM\\dd')) -Filter '__FILTER__' -EA 0|?{$_.LastWriteTime -gt $m -or $_.CreationTime -gt $m})){N $q}}
         if($y){$v=0;$x=$w.AddSeconds(-120);$c=$w.AddDays(-30)
-        try{$fs=[IO.DirectoryInfo]::new($d).GetFiles('__FILTER__','AllDirectories')}catch{$fs=@(Get-ChildItem $d -Recurse -Filter '__FILTER__' -EA 0)}
+        try{$fs=[IO.DirectoryInfo]::new($d).GetFiles('__FILTER__','AllDirectories')}catch{$fs=@(gci $d -Recurse -Filter '__FILTER__' -EA 0)}
         foreach($q in $fs){if($q.LastWriteTime -gt $m -or $q.CreationTime -gt $m -or ($q.CreationTime -gt $c -and [IO.File]::GetLastWriteTime($q.FullName) -gt $x)){N $q}}
         $j=[Math]::Min(60,[Math]::Max(5,[int](((Get-Date)-$w).TotalMilliseconds/10)));$nx=$w.AddSeconds($j);$nf=$w.AddSeconds($j/5);$m=$w.AddSeconds(-5)}
         foreach($p in @($t.Keys)){$a=$t[$p]
@@ -429,12 +436,12 @@ final class RemoteSessionFollower {
         if($a -lt 0){$c=0;$b=0;try{$f=F $p;while(($c=$f.ReadByte()) -ge 0){$b++;if($c -eq 10){break}};$f.Close()}catch{}
         S $k meta $p 0 $b;$a=$s-262144;if($a -gt $b){S $k part $p $a $s}else{S $k tail $p $b $s};$t[$p]=$s;$g[$p]=$w;$i=0}
         elseif($s -gt $a){S $k data $p $a $s;$t[$p]=$s;$g[$p]=$w;$i=0}}
-        if('__STATE__'){$sn=@{};Get-ChildItem $sd -Filter '*.json' -EA 0|%{$k=$_.Name;if($_.Extension -ne '.json'){return};$sn[$k]=1
+        if('__STATE__'){$sn=@{};gci $sd -Filter '*.json' -EA 0|%{$k=$_.Name;if($_.Extension -ne '.json'){return};$sn[$k]=1
         try{$b=[IO.File]::ReadAllBytes($_.FullName)}catch{return};$q=[Convert]::ToBase64String($b)
         if($st[$k] -ne $q){$st[$k]=$q;W "@S $k $($b.Length)";try{$o.Write($b,0,$b.Length);$o.Flush()}catch{exit};$i=0;$v=1}}
         foreach($k in @($st.Keys)){if(!$sn[$k]){$st.Remove($k);W "@X $k"}}}
         $n++;$i++
-        if($e -ge 15){$e=0;$u=0;$al=!$z;foreach($q in [Diagnostics.Process]::GetProcesses()){if($q.Id -eq $z){$al=1};if($q.ProcessName -like '*__WORD__*'){$u=1}};if(!$al){exit};W "@H $u"}
+        if($e -ge 15){$e=0;$u=0;foreach($q in [Diagnostics.Process]::GetProcesses()){if($q.ProcessName -like '*__WORD__*'){$u=1}};W "@H $u"}
         $j=1;if($i -ge 60){$j=3};$e+=$j
         Start-Sleep $j}
         """#
