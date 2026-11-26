@@ -24,6 +24,8 @@ enum ClaudeBackgroundShells {
         let exitCode: Int?
         /// A Monitor event's last non-empty line.
         let event: String?
+        /// All of a Monitor event's non-empty lines, for the 세션 화면.
+        var eventLines: [String] = []
 
         /// A real failure: exit codes 143 and 144 are a signal ending the shell (the session
         /// closing it, a timeout), which reads as stopped, not as the command failing.
@@ -34,6 +36,11 @@ enum ClaudeBackgroundShells {
     static let quietLimit: TimeInterval = 600
     /// ...or once it has waited this long in all, whatever they print (a dev server's log).
     static let waitLimit: TimeInterval = 1800
+    /// Output lines the 세션 화면 shows for a shell, and Monitor event lines a shell keeps.
+    static let keptEvents = 20
+    static let tailLines = 20
+    /// How much of a Bash shell's output file is read for its last lines.
+    static let tailBytes = 16 * 1024
 
     /// The shell a tool result line started, if it started one. `tool` is the call it
     /// answers, for the name; `resultText` the result's text, for the output file.
@@ -59,7 +66,7 @@ enum ClaudeBackgroundShells {
             return path.hasSuffix(".output") ? path : nil
         }
         return ClaudeBackgroundShell(id: taskId, isMonitor: isMonitor, title: title, startTime: date,
-                                     outputFile: isMonitor ? nil : outputFile)
+                                     outputFile: isMonitor ? nil : outputFile, command: tool?.command ?? tool?.argument)
     }
 
     /// The text a line carries notifications in, whichever of its shapes it is.
@@ -90,10 +97,10 @@ enum ClaudeBackgroundShells {
                 guard let range = summary.range(of: "exit code ") else { return nil }
                 return Int(summary[range.upperBound...].prefix { $0.isNumber })
             }
-            let event = tag("event", in: block)?
-                .split(separator: "\n").last { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-            notices.append(Notice(taskId: taskId, status: tag("status", in: block), exitCode: exitCode, event: event))
+            let eventLines = (tag("event", in: block) ?? "").split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            notices.append(Notice(taskId: taskId, status: tag("status", in: block), exitCode: exitCode,
+                                  event: eventLines.last, eventLines: eventLines))
         }
         return notices
     }
@@ -114,6 +121,26 @@ enum ClaudeBackgroundShells {
         guard !holding.isEmpty else { return true }
         let quietSince = max(since, holding.compactMap(\.lastOutput).max() ?? since)
         return now.timeIntervalSince(quietSince) >= quietLimit || now.timeIntervalSince(since) >= waitLimit
+    }
+
+    /// The last `count` lines of a shell's output as a terminal would leave them: escape
+    /// sequences dropped, a line rewritten with \r kept as its last version, blank lines out.
+    /// `data` is the end of the file, so its first line may be cut and is skipped unless it is all.
+    static func tail(of data: Data, count: Int = tailLines, fromStart: Bool) -> [String] {
+        let text = String(decoding: data, as: UTF8.self)
+            .replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+            // "\r\n" is one Character to Swift, so it would split on neither.
+            .replacingOccurrences(of: "\r\n", with: "\n")
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        if !fromStart, lines.count > 1 { lines.removeFirst() }
+        return Array(lines
+            .map { line -> String in
+                let shown = line.split(separator: "\r").last.map(String.init) ?? ""
+                return shown.replacingOccurrences(of: "[\\p{Cc}&&[^\\t]]", with: "", options: .regularExpression)
+                    .replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+            }
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .suffix(count))
     }
 
     private static func tag(_ name: String, in block: Substring) -> String? {

@@ -87,6 +87,8 @@ struct ClaudeToolExecution: Identifiable, Equatable {
     var description: String?
     /// Edit/Write's removed and added lines, for the 세션 화면.
     var change: ToolChange?
+    /// A shell command whole (`argument` keeps its first 50 characters), for the 세션 화면.
+    var command: String?
 
     /// The name the wings and lists show: an MCP tool without its "mcp__<server>__" prefix.
     /// The Claude app's own tools came through whole (mcp__ccd_turn__update_plan) and
@@ -135,6 +137,11 @@ struct ClaudeToolExecution: Identifiable, Equatable {
 
         return nil
     }
+
+    /// The whole command of a Bash or Monitor call, up to a length no screen needs more of.
+    static func command(from input: Any?) -> String? {
+        ((input as? [String: Any])?["command"] as? String).map { String($0.prefix(4000)) }
+    }
 }
 
 // MARK: - Subagent
@@ -169,8 +176,12 @@ struct ClaudeBackgroundShell: Identifiable, Equatable {
     /// A Bash shell's output file, named in its start result; its modification date is the
     /// shell's latest output. The folder isn't derived from the conversation id: it can differ.
     let outputFile: String?
+    /// The command whole, for the 세션 화면 (the 셸 줄 shows `title`).
+    var command: String? = nil
     /// A Monitor's latest event line.
     var lastEvent: String?
+    /// A Monitor's recent event lines, oldest first, at most `ClaudeBackgroundShells.keptEvents`.
+    var events: [String] = []
     /// When it last printed: a Monitor event's line time, or the output file's modification date.
     var lastOutput: Date?
     /// Whether it still keeps the session's finished turn from being announced; false once

@@ -41,7 +41,13 @@ struct ClaudeSessionListView: View {
                                 onSelect: onSelect, manager: manager, codexManager: codexManager
                             )
                             SubagentRows(subagents: row.claude.first.flatMap { manager.sessionStates[$0.id]?.subagents } ?? [],
-                                         shells: row.claude.first.flatMap { manager.sessionStates[$0.id]?.backgroundShells } ?? [])
+                                         shells: row.claude.first.flatMap { manager.sessionStates[$0.id]?.backgroundShells } ?? [],
+                                         openShell: { shell in
+                                             // Like the 세션 줄: its 세션 화면, on this shell.
+                                             guard let session = row.claude.first else { return }
+                                             manager.selectSession(session)
+                                             onSelect(SessionDetailTarget(agent: .claude, sessionId: session.id, step: shell.id))
+                                         })
                         }
                         // Rows rise in one after another as the list opens (the first eight;
                         // past that the wait would be noticeable). A session that shows up
@@ -528,6 +534,8 @@ private struct UnifiedWorkspaceSessionRow: View {
 private struct SubagentRows: View {
     let subagents: [ClaudeSubagent]
     var shells: [ClaudeBackgroundShell] = []
+    /// A press on a 셸 줄: its session's 세션 화면 with the shell picked.
+    var openShell: (ClaudeBackgroundShell) -> Void = { _ in }
     @ObservedObject private var settings = AppSettings.shared
     /// As many as the Current Tasks 카드 lists before "+N개 더", subagents first.
     private let limit = 4
@@ -592,7 +600,9 @@ private struct SubagentRows: View {
                     .help(subagent.agentType)
                 }
                 ForEach(shownShells) { shell in
-                    shellRow(shell)
+                    Button { openShell(shell) } label: { shellRow(shell).contentShape(Rectangle()) }
+                        .buttonStyle(.plain)
+                        .help(shell.command ?? shell.title)
                 }
                 if total > limit {
                     Text(L("+\(total - limit)개 더", "+\(total - limit) more"))
@@ -610,6 +620,7 @@ private struct SubagentRows: View {
 
     /// A 셸 줄: a 서브에이전트 줄 with a terminal for the icon and blue for orange. Under the
     /// name, a Monitor's latest line, or since when it runs (fixed text: nothing here ticks).
+    /// A press opens its session's 세션 화면 on it (`openShell`).
     private func shellRow(_ shell: ClaudeBackgroundShell) -> some View {
         HStack(spacing: 6) {
             FolderElbow()

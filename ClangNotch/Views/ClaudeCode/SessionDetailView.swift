@@ -4,6 +4,8 @@ import SwiftUI
 struct SessionDetailTarget: Equatable {
     let agent: PermissionRequestItem.Agent
     let sessionId: String
+    /// The step to show first: a 셸 줄 opens its session on that shell.
+    var step: String? = nil
 }
 
 /// One tool call as the 세션 화면 lists it, from either agent's history.
@@ -14,6 +16,10 @@ private struct SessionStep: Identifiable, Equatable {
     let isRunning: Bool
     let failed: Bool
     let change: ToolChange?
+    /// The command whole, where `argument` is cut short.
+    var command: String? = nil
+    /// A background shell (셸 줄) rather than a tool call.
+    var shell: ClaudeBackgroundShell? = nil
 }
 
 /// 세션 화면: a session's recent steps on the left, and on the right what the picked step
@@ -52,7 +58,7 @@ struct SessionDetailView: View {
             guard let state = manager.sessionStates[target.sessionId] else { return [] }
             return (state.recentTools.reversed() + state.activeTools).map {
                 SessionStep(id: $0.id, name: $0.displayName, argument: $0.argument,
-                            isRunning: $0.isRunning, failed: false, change: $0.change)
+                            isRunning: $0.isRunning, failed: false, change: $0.change, command: $0.command)
             }
         case .codex:
             guard let state = codexManager.sessionStates[target.sessionId] else { return [] }
@@ -63,11 +69,27 @@ struct SessionDetailView: View {
         }
     }
 
+    /// The session's background shells, listed under the steps (Claude only).
+    private var shellSteps: [SessionStep] {
+        guard target.agent == .claude, AppSettings.shared.showClaudeBackgroundShells else { return [] }
+        return (manager.sessionStates[target.sessionId]?.backgroundShells ?? []).map {
+            SessionStep(id: $0.id, name: $0.title, argument: $0.command, isRunning: true, failed: false,
+                        change: nil, command: $0.command, shell: $0)
+        }
+    }
+
+    /// Shells the session's finished turn waits on, for the header's badge.
+    private var waitingShells: Int {
+        guard target.agent == .claude, let state = manager.sessionStates[target.sessionId],
+              state.shellWaitSince != nil, state.turnStartTime == nil else { return 0 }
+        return state.backgroundShells.count
+    }
+
     /// The picked step, or the newest one that changed a file, or simply the newest.
     private var shownStep: SessionStep? {
         let all = steps
-        if let pickedStepID, let step = all.first(where: { $0.id == pickedStepID }) { return step }
-        return all.last(where: { $0.change != nil }) ?? all.last
+        if let pickedStepID, let step = (all + shellSteps).first(where: { $0.id == pickedStepID }) { return step }
+        return all.last(where: { $0.change != nil }) ?? all.last ?? shellSteps.first
     }
 
     private var lastAnswer: String? {
@@ -131,7 +153,14 @@ struct SessionDetailView: View {
                     .font(.system(size: 10))
                     .foregroundColor(NotchPalette.ink.opacity(0.5))
             }
-            if isActive {
+            if waitingShells > 0 {
+                Text(L("셸 \(waitingShells)개 기다리는 중", "Waiting on \(waitingShells) shell\(waitingShells == 1 ? "" : "s")"))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Self.shellBlue)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Self.shellBlue.opacity(0.15)))
+            } else if isActive {
                 Text(L("작업 중", "Working"))
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(accent)
@@ -240,6 +269,17 @@ struct SessionDetailView: View {
                             .id(step.id)
                             .popIn(.rise, delay: Double(min(index, 8)) * 0.035)
                     }
+                    let shells = shellSteps
+                    if !shells.isEmpty {
+                        Text(L("백그라운드 셸", "Background shells"))
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(NotchPalette.ink.opacity(0.4))
+                            .padding(.leading, 8)
+                            .padding(.top, 6)
+                        ForEach(shells) { step in
+                            stepRow(step, picked: step.id == shownStep?.id).id(step.id)
+                        }
+                    }
                     if !all.isEmpty, !isActive {
                         HStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill")
@@ -256,7 +296,14 @@ struct SessionDetailView: View {
                 }
             }
             .scrollIndicators(.never)
-            .onAppear { proxy.scrollTo(isActive ? steps.last?.id : "done", anchor: .bottom) }
+            .onAppear {
+                if let step = target.step, shellSteps.contains(where: { $0.id == step }) {
+                    pickedStepID = step
+                    proxy.scrollTo(step, anchor: .bottom)
+                } else {
+                    proxy.scrollTo(isActive ? steps.last?.id : "done", anchor: .bottom)
+                }
+            }
         }
         .padding(6)
         .background(NotchPalette.ink.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -268,7 +315,12 @@ struct SessionDetailView: View {
         } label: {
             HStack(alignment: .top, spacing: 8) {
                 Group {
-                    if step.isRunning {
+                    if step.shell != nil {
+                        Image(systemName: "apple.terminal")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(NotchPalette.ink)
+                            .shadow(color: Self.shellBlue.opacity(0.9), radius: 3)
+                    } else if step.isRunning {
                         ProgressView().controlSize(.mini)
                     } else if step.failed {
                         Image(systemName: "xmark.circle.fill").foregroundColor(.red.opacity(0.85))
@@ -296,7 +348,7 @@ struct SessionDetailView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(picked ? accent.opacity(0.14) : Color.clear))
+                .fill(picked ? (step.shell != nil ? Self.shellBlue : accent).opacity(0.14) : Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -329,17 +381,55 @@ struct SessionDetailView: View {
                 }
                 .scrollIndicators(.visible)
             } else if let step = shownStep {
-                Text(step.name)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(accent)
+                HStack(spacing: 6) {
+                    Text(step.name)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(step.shell != nil ? Self.shellBlue : accent)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let shell = step.shell {
+                        // Fixed text: nothing in the notch ticks.
+                        Text(L("\(shell.startTime.formatted(date: .omitted, time: .shortened))부터",
+                               "Since \(shell.startTime.formatted(date: .omitted, time: .shortened))"))
+                            .font(.system(size: 10))
+                            .foregroundColor(NotchPalette.ink.opacity(0.4))
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                // A long command wraps and scrolls instead of being cut at the pane's edge.
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("$ \(step.command ?? step.argument ?? "")")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(NotchPalette.ink.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                        if let shell = step.shell {
+                            let output = manager.outputTail(of: shell)
+                            if !output.isEmpty {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(L("출력", "Output"))
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .foregroundColor(NotchPalette.ink.opacity(0.4))
+                                        .padding(.bottom, 2)
+                                    ForEach(Array(output.enumerated()), id: \.offset) { _, line in
+                                        Text(line)
+                                            .font(.system(size: 10.5, design: .monospaced))
+                                            .foregroundColor(NotchPalette.ink.opacity(0.55))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                    }
+                                }
+                                .textSelection(.enabled)
+                            }
+                        }
+                    }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                Text("$ \(step.argument ?? "")")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(NotchPalette.ink.opacity(0.85))
-                    .padding(.horizontal, 10)
-                    .textSelection(.enabled)
-                Spacer(minLength: 0)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollIndicators(.visible)
             } else {
                 Spacer(minLength: 0)
             }
@@ -350,6 +440,8 @@ struct SessionDetailView: View {
         .id(shownStep?.id)
         .popIn(delay: 0.07)
     }
+
+    private static let shellBlue = Color(red: 0.35, green: 0.7, blue: 1.0)
 
     private func diffLine(_ line: ToolChange.Line) -> some View {
         let removed = line.kind == .removed

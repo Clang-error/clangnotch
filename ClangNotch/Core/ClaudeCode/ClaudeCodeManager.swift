@@ -490,6 +490,8 @@ final class ClaudeCodeManager: ObservableObject {
                     }
                 } else if let event = notice.event {
                     state.backgroundShells[index].lastEvent = event
+                    state.backgroundShells[index].events = Array((state.backgroundShells[index].events + notice.eventLines)
+                        .suffix(ClaudeBackgroundShells.keptEvents))
                     state.backgroundShells[index].lastOutput = lineDate
                 }
             }
@@ -498,6 +500,27 @@ final class ClaudeCodeManager: ObservableObject {
         sessionStates[sessionId] = state
         syncStateIfSelected(sessionId)
         objectWillChange.send()
+    }
+
+    /// A Bash shell's last output lines for the 세션 화면, read only when it asks and again only
+    /// once the shell has printed since (`lastOutput`, from the scan's look at the file).
+    private var shellTails: [String: (at: Date?, lines: [String])] = [:]
+
+    func outputTail(of shell: ClaudeBackgroundShell) -> [String] {
+        if shell.isMonitor { return shell.events }
+        if let cached = shellTails[shell.id], cached.at == shell.lastOutput { return cached.lines }
+        var lines: [String] = []
+        if let path = shell.outputFile, let handle = FileHandle(forReadingAtPath: path) {
+            defer { try? handle.close() }
+            let size = handle.seekToEndOfFile()
+            let start = size > UInt64(ClaudeBackgroundShells.tailBytes) ? size - UInt64(ClaudeBackgroundShells.tailBytes) : 0
+            handle.seek(toFileOffset: start)
+            lines = ClaudeBackgroundShells.tail(of: handle.readDataToEndOfFile(), fromStart: start == 0)
+        }
+        // Ended shells leave the list; their tails go with the next one asked for.
+        shellTails = shellTails.filter { id, _ in sessionStates.values.contains { $0.backgroundShells.contains { $0.id == id } } }
+        shellTails[shell.id] = (shell.lastOutput, lines)
+        return lines
     }
 
     private func reportShellFailure(_ shell: ClaudeBackgroundShell, exitCode: Int?, sessionId: String) {
@@ -1343,6 +1366,7 @@ final class ClaudeCodeManager: ObservableObject {
                             )
                             tool.description = toolDescription
                             tool.change = ToolChange.claude(toolName: toolName, input: item["input"])
+                            tool.command = ClaudeToolExecution.command(from: item["input"])
 
                             // Shown from the turn's end until the user's next message, even
                             // when loaded from history.
@@ -1906,6 +1930,7 @@ final class ClaudeCodeManager: ObservableObject {
             )
             tool.description = (json["tool_input"] as? [String: Any])?["description"] as? String
             tool.change = ToolChange.claude(toolName: toolName, input: json["tool_input"])
+            tool.command = ClaudeToolExecution.command(from: json["tool_input"])
             sessionState.activeTools.append(tool)
             sessionState.isThinking = false
             if sessionState.turnStartTime == nil { sessionState.turnStartTime = now }
