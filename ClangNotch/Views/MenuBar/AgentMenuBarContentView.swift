@@ -138,7 +138,7 @@ struct AgentMenuBarContentView: View {
             }
 
             // Same gate as the Speed tab: only while on the configured iPhone hotspot.
-            if settings.enableTWorld, !settings.tworldHotspotSSID.isEmpty, network.ssid == settings.tworldHotspotSSID,
+            if settings.enableTWorld, settings.isTetherHotspot(network.ssid),
                !tworld.requiresLogin || tworld.balance != nil {
                 TWorldUsageView()
             }

@@ -43,6 +43,7 @@ func check(_ condition: @autoclosure () -> Bool, _ message: String = "Check fail
 }
 func L(_ korean: String, _ english: String) -> String { korean }
 struct Selection { let id: String }
+final class AppSettings { static let shared = AppSettings(); var showClaudeBackgroundShells = true }
 final class ClaudeFixture {
 ''' + common + '''
     var state = ClaudeCodeState()
@@ -57,6 +58,13 @@ final class ClaudeFixture {
     var continuedTranscripts: [String: Date] = [:]
     var dismissedInputRequestIDs: Set<String> = []
     var lastCompletedTurn: CompletedTurn?
+    var shellFailure: ShellFailure?
+    let shellFailureMergeWindow: TimeInterval = 60
+    // The registry as the scan would read it; nil: unreadable this moment.
+    var liveRecords: [String: LiveSessionRecord]? = [:]
+    func liveSessionRecords() -> [String: LiveSessionRecord]? { liveRecords }
+    var seenLiveConversationIds: Set<String> = []
+    let idleStatusGrace: TimeInterval = 10
     // What the session's subagents folder would say is still running.
     var runningSubagents: [ClaudeSubagent] = []
     func subagents(inTranscriptAt: String, waitingOn: [ClaudeToolExecution]) -> [ClaudeSubagent] { runningSubagents }
@@ -66,6 +74,8 @@ final class ClaudeFixture {
     let staleLineAfter: TimeInterval = 120
     let turnSafetyTimeout: TimeInterval = 300
     func holdsWrapUpForStopHook(_ sessionId: String) -> Bool { false }
+    func logUsage(_ message: [String: Any], sessionId: String) {}
+    func logChange(_ change: ToolChange?, sessionId: String) {}
     func updateSessionsNeedingPermission() {}
     func captureConversation(from: [String: Any], into: inout ClaudeCodeState) {}
     func scanForSessions() { availableSessions = Array(remoteSessions.values) }
@@ -73,12 +83,14 @@ final class ClaudeFixture {
     func appendConversationMessage(_ message: ClaudeMessage, into: inout ClaudeCodeState) {}
 '''
 swift += formatter(claude, 'lineTimestampFormatters') + '\n'
+start = claude.index('    private struct LiveSessionRecord {')
+swift += claude[start:claude.index('\n    }', start) + len('\n    }')].replace('private struct', 'struct', 1) + '\n'
 start = claude.index('    private static let attentionNotificationTypes:')
 end = claude.index('\n    ]', start) + len('\n    ]')
 swift += claude[start:end].replace('private static let', 'static let', 1) + '\n'
 start = claude.index('    private static func sessionTitle(')
 swift += claude[start:claude.index('\n    }', start) + len('\n    }')].replace('private static', 'static', 1) + '\n'
-for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission','applyTodoTool','endContinuedSession']:
+for name in ['parseMessageForSession','parseJSONLLineForSession','syncStateIfSelected','clearPermissionCheckForSession','handleLocalQuestionHook','handleNotificationHook','handleRemoteHook','loadRecentHistoryForSession','readNewSessionDataForSession','markAllSessionsIdle','dismissInputRequest','dismissPermission','applyTodoTool','endContinuedSession','trackBackgroundShells','reportShellFailure','refreshBackgroundShells','refreshSubagents']:
     swift += method(claude, name) + '\n'
 swift += '}\nfinal class CodexFixture {\n' + common + '''
     var state = CodexState()
@@ -109,6 +121,8 @@ swift += '}\nfinal class CodexFixture {\n' + common + '''
     func parseRateLimits(_ raw: [String: Any]) -> CodexRateLimits { CodexRateLimits() }
     func mergeRateLimits(_ limits: CodexRateLimits, at: Date) {}
     func isRemote(_ sessionId: String) -> Bool { false }
+    func logTokens(_ payload: [String: Any], model: String?, sessionId: String, live: Bool) {}
+    func logChange(_ tool: CodexToolExecution, sessionId: String) {}
 '''
 swift += formatter(codex, 'iso8601Formatter') + '\n'
 for name in ['scanForSessions','parseSessionFromFile','readFirstJSONLRecord','parseResponseItem','parseInputRequest','parseEventMsg','parseJSONLLine','applyRecord','applyRecords','loadRecentHistoryForSession','markAllSessionsIdle']:
@@ -230,6 +244,177 @@ swift += '''}
         agents.parseMessageForSession(["id":"e2", "role":"assistant", "stop_reason":"end_turn", "content":[["type":"text", "text":"끝"]]], sessionId:"s")
         precondition(agents.lastCompletedTurn != nil && agents.heldCompletions["s"] == nil && !agents.state.isActive,
                      "The turn after the subagents finish says Done")
+        // 셸 줄: real line shapes (Claude Code 2.1.332, 2026-11-26), dated now so they read as live.
+        let shells = ClaudeFixture()
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        func feed(_ fields: [String: Any], into fixture: ClaudeFixture? = nil) {
+            var all = fields
+            all["timestamp"] = iso.string(from: Date())
+            all["sessionId"] = "s"
+            let data = try! JSONSerialization.data(withJSONObject: all)
+            (fixture ?? shells).parseJSONLLineForSession(String(data: data, encoding: .utf8)!, sessionId: "s")
+        }
+        func notification(_ id: String, _ status: String?, summary: String, event: String? = nil) -> String {
+            "<task-notification>\\n<task-id>\\(id)</task-id>\\n<tool-use-id>toolu_x</tool-use-id>\\n"
+                + (status.map { "<status>\\($0)</status>\\n" } ?? "")
+                + "<summary>\\(summary)</summary>\\n" + (event.map { "<event>\\($0)</event>\\n" } ?? "") + "</task-notification>"
+        }
+        func enqueueLine(_ text: String, into fixture: ClaudeFixture? = nil) {
+            feed(["type": "queue-operation", "operation": "enqueue", "content": text], into: fixture)
+        }
+        func startBash(_ id: String, _ description: String, into fixture: ClaudeFixture? = nil) {
+            feed(["type": "assistant", "message": ["role": "assistant", "content": [[
+                "type": "tool_use", "id": "tu_\\(id)", "name": "Bash",
+                "input": ["command": "sleep 975; echo done", "description": description, "run_in_background": true]]]]],
+                 into: fixture)
+            feed(["type": "user",
+                  "message": ["role": "user", "content": [[
+                      "tool_use_id": "tu_\\(id)", "type": "tool_result", "is_error": false,
+                      "content": "Command running in background with ID: \\(id). Output is being written to: /private/tmp/claude-501/p/other/tasks/\\(id).output. You will be notified when it completes."]]],
+                  "toolUseResult": ["stdout": "", "stderr": "", "interrupted": false, "isImage": false,
+                                    "noOutputExpected": false, "backgroundTaskId": id]], into: fixture)
+        }
+        func endTurn(_ id: String, into fixture: ClaudeFixture? = nil) {
+            feed(["type": "assistant", "message": ["id": id, "role": "assistant", "stop_reason": "end_turn",
+                                                   "content": [["type": "text", "text": "끝"]]]], into: fixture)
+        }
+        func record(_ status: String) -> ClaudeFixture.LiveSessionRecord {
+            ClaudeFixture.LiveSessionRecord(terminalPid: 1, isIdle: status == "idle" || status == "shell",
+                                            waitsOnShells: status == "shell", statusChangedAt: Date(),
+                                            entrypoint: nil, hostSessionId: nil)
+        }
+        func scanOnce(_ fixture: ClaudeFixture) {
+            fixture.refreshBackgroundShells()
+            fixture.refreshSubagents()
+        }
+        startBash("bx1", "빌드 대기")
+        precondition(shells.state.backgroundShells.map(\\.id) == ["bx1"] && shells.state.backgroundShells[0].title == "빌드 대기"
+              && shells.state.backgroundShells[0].outputFile == "/private/tmp/claude-501/p/other/tasks/bx1.output"
+              && !shells.state.backgroundShells[0].isMonitor, "A backgrounded Bash result starts a 셸 줄 with its output file")
+        feed(["type": "assistant", "message": ["id": "m_end", "role": "assistant", "stop_reason": "end_turn",
+                                               "content": [["type": "text", "text": "빌드 기다리는 중"]]]])
+        precondition(shells.lastCompletedTurn == nil && shells.heldCompletions["s"] != nil && shells.state.shellWaitSince != nil
+              && shells.state.isActive, "A turn that ends with a shell running holds Done and keeps the session working")
+        shells.sessionStates["s"]?.pendingInputRequests = [ClaudeInputRequest.wrapUp(
+            id: "box", input: ["ask": "다음?", "actions": [["label": "예", "message": "예"]]])!]
+        let done = notification("bx1", "completed", summary: "Background command \\"빌드 대기\\" completed (exit code 0)")
+        enqueueLine(done)
+        precondition(shells.state.backgroundShells.isEmpty && shells.shellFailure == nil, "Its notification ends the shell")
+        feed(["type": "user", "message": ["role": "user", "content": done], "promptSource": "system", "turnOrigin": "task_notification"])
+        precondition(shells.state.pendingInputRequests.contains(where: \\.isWrapUp), "A task notification's user line is not the user answering the box")
+        precondition(shells.state.turnStartTime != nil, "The notification starts Claude's next turn")
+        startBash("bx2", "테스트")
+        enqueueLine(notification("bx2", "failed", summary: "Background command \\"테스트\\" failed with exit code 1"))
+        precondition(shells.shellFailure?.title == "테스트" && shells.shellFailure?.exitCode == 1 && shells.shellFailure?.count == 1,
+              "A failed shell is reported")
+        startBash("bx3", "정리")
+        enqueueLine(notification("bx3", "failed", summary: "Background command \\"정리\\" failed with exit code 143"))
+        precondition(shells.shellFailure?.count == 1 && shells.state.backgroundShells.isEmpty, "A signal ending (143) is a stop, not a failure")
+        startBash("bx4", "배포")
+        feed(["type": "attachment", "attachment": ["type": "queued_command",
+              "prompt": notification("bx4", "failed", summary: "Background command \\"배포\\" failed with exit code 5")]])
+        precondition(shells.shellFailure?.count == 2 && shells.shellFailure?.title == "테스트",
+              "A failure right after another in the session adds to its count")
+        feed(["type": "assistant", "message": ["role": "assistant", "content": [[
+            "type": "tool_use", "id": "tu_m", "name": "Monitor",
+            "input": ["command": "tail -f log", "description": "로그 감시", "timeout_ms": 600000, "persistent": false]]]]])
+        feed(["type": "user", "message": ["role": "user", "content": [[
+                  "tool_use_id": "tu_m", "type": "tool_result", "content": "Monitor started (task bm1, expires in 10m)"]]],
+              "toolUseResult": ["taskId": "bm1", "timeoutMs": 600000, "persistent": false]])
+        enqueueLine(notification("bm1", nil, summary: "Monitor event: \\"로그 감시\\"", event: "ok 41\\nok 42"))
+        precondition(shells.state.backgroundShells.first?.isMonitor == true && shells.state.backgroundShells.first?.lastEvent == "ok 42"
+              && shells.state.backgroundShells.first?.lastOutput != nil, "A Monitor event is its latest line, not its end")
+        feed(["type": "user", "message": ["role": "user", "content": "<task-notification>\\nStop hook feedback: picked\\n</task-notification>"]])
+        precondition(shells.state.backgroundShells.count == 1, "A notification naming no tracked task changes nothing")
+        startBash("bx5", "서버")
+        shells.isLoadingHistoryBySession["s"] = true
+        enqueueLine(notification("bx5", "failed", summary: "Background command \\"서버\\" failed with exit code 1"))
+        shells.isLoadingHistoryBySession["s"] = nil
+        precondition(shells.shellFailure?.count == 2 && !shells.state.backgroundShells.contains { $0.id == "bx5" },
+              "Replayed history ends a shell without reporting it")
+        feed(["type": "user", "message": ["role": "user",
+              "content": "1 background shell command tasks didn't finish before the previous session ended. Task ids: bm1."]])
+        precondition(shells.state.backgroundShells.isEmpty, "Shells a new process reports left over end")
+        let t0 = Date(timeIntervalSince1970: 0)
+        let quiet = ClaudeBackgroundShell(id: "q", isMonitor: false, title: "q", startTime: t0, outputFile: nil)
+        var chatty = quiet
+        precondition(!ClaudeBackgroundShells.releasesWait(since: t0, holding: [quiet], now: t0.addingTimeInterval(599))
+              && ClaudeBackgroundShells.releasesWait(since: t0, holding: [quiet], now: t0.addingTimeInterval(600)),
+              "Ten quiet minutes end the wait")
+        chatty.lastOutput = t0.addingTimeInterval(1500)
+        precondition(!ClaudeBackgroundShells.releasesWait(since: t0, holding: [chatty], now: t0.addingTimeInterval(1799))
+              && ClaudeBackgroundShells.releasesWait(since: t0, holding: [chatty], now: t0.addingTimeInterval(1800)),
+              "Thirty minutes end it whatever prints")
+        precondition(ClaudeBackgroundShells.releasesWait(since: t0, holding: [], now: t0), "No shell left, no wait")
+        // The scan: the wait each 3 s pass keeps or lets go, against the registry record.
+        let follow = ClaudeFixture()
+        follow.liveRecords = ["test": record("shell")]
+        startBash("bs1", "빌드", into: follow)
+        endTurn("f1", into: follow)
+        scanOnce(follow)
+        precondition(follow.lastCompletedTurn == nil && follow.heldCompletions["s"] != nil,
+                     "`shell` in the registry is the session waiting on its shells, not idle")
+        let followDone = notification("bs1", "completed", summary: "Background command \\"빌드\\" completed (exit code 0)")
+        enqueueLine(followDone, into: follow)
+        scanOnce(follow)
+        precondition(follow.lastCompletedTurn == nil,
+                     "The moment after the last shell ends, the held turn waits for the turn its notification starts")
+        feed(["type": "user", "message": ["role": "user", "content": followDone], "turnOrigin": "task_notification"], into: follow)
+        endTurn("f2", into: follow)
+        precondition(follow.lastCompletedTurn?.answer == "끝" && follow.heldCompletions["s"] == nil
+                     && follow.state.shellWaitSince == nil && !follow.state.isActive, "That turn says Done")
+        follow.lastCompletedTurn = nil
+        follow.liveRecords = ["test": record("idle")]
+        scanOnce(follow)
+        precondition(follow.lastCompletedTurn == nil, "...once")
+        let lone = ClaudeFixture()
+        lone.liveRecords = ["test": record("shell")]
+        startBash("bs2", "빌드", into: lone)
+        endTurn("l1", into: lone)
+        enqueueLine(notification("bs2", "completed", summary: "Background command completed (exit code 0)"), into: lone)
+        lone.sessionStates["s"]?.lastUpdateTime = Date(timeIntervalSinceNow: -11)
+        lone.liveRecords = ["test": record("idle")]
+        scanOnce(lone)
+        precondition(lone.lastCompletedTurn != nil && lone.state.shellWaitSince == nil,
+                     "No turn followed the last shell: the held turn is the end")
+        let quietShell = ClaudeFixture()
+        quietShell.liveRecords = ["test": record("shell")]
+        startBash("bs3", "서버", into: quietShell)
+        endTurn("q1", into: quietShell)
+        quietShell.liveRecords = nil
+        scanOnce(quietShell)
+        precondition(quietShell.lastCompletedTurn == nil, "An unreadable registry changes nothing")
+        quietShell.liveRecords = ["test": record("shell")]
+        quietShell.sessionStates["s"]?.shellWaitSince = Date(timeIntervalSinceNow: -601)
+        scanOnce(quietShell)
+        precondition(quietShell.lastCompletedTurn != nil && quietShell.state.backgroundShells.count == 1
+                     && quietShell.state.backgroundShells[0].holdsDone == false,
+                     "Ten quiet minutes announce the turn; the shell stays listed and holds no more")
+        quietShell.lastCompletedTurn = nil
+        endTurn("q2", into: quietShell)
+        precondition(quietShell.lastCompletedTurn != nil && quietShell.state.shellWaitSince == nil,
+                     "A shell that held once doesn't hold the next turn")
+        let chattyShell = ClaudeFixture()
+        chattyShell.liveRecords = ["test": record("shell")]
+        startBash("bs4", "로그", into: chattyShell)
+        endTurn("c1", into: chattyShell)
+        chattyShell.sessionStates["s"]?.backgroundShells[0].lastOutput = Date()
+        chattyShell.sessionStates["s"]?.shellWaitSince = Date(timeIntervalSinceNow: -1700)
+        scanOnce(chattyShell)
+        precondition(chattyShell.lastCompletedTurn == nil, "A shell still printing holds within thirty minutes")
+        chattyShell.sessionStates["s"]?.shellWaitSince = Date(timeIntervalSinceNow: -1801)
+        scanOnce(chattyShell)
+        precondition(chattyShell.lastCompletedTurn != nil, "...and not past them")
+        let exited = ClaudeFixture()
+        exited.liveRecords = ["test": record("shell")]
+        startBash("bs5", "빌드", into: exited)
+        endTurn("x1", into: exited)
+        exited.liveRecords = [:]
+        exited.seenLiveConversationIds = ["test"]
+        scanOnce(exited)
+        precondition(exited.lastCompletedTurn != nil && exited.state.backgroundShells.isEmpty && !exited.state.isActive,
+                     "A process gone takes its shells, and the held turn is the end")
         // Sent to the background: the transcript closes mid-turn with continued-in.
         let moved = ClaudeFixture()
         moved.parseMessageForSession(["role":"assistant", "content":[["type":"tool_use", "id":"t", "name":"Bash"]]], sessionId:"s")
@@ -246,6 +431,11 @@ swift += '''}
         precondition(!c.state.isActive, "The turn ends with no ghost tool left running")
         c.parseJSONLLineForSession("{\\"type\\":\\"system\\"}", sessionId:"s")
         precondition(!c.state.isActive, "Metadata must not restart a finished turn")
+        // /exit in a background session, and a `!` shell command: run without the model.
+        c.parseMessageForSession(["role":"user", "content":"<command-name>/exit</command-name>\\n<command-message>exit</command-message>\\n<command-args></command-args>"], sessionId:"s")
+        c.parseMessageForSession(["role":"user", "content":"<local-command-stdout>(no content)</local-command-stdout>"], sessionId:"s")
+        c.parseMessageForSession(["role":"user", "content":[["type":"text", "text":"<bash-input>ls</bash-input>"]]], sessionId:"s")
+        precondition(!c.state.isActive, "A local command line must not start a turn")
         c.parseJSONLLineForSession(#"{"type":"ai-title","aiTitle":"자동 이름","sessionId":"s"}"#, sessionId:"s")
         c.parseJSONLLineForSession(#"{"type":"custom-title","customTitle":"내 이름","sessionId":"s"}"#, sessionId:"s")
         precondition(c.sessionStates["s"]?.title == "내 이름" && !c.state.isActive, "A title line names the session and nothing else")
@@ -593,5 +783,6 @@ with tempfile.TemporaryDirectory(prefix='clangnotch-activity-checks-') as folder
                     str(root/'ClangNotch/Models/CodexActivityScan.swift'),
                     str(root/'ClangNotch/Core/Codex/CodexAppIPC.swift'),
                     str(root/'ClangNotch/Core/Settings/SessionRetention.swift'),
+                    str(root/'ClangNotch/Core/ClaudeCode/ClaudeBackgroundShells.swift'),
                     str(temp/'Checks.swift'), '-o', str(temp/'checks')], check=True)
     subprocess.run([str(temp/'checks'), *sys.argv[1:]], check=True)

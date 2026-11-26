@@ -69,12 +69,55 @@ let cornerRadiusInsets = (
     closed: (top: CGFloat(6), bottom: CGFloat(14))
 )
 
+// MARK: - Island
+
+/// 설정 › 실험 기능 › "외부 모니터에서 다이내믹 아일랜드" (2026-11-23): on a display that isn't the
+/// Mac's own, the notch is the OLED MacBook Pro's Dynamic Island, a black pill floating under the
+/// screen's top edge, instead of a shape hanging from it.
+enum NotchIsland {
+    /// The closed pill and how far below the top edge it floats. Apple published no figure (as
+    /// of 2026-11-23); measured from its 2026-10-28 lineup photo of the 14- and 16-inch PROLED
+    /// models, which draws both screens at one scale (1041px for 1512pt, 1197px for 1728pt):
+    /// a 40×21px capsule 6px under the edge on each, so ±1.5pt.
+    static let width: CGFloat = 58
+    static let height: CGFloat = 30
+    static let floatGap: CGFloat = 9
+
+    /// `--island-preview`: with the setting on, the island on the built-in display too, hung below
+    /// its camera housing, for looking at it without an external display (user, 2026-11-23).
+    static let preview = CommandLine.arguments.contains("--island-preview")
+
+    /// How far below the screen's top edge the pill floats: `floatGap`, plus the camera housing
+    /// in a preview.
+    @MainActor
+    static var gap: CGFloat {
+        floatGap + (preview ? NotchDetector.notchScreen?.safeAreaInsets.top ?? 0 : 0)
+    }
+
+    /// On for `screen` when the setting is on and it is the notch's display and not built in.
+    /// The user asked for external displays only: the built-in one keeps its camera housing, or
+    /// on a Mac without one, the usual shape.
+    @MainActor
+    static func isOn(on screen: NSScreen? = NotchDetector.notchScreen) -> Bool {
+        guard AppSettings.shared.experimentalExternalIsland, let screen, screen == NotchDetector.notchScreen,
+              let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        else { return false }
+        return preview || CGDisplayIsBuiltin(CGDirectDisplayID(number.uint32Value)) == 0
+    }
+
+}
+
 // MARK: - Dynamic Sizing
 
 /// Get the closed notch size for a screen
 @MainActor
 func getClosedNotchSize(screen: NSScreen? = nil) -> CGSize {
     let selectedScreen = screen ?? NotchDetector.notchScreen
+    // `NotchShape` sets the sides `cornerRadiusInsets.closed.top` in from the frame, so the
+    // frame is that much wider each side than the pill it draws.
+    if NotchIsland.isOn(on: selectedScreen) {
+        return CGSize(width: NotchIsland.width + 2 * cornerRadiusInsets.closed.top, height: NotchIsland.height)
+    }
 
     var notchHeight: CGFloat = 32
     var notchWidth: CGFloat = 185

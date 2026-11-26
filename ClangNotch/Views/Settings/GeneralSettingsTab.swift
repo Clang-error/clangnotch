@@ -45,6 +45,12 @@ struct AppGeneralSettingsTab: View {
             } header: {
                 Text(L("성능", "Performance"))
             }
+
+            Section {
+                LabeledContent(L("튜토리얼", "Tutorial")) {
+                    Button(L("다시 보기", "Show Again")) { Tutorial.shared.show(linksWhatsNew: false) }
+                }
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

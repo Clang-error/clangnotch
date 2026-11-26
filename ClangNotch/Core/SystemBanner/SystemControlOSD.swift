@@ -344,6 +344,8 @@ final class SystemControlOSD: ObservableObject {
         default:
             x = screen.frame.midX - panel.frame.width / 2
             if screen == NotchDetector.notchScreen { top = max(top, openNotchDepth) }
+            // The closed 다이내믹 아일랜드 reaches 15pt below an external display's menu bar.
+            if NotchIsland.isOn(on: screen) { top = max(top, NotchIsland.gap + NotchIsland.height) }
         }
         let pillTop = screen.frame.maxY - top - Self.gapBelowMenuBar
         return NSPoint(x: x, y: pillTop + Self.shadowPadding - panel.frame.height)

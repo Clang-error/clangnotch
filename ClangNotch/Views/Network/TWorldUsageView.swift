@@ -123,10 +123,10 @@ struct TWorldSettingsView: View {
                             "For SKT (Korea) subscribers. Shows the tethering share left in the Speed tab and the menu bar (updated every 10 min)."),
                           isOn: $settings.enableTWorld)
                 .onChange(of: settings.enableTWorld) { _, _ in Task { await session.syncWithSettings() } }
-            // Tethering detection reads the same SSID, so it stays editable with the switch off.
-            TextField(L("아이폰 핫스팟 SSID", "iPhone hotspot SSID"), text: $settings.tworldHotspotSSID)
-            Text(L("이 이름의 Wi-Fi(아이폰 개인용 핫스팟)에 연결 시 테더링 중으로 인식. 잔량 표시, 테더링 장소 알림에 사용.",
-                   "On the Wi-Fi with this name (the iPhone's Personal Hotspot), the Mac counts as tethering. Used by the balance and the tethering place alerts."))
+            // Tethering detection reads the same SSIDs, so they stay editable with the switch off.
+            HotspotSSIDList(settings: settings)
+            Text(L("목록의 Wi-Fi(아이폰 개인용 핫스팟) 중 하나에 연결 시 테더링 중으로 인식. 잔량 표시, 테더링 장소 알림에 사용.",
+                   "On any Wi-Fi listed here (an iPhone's Personal Hotspot), the Mac counts as tethering. Used by the balance and the tethering place alerts."))
                 .font(.caption).foregroundColor(.secondary)
             if settings.enableTWorld {
                 HStack {
@@ -162,5 +162,54 @@ struct TWorldSettingsView: View {
             Text(L("SKT 공유 데이터", "SKT shared data"))
         }
         .task { await session.prepare() }
+    }
+}
+
+/// 아이폰 핫스팟 SSID: one field per hotspot, several when more than one device tethers
+/// (2026-11-24). Rows are `tworldHotspotSSID`'s lines as typed, blank ones too, so a field
+/// emptied to retype stays put; `AppSettings.isTetherHotspot` skips the blanks.
+private struct HotspotSSIDList: View {
+    @ObservedObject var settings: AppSettings
+    @FocusState private var focused: Int?
+
+    private var lines: [String] { settings.tworldHotspotSSID.components(separatedBy: "\n") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L("아이폰 핫스팟 SSID", "iPhone hotspot SSID"))
+            ForEach(lines.indices, id: \.self) { index in
+                HStack(spacing: 8) {
+                    TextField("", text: line(index), prompt: Text("SSID"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focused, equals: index)
+                    if lines.count > 1 {
+                        Button {
+                            var list = lines
+                            list.remove(at: index)
+                            settings.tworldHotspotSSID = list.joined(separator: "\n")
+                        } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                            .help(L("목록에서 빼기", "Remove from the list"))
+                    }
+                }
+            }
+            Button(L("SSID 추가", "Add SSID")) {
+                settings.tworldHotspotSSID += "\n"
+                focused = lines.count - 1
+            }
+            .disabled(lines.last?.isEmpty == true)
+        }
+    }
+
+    /// Row `index`, read and written in place; a pasted line break would split the row.
+    private func line(_ index: Int) -> Binding<String> {
+        Binding(get: { index < lines.count ? lines[index] : "" },
+                set: { value in
+                    var list = lines
+                    guard index < list.count else { return }
+                    list[index] = value.replacingOccurrences(of: "\n", with: "")
+                    settings.tworldHotspotSSID = list.joined(separator: "\n")
+                })
     }
 }

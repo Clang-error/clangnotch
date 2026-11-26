@@ -31,16 +31,28 @@ final class WhatsNew {
         return !(UserDefaults.standard.persistentDomain(forName: domain) ?? [:]).isEmpty
     }()
 
-    /// At launch. A first install only records its version; `--whats-new` shows it anyway.
+    /// At launch: the 튜토리얼 or this window, as `TutorialLaunch` decides. `--whats-new` and
+    /// `--tutorial` show theirs anyway.
     func showIfUpdated() {
+        // A demo take neither shows a window nor counts as a launch: one right after a version
+        // bump would otherwise use up the update's one 튜토리얼.
+        guard !DemoMode.isActive else { return }
         let current = UpdateChecker.currentVersion
         let last = UserDefaults.standard.string(forKey: Self.lastLaunchedKey)
         UserDefaults.standard.set(current, forKey: Self.lastLaunchedKey)
-        let updated = last.map { $0 != current } ?? Self.hadSettingsAtLaunch
-        guard CommandLine.arguments.contains("--whats-new") || updated else { return }
-        Task {
-            guard let notes = await Self.notes(for: current), !notes.isEmpty else { return }
-            show(version: current, notes: notes)
+        let arguments = CommandLine.arguments
+        switch TutorialLaunch.decide(currentVersion: current, lastVersion: last, hadSettings: Self.hadSettingsAtLaunch,
+                                     tutorialSeen: Tutorial.seen, forceTutorial: arguments.contains("--tutorial"),
+                                     forceWhatsNew: arguments.contains("--whats-new")) {
+        case .nothing:
+            return
+        case .tutorial(let linksWhatsNew):
+            Tutorial.shared.show(linksWhatsNew: linksWhatsNew)
+        case .whatsNew:
+            Task {
+                guard let notes = await Self.notes(for: current), !notes.isEmpty else { return }
+                show(version: current, notes: notes)
+            }
         }
     }
 
@@ -59,7 +71,7 @@ final class WhatsNew {
         return json["body"] as? String
     }
 
-    private func show(version: String, notes: String) {
+    func show(version: String, notes: String) {
         window?.close()
         let view = WhatsNewView(version: version, notes: notes) { [weak self] in self?.window?.close() }
         let hosting = NSHostingController(rootView: view)

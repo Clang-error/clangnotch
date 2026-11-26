@@ -7,13 +7,14 @@ final class HookHTTPServer {
         case claudeHook
         case permissionHook
         case nextStepHook
+        case sessionOfferHook
         case other
     }
 
     struct Request {
         let route: Route
         let body: Data
-        /// Set for `.permissionHook` and `.nextStepHook`: the hook's curl waits on it for an answer.
+        /// Set for the held routes: the hook's curl waits on it for an answer.
         var reply: HookReply? = nil
     }
 
@@ -66,6 +67,9 @@ final class HookHTTPServer {
         }
         if path.hasSuffix("/next-step-hook") {
             return .nextStepHook
+        }
+        if path.hasSuffix("/session-offer-hook") {
+            return .sessionOfferHook
         }
         return .other
     }
@@ -224,7 +228,7 @@ private final class HTTPConnectionHandler {
 
         let body = Data(buffer.prefix(contentLength))
         buffer.removeSubrange(0..<contentLength)
-        if route == .permissionHook || route == .nextStepHook {
+        if [.permissionHook, .nextStepHook, .sessionOfferHook].contains(route) {
             // Held open: the answer comes from the notch, or nothing after its time limit.
             let reply = HookReply { [weak self] body in self?.sendResponseAndFinish(status: 200, body: body) }
             heldReply = reply

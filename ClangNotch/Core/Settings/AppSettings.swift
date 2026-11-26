@@ -61,7 +61,9 @@ public final class AppSettings: ObservableObject {
 
     /// SKT shared data (T world). Off by default: it needs the user's own SKT account.
     @AppStorage("enableTWorld") public var enableTWorld: Bool = false
-    /// Exact hotspot name; an empty value hides the SKT shared data card.
+    /// Exact hotspot names, one per line: an iPhone, a second phone, an iPad can each tether.
+    /// None hides the SKT shared data card. One string under the old key, so a name saved
+    /// before 2026-11-24 is the first line.
     @AppStorage("tworldHotspotSSID") public var tworldHotspotSSID: String = "아이폰"
 
     // Battery levels for Mac, Bluetooth accessories and iOS devices.
@@ -154,6 +156,8 @@ public final class AppSettings: ObservableObject {
     @AppStorage("batterySaverEnabled") public var batterySaverEnabled: Bool = true
 
     @AppStorage("showPermissionIndicator") public var showPermissionIndicator: Bool = true
+    /// 셸 줄, the wing's terminal mark, the wait for a turn's shells and the failure dropdown.
+    @AppStorage("showClaudeBackgroundShells") public var showClaudeBackgroundShells: Bool = true
     @AppStorage("showTodoList") public var showTodoList: Bool = true
     // "플랜 표시 (사용량 카드)" under Claude Code and under Codex: the plan badge beside each
     // 사용량 카드's title.
@@ -171,6 +175,10 @@ public final class AppSettings: ObservableObject {
     // the turn and wakes the session with the pick (NextStepHooks). Off by default; the hook is
     // in ~/.claude/settings.json only while this is on.
     @AppStorage("experimentalClaudeNextStepAnswers") public var experimentalClaudeNextStepAnswers: Bool = false
+    // 설정 › 실험 기능 › "Claude 새 세션 제안에 노치에서 답하기" (2026-11-24): a PreToolUse hook on
+    // the Claude app's start_session holds its "New session / Do it here" offer for the 새 세션
+    // 드롭다운 (SessionOffer). Off by default; the hook is in place only while on.
+    @AppStorage("experimentalClaudeSessionOffers") public var experimentalClaudeSessionOffers: Bool = false
     // 설정 -> 보안: the 권한 드롭다운 keeps 허용 off for a request with a danger sign, and for a
     // command that doesn't fit until it is opened and read to its end (2026-11-16). Some users
     // found that in the way; these let someone who knows the risk allow anyway. Off by default.
@@ -179,6 +187,12 @@ public final class AppSettings: ObservableObject {
     // 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기": the closed wings' Claude icons wear a hat
     // for what their session is doing (ClaudeIconHat). Off by default.
     @AppStorage("experimentalClaudeIconHats") public var experimentalClaudeIconHats: Bool = false
+    // 설정 › 실험 기능 › "외부 모니터에서 다이내믹 아일랜드": on a display that isn't the Mac's own,
+    // the notch is drawn as the OLED MacBook Pro's floating pill (`NotchIsland`). Off by default.
+    @AppStorage("experimentalExternalIsland") public var experimentalExternalIsland: Bool = false
+    // Under it, "쉴 때도 표시": the black pill stays with nothing going on, as the OLED MacBook's
+    // camera cutout does. Off: it comes and goes like the notch on a display without a housing.
+    @AppStorage("experimentalExternalIslandIdle") public var experimentalExternalIslandIdle: Bool = true
     // 설정 › 실험 기능 › "입력 효과음": a sound for every key and mouse button that goes down
     // (`TypingSounds`).
     @AppStorage("experimentalTypingSounds") public var experimentalTypingSounds: Bool = false
@@ -271,6 +285,12 @@ public final class AppSettings: ObservableObject {
     @AppStorage("settingsAppearance") public var settingsAppearance: String = "system"
 
     public init() {}
+
+    /// `ssid` is one of the hotspots in `tworldHotspotSSID`; blank lines name none.
+    func isTetherHotspot(_ ssid: String?) -> Bool {
+        guard let ssid, !ssid.isEmpty else { return false }
+        return tworldHotspotSSID.split(separator: "\n").contains { $0 == ssid }
+    }
 
     /// The SSH switches came after the host lists (2026-11-12): a list someone already filled
     /// in keeps working instead of going quiet behind a switch that defaults to off.

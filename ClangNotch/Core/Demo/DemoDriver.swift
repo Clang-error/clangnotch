@@ -7,7 +7,7 @@ import AppKit
 enum DemoMode {
     static let isActive = CommandLine.arguments.contains("--demo")
 
-    enum Scene: String { case claude, codex, both, ssh, tools, many, airpods, airpodslid, airpodslow, media, osd, lowbattery, tether, macbattery, idle }
+    enum Scene: String { case claude, codex, both, ssh, tools, many, airpods, airpodslid, airpodslow, media, osd, hud, lowbattery, tether, macbattery, idle }
 
     /// Every scene's clock starts this long after launch, once the launch announcement and the
     /// startup glow (`ClangNotchContentView.launchAnnouncement`, then a 0.4 s fade) are gone:
@@ -237,7 +237,10 @@ final class DemoDriver {
         }
         // osd: an idle notch; every 15 s the 조절창 turns the volume up to the top, down again,
         // then dims the brightness and brings it back.
-        if DemoMode.scene == .osd {
+        // hud (2026-11-26, the 튜토리얼's 조절창, 복사 드롭다운 page): the same once from 2 s, then a
+        // copy at ~12.5 s drops the 복사 방울.
+        if DemoMode.scene == .osd || DemoMode.scene == .hud {
+            let once = DemoMode.scene == .hud
             // (volume or brightness, level in 16ths, ms until the next one)
             let up = (8...16).map { (true, $0, 160) }, down = (6...15).reversed().map { (true, $0, 140) }
             let dim = (4...12).reversed().map { (false, $0, 160) }, brighten = (5...12).map { (false, $0, 160) }
@@ -246,14 +249,19 @@ final class DemoDriver {
             plan += dim
             plan[plan.count - 1].2 = 500
             plan += brighten
-            plan[plan.count - 1].2 = 3500
+            // hud: long enough for the 조절창 to fold before the copy.
+            plan[plan.count - 1].2 = once ? 1800 : 3500
             let osd = SystemControlOSD.shared
-            while !Task.isCancelled {
+            repeat {
                 try? await Task.sleep(for: .seconds(2))
                 for (volume, level, pause) in plan {
                     if volume { osd.demoVolume(Double(level) / 16) } else { osd.demoBrightness(Double(level) / 16) }
                     try? await Task.sleep(for: .milliseconds(pause))
                 }
+            } while !once && !Task.isCancelled
+            if once, !Task.isCancelled {
+                ClipboardManager.shared.demoAdd(ClipboardItem(text: "git push origin feat/billing-tax", copiedAt: Date()))
+                ClipboardManager.shared.copied.send()
             }
             return
         }
@@ -395,7 +403,7 @@ final class DemoDriver {
                           ("Not yet", "Leave it on the branch for now")])
             return [desktop, lumen]
         case .codex: return [atlas, prism]
-        case .tools, .airpods, .airpodslid, .airpodslow, .media, .osd, .lowbattery, .tether, .macbattery, .idle: return []
+        case .tools, .airpods, .airpodslid, .airpodslow, .media, .osd, .hud, .lowbattery, .tether, .macbattery, .idle: return []
 
         case .ssh:
             // One session on this Mac and one on an SSH host: the remote one shows "SSH · host"

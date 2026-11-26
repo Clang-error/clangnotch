@@ -77,7 +77,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .about:    return ["버전", "업데이트", "version", "updates"]
         case .general:  return ["언어", "로그인", "메뉴 막대", "배터리 절약", "설정 창", "색상", "라이트", "다크",
-                                "language", "login", "menu bar", "battery saver", "settings window", "light", "dark"]
+                                "language", "login", "menu bar", "battery saver", "settings window", "light", "dark",
+                                "튜토리얼", "tutorial"]
         case .notch:    return ["노치 색", "라이트", "다크", "배경", "탭", "순서", "열기", "햅틱", "전체 화면", "표시", "메뉴바",
                                 "notch color", "light", "dark", "wallpaper", "tabs", "order", "opening", "haptic", "full screen", "visibility",
                                 "디스플레이", "모니터", "화면", "display", "monitor"]

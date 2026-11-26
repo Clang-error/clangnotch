@@ -35,7 +35,7 @@ report() {  # level, message, hits
 
 # Settings window text: menu paths take "->" and lists take commas (not ›, → or ·).
 report error 'Settings text: write menu paths with "->" and lists with commas, not ›, → or ·. The notch screens are the exception.' \
-    "$(lines "ClangNotch/Views/Settings" 'L\("[^"]*(›|→|·)')"
+    "$(lines "ClangNotch/Views/Settings ClangNotch/Views/Tutorial" 'L\("[^"]*(›|→|·)')"
 
 # Settings window wording (user's review, 2026-11-20): one word per thing, written the same way
 # on every page. The settings views plus the two network ones that live outside Settings/.

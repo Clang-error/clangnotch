@@ -2,8 +2,9 @@ import Foundation
 
 /// 오늘 and 완료 기록, pages of the Agents tab's Sessions card (`SessionCardPages`, 2026-11-19):
 /// what finished work adds up to (today, the last 7 days, everything since 2026-11-21), and the
-/// latest finishes with their answer's first line. Fed by each manager's `lastCompletedTurn`,
-/// nothing read from the session files; kept in UserDefaults so a relaunch keeps them.
+/// latest finishes with their answer's first line. Fed by each manager's `lastCompletedTurn`, and
+/// (2026-11-25) by the managers as live lines arrive for tokens, changed lines and models; kept
+/// in UserDefaults so a relaunch keeps them.
 /// Only the last 7 days are kept day by day; an older day is folded into `earlier`, one set of
 /// totals, so what is stored stays the same size however long the app runs.
 @MainActor
@@ -22,6 +23,26 @@ final class AgentActivityLog: ObservableObject {
         var seconds: Double = 0
         /// Turn time per folder name, for 가장 많이 쓴 폴더.
         var folders: [String: Double] = [:]
+        var usage = Usage()
+    }
+
+    /// Tokens, changed lines and models (2026-11-25): days before then have none.
+    struct Usage: Codable, Equatable {
+        /// Input, cache writes and output; cache reads (the context sent again on every call) are left out.
+        var tokens = 0
+        var added = 0
+        var removed = 0
+        /// Tokens per model's short name, for 가장 많이 쓴 모델.
+        var models: [String: Int] = [:]
+
+        var topModel: String? { models.max { $0.value < $1.value }?.key }
+
+        mutating func add(_ other: Usage) {
+            tokens += other.tokens
+            added += other.added
+            removed += other.removed
+            models.merge(other.models, uniquingKeysWith: +)
+        }
     }
 
     /// What a span of days adds up to, as the 오늘 page shows it.
@@ -29,12 +50,14 @@ final class AgentActivityLog: ObservableObject {
         var sessions = 0
         var seconds: Double = 0
         var folders: [String: Double] = [:]
+        var usage = Usage()
 
         var topFolder: String? { folders.max { $0.value < $1.value }?.key }
 
-        mutating func add(seconds: Double, folders: [String: Double]) {
-            self.seconds += seconds
-            self.folders.merge(folders, uniquingKeysWith: +)
+        mutating func add(_ day: Day) {
+            seconds += day.seconds
+            folders.merge(day.folders, uniquingKeysWith: +)
+            usage.add(day.usage)
         }
     }
 
@@ -137,7 +160,7 @@ final class AgentActivityLog: ObservableObject {
         var sessions = Set<String>()
         for day in days where day.date >= first {
             sessions.formUnion(day.sessions)
-            totals.add(seconds: day.seconds, folders: day.folders)
+            totals.add(day)
         }
         totals.sessions += sessions.count
         return totals
@@ -158,6 +181,30 @@ final class AgentActivityLog: ObservableObject {
         let entry = Finish(agent: agent, sessionId: turn.sessionId, conversationId: conversationId, title: title,
                            folder: folder, model: model, inApp: inApp, headline: turn.headline, finished: Date())
         finishes = Array(([entry] + finishes).prefix(Self.keptFinishes))
+        save()
+    }
+
+    /// Live tokens from a session's message, under its model's short name. Replayed history
+    /// never comes here: the managers count only lines that arrive while the app runs.
+    func addTokens(_ tokens: Int, model: String?) {
+        guard tokens > 0 else { return }
+        var usage = Usage(tokens: tokens)
+        if let name = model.flatMap(ModelName.short) { usage.models[name] = tokens }
+        addToToday(usage)
+    }
+
+    /// An editing tool that went through: the lines it added and removed.
+    func addChange(_ change: ToolChange?) {
+        guard let change, change.added + change.removed > 0 else { return }
+        addToToday(Usage(added: change.added, removed: change.removed))
+    }
+
+    private func addToToday(_ usage: Usage) {
+        guard !DemoMode.isActive else { return }
+        var today = self.today
+        today.usage.add(usage)
+        if let index = days.lastIndex(where: { $0.date == today.date }) { days[index] = today } else { days.append(today) }
+        foldOldDays()
         save()
     }
 
@@ -183,7 +230,7 @@ final class AgentActivityLog: ObservableObject {
         for (index, day) in old.enumerated() {
             let later = Set((old[(index + 1)...] + kept).flatMap(\.sessions))
             earlier.sessions += day.sessions.filter { !later.contains($0) }.count
-            earlier.add(seconds: day.seconds, folders: day.folders)
+            earlier.add(day)
         }
         days = kept
         return true
@@ -209,10 +256,15 @@ final class AgentActivityLog: ObservableObject {
             let seconds = shape.hours * 3600
             var folders: [String: Double] = [:]
             for (index, name) in used.enumerated() { folders[name] = seconds * Double(used.count - index) / Double(used.count * (used.count + 1) / 2) }
-            return Day(date: date, sessions: used.map { "demo:\(shape.back):\($0)" }, seconds: seconds, folders: folders)
+            let tokens = Int(shape.hours * 1_150_000)
+            let usage = Usage(tokens: tokens, added: Int(shape.hours * 410), removed: Int(shape.hours * 130),
+                              models: ["Opus 5.5": tokens * 7 / 10, "GPT-6 Luna": tokens * 3 / 10])
+            return Day(date: date, sessions: used.map { "demo:\(shape.back):\($0)" }, seconds: seconds, folders: folders, usage: usage)
         }
         let earlier = Totals(sessions: 87, seconds: 61 * 3600,
-                             folders: ["orbit-api": 22 * 3600, "lumen-web": 15 * 3600, "atlas-cli": 12 * 3600, "prism-app": 12 * 3600])
+                             folders: ["orbit-api": 22 * 3600, "lumen-web": 15 * 3600, "atlas-cli": 12 * 3600, "prism-app": 12 * 3600],
+                             usage: Usage(tokens: 70_000_000, added: 25_000, removed: 8_000,
+                                          models: ["Opus 5.5": 49_000_000, "GPT-6 Luna": 21_000_000]))
         let finished: [(Agent, String, String, String, Double)] = [
             (.claude, "lumen-web", "Fix flaky checkout test", "The checkout test no longer races the cart fetch.", 4),
             (.codex, "atlas-cli", "Add --json output", "Every command now takes --json.", 18),
@@ -238,5 +290,28 @@ final class AgentActivityLog: ObservableObject {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+}
+
+// Days and totals saved before 2026-11-25 have no `usage`: they decode with none instead of
+// failing, which would lose the history.
+extension AgentActivityLog.Day {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        date = try values.decode(String.self, forKey: .date)
+        sessions = try values.decodeIfPresent([String].self, forKey: .sessions) ?? []
+        seconds = try values.decodeIfPresent(Double.self, forKey: .seconds) ?? 0
+        folders = try values.decodeIfPresent([String: Double].self, forKey: .folders) ?? [:]
+        usage = try values.decodeIfPresent(AgentActivityLog.Usage.self, forKey: .usage) ?? AgentActivityLog.Usage()
+    }
+}
+
+extension AgentActivityLog.Totals {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = try values.decodeIfPresent(Int.self, forKey: .sessions) ?? 0
+        seconds = try values.decodeIfPresent(Double.self, forKey: .seconds) ?? 0
+        folders = try values.decodeIfPresent([String: Double].self, forKey: .folders) ?? [:]
+        usage = try values.decodeIfPresent(AgentActivityLog.Usage.self, forKey: .usage) ?? AgentActivityLog.Usage()
     }
 }

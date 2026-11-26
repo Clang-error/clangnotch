@@ -98,6 +98,11 @@ struct AgentsSettingsTab: View {
                 Toggle(L("사용", "Enabled"), isOn: claudeEnabled)
                 Toggle(L("할 일 목록 표시 (Current Tasks 카드)", "Show todo list (Current Tasks card)"), isOn: $settings.showTodoList)
                     .disabled(!claudeEnabled.wrappedValue)
+                SettingToggle(L("백그라운드 셸 표시", "Show background shells"),
+                              L("Claude가 백그라운드에서 돌리는 셸, Monitor를 세션 아래 줄로 표시. 셸 종료까지 완료 보류, 실패 시 드롭다운.",
+                                "Shells and Monitors Claude runs in the background, as rows under the session. Done waits for them; a failure drops down."),
+                              isOn: $settings.showClaudeBackgroundShells)
+                    .disabled(!claudeEnabled.wrappedValue)
                 SettingToggle(L("사용량 한도 추적", "Enable usage quota tracking"),
                               L("Claude Code 로그인 정보의 한도 확인. 키체인 확인 창이 한 번 뜰 수 있음.",
                                 "Checks the limits with Claude Code's sign-in. Keychain may ask once."),
@@ -149,7 +154,7 @@ struct AgentsSettingsTab: View {
                               isOn: $settings.remoteCodexEnabled)
                     .disabled(!codexEnabled.wrappedValue)
                     .onChange(of: settings.remoteCodexEnabled) { remoteCodex.sync() }
-                    .onChange(of: settings.showSourceCodex) { remoteCodex.apply() }
+                    .onChange(of: settings.showSourceCodex) { SettingEffects.codexChanged() }
                 if settings.remoteCodexEnabled {
                     RemoteHostsEditor(
                         hosts: $settings.remoteCodexHosts, statuses: remoteCodex.statuses,

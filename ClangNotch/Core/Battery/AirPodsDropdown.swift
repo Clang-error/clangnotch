@@ -760,8 +760,17 @@ final class AirPodsDropdown: ObservableObject {
 
     private func layOut(on screen: NSScreen) {
         menuBar = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY)
+        // The 다이내믹 아일랜드 reaches 15pt below an external display's menu bar.
+        if NotchIsland.isOn(on: screen) { menuBar = max(menuBar, NotchIsland.gap + NotchIsland.height) }
         cardTop = max(menuBar, peekDepth, stackDepth) + Self.gapBelowMenuBar
-        if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea?.width,
+        islandTop = nil
+        if NotchIsland.isOn(on: screen) {
+            // The drop comes out of the floating pill, as out of a housing, not down from the
+            // screen's top edge (user, 2026-11-23).
+            notchWidth = NotchIsland.width
+            hasHousing = false
+            islandTop = NotchIsland.gap
+        } else if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea?.width,
            let right = screen.auxiliaryTopRightArea?.width {
             notchWidth = screen.frame.width - left - right
             hasHousing = true
@@ -775,12 +784,13 @@ final class AirPodsDropdown: ObservableObject {
 
     private var notchWidth: CGFloat = 0
     private var hasHousing = true
+    private var islandTop: CGFloat?
 
     private var geometry: AirPodsBlobGeometry {
         AirPodsBlobGeometry(size: CGSize(width: cardSize.width + Self.margin * 2,
                                          height: cardTop + cardSize.height + Self.margin),
                             menuBar: menuBar, cardTop: cardTop, card: cardSize, notchWidth: notchWidth,
-                            hasHousing: hasHousing)
+                            hasHousing: hasHousing, islandTop: islandTop)
     }
 
     private var fillColor: CGColor {

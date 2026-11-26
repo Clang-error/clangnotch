@@ -1,8 +1,8 @@
 import Foundation
 
 /// Listens on `HookSocket.path` for what the agents post: Claude Code's
-/// `Notification` and AskUserQuestion hooks, the status line bridge, the permission and
-/// next-step hooks (held open until the notch answers). Hooks forwarded from SSH hosts come
+/// `Notification` and AskUserQuestion hooks, the status line bridge, the permission, next-step
+/// and session offer hooks (held open until the notch answers). Hooks forwarded from SSH hosts come
 /// in on `HookSocket.remotePath`.
 @MainActor
 final class HookReceiver {
@@ -64,6 +64,10 @@ final class HookReceiver {
             if let reply = request.reply {
                 PermissionRequestCenter.shared.receiveNextStep(request.body, reply: reply)
             }
+        case .sessionOfferHook:
+            if let reply = request.reply {
+                PermissionRequestCenter.shared.receiveSessionOffer(request.body, reply: reply)
+            }
         case .other:
             break
         }
@@ -85,7 +89,7 @@ final class HookReceiver {
             ClaudeCodeManager.shared.handleRemoteHook(host: host, json: json)
         case .permissionHook:
             if let reply = request.reply { PermissionRequestCenter.shared.receiveRemoteQuestion(json, reply: reply) }
-        case .nextStepHook, .other:
+        case .nextStepHook, .sessionOfferHook, .other:
             request.reply?.send(nil)
         }
     }

@@ -25,9 +25,13 @@ struct ExperimentalSettingsTab: View {
                                 "Answer the Claude app's next-step box from the notch."),
                               isOn: $settings.experimentalClaudeNextStepAnswers)
                     .disabled(!settings.showSourceClaudeCode)
-                    .onChange(of: settings.experimentalClaudeNextStepAnswers) { _, _ in
-                        ClaudeCodeManager.shared.syncNextStepHook()
-                    }
+                    .onChange(of: settings.experimentalClaudeNextStepAnswers) { SettingEffects.claudeHooksChanged() }
+                SettingToggle(L("Claude 새 세션 제안에 노치에서 답하기", "Answer Claude new session offers from the notch"),
+                              L("Claude 앱이 새 세션으로 할지 물을 시 노치를 통해 대답 가능.",
+                                "Answer the Claude app's \"New session / Do it here\" card from the notch."),
+                              isOn: $settings.experimentalClaudeSessionOffers)
+                    .disabled(!settings.showSourceClaudeCode)
+                    .onChange(of: settings.experimentalClaudeSessionOffers) { SettingEffects.claudeHooksChanged() }
                 SettingToggle(L("Claude 아이콘에 모자 씌우기", "Hats on the Claude icon"),
                               L("닫힌 노치 날개의 Claude 아이콘이 세션마다 하는 일에 따라 모자를 씀. 서브에이전트 1~2개는 실크해트, 3개 이상은 마법사 모자, 2분 넘게 이어지는 세션은 안전모, 서브에이전트 아이콘은 프로펠러 모자, Done은 왕관.",
                                 "Each Claude icon in the closed notch's wings wears a hat for what its session is doing: a top hat with one or two subagents, a wizard hat with three or more, a hard hat on a session past two minutes, a propeller cap on each subagent's icon, a crown on Done."),
@@ -40,6 +44,23 @@ struct ExperimentalSettingsTab: View {
                        "These rely on other apps' internals and may stop working when those apps update."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section {
+                SettingToggle(L("외부 모니터에서 다이내믹 아일랜드", "Dynamic Island on external displays"),
+                              L("외부 모니터에 띄운 노치를 OLED 맥북 프로의 다이내믹 아일랜드 모양과 크기로 표시.",
+                                "On an external display, the notch takes the OLED MacBook Pro's Dynamic Island shape and size."),
+                              isOn: $settings.experimentalExternalIsland)
+                    // The closed size, the window's hover box and the outline all follow.
+                    .onChange(of: settings.experimentalExternalIsland) { _, _ in NotchDetector.displayChoiceChanged() }
+                if settings.experimentalExternalIsland {
+                    SettingToggle(L("쉴 때도 표시", "Show while idle"),
+                                  L("아무 일도 없을 때도 검은 알약 표시.", "The black pill stays with nothing going on."),
+                                  isOn: $settings.experimentalExternalIslandIdle)
+                        .padding(.leading, 20)
+                }
+            } header: {
+                Text(L("노치", "Notch"))
             }
 
             Section {

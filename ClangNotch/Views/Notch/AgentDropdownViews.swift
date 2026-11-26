@@ -446,6 +446,9 @@ struct DoneDropdownView: View {
     let turn: CompletedTurn
     let accent: Color
     var openTitle = L("터미널 열기", "Open terminal")
+    /// 셸 실패 드롭다운: a background shell that failed rides this dropdown, drawn with a red
+    /// mark, the shell's name and its exit code instead of the answer.
+    var failure: ShellFailure? = nil
     let onOpen: () -> Void
 
 
@@ -456,14 +459,25 @@ struct DoneDropdownView: View {
         // Room under the header and above the button (user, 2026-11-18: it was all packed tight).
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                // The wing's Done mark, drawn large: ring, tick, one pop.
-                DoneCheckmarkView(color: accent, size: 34)
+                if failure != nil {
+                    Image(systemName: "xmark.octagon.fill")
+                        .font(.system(size: 30))
+                        .foregroundColor(accent)
+                        .frame(width: 34, height: 34)
+                } else {
+                    // The wing's Done mark, drawn large: ring, tick, one pop.
+                    DoneCheckmarkView(color: accent, size: 34)
+                }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(projectName)
+                    Text([projectName, failure?.exitCode.map { L("종료 코드 \($0)", "Exit code \($0)") }]
+                        .compactMap { $0 }.joined(separator: " · "))
                         .font(.system(size: 12))
                         .foregroundColor(NotchPalette.ink.opacity(0.5))
                         .lineLimit(1)
-                    Text(turn.headline ?? L("작업 완료", "Finished"))
+                    Text(failure.map { failure in
+                        failure.count > 1 ? L("\(failure.title) 외 \(failure.count - 1)개", "\(failure.title) and \(failure.count - 1) more")
+                            : failure.title
+                    } ?? turn.headline ?? L("작업 완료", "Finished"))
                         .font(.system(size: 13.5, weight: .semibold))
                         .foregroundColor(NotchPalette.ink)
                         .lineLimit(2)
@@ -504,6 +518,47 @@ struct WingHeader<Left: View, Right: View>: View {
     }
 }
 
+/// 새 세션 드롭다운 (2026-11-24, 설정 › 실험 기능): a Claude app session asks whether to start a
+/// new session for a task, the card the app would draw (`SessionOffer`). Its three answers
+/// are the permission queue's decisions: 여기서 하기 `.deny`, 새 세션 `.allow`, 앱에서 고르기
+/// `.terminal`, which allows the tool so the app draws its own card (worktree, model and mode are
+/// picked there).
+struct SessionOfferDropdownView: View {
+    let title: String
+    let sessionLabel: String
+    let accent: Color
+    let onDecide: (PermissionRequestCenter.Decision) -> Void
+
+    /// The agent and 새 세션 제안 are in the wing header (`PermissionPeekHeader`).
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                if !sessionLabel.isEmpty {
+                    Text(sessionLabel)
+                        .font(.system(size: 12))
+                        .foregroundColor(NotchPalette.ink.opacity(0.5))
+                        .lineLimit(1)
+                }
+                Text(title)
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .foregroundColor(NotchPalette.ink)
+                    .lineLimit(3)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .popIn()
+
+            HStack(spacing: 6) {
+                PeekBarButton(title: L("여기서 하기", "Do it here")) { onDecide(.deny) }
+                PeekBarButton(title: L("새 세션", "New session"), style: .tint(accent)) { onDecide(.allow) }
+                PeekBarButton(title: L("앱에서 고르기", "Choose in app"), icon: "macwindow", style: .ghost) { onDecide(.terminal) }
+                    .help(L("Claude 앱의 카드에서 워크트리, 모델과 함께 고르기", "Pick in the Claude app's card, with its worktree and model"))
+            }
+            .popIn(delay: 0.07)
+        }
+        .padding(.top, 6)
+    }
+}
+
 /// The 권한 드롭다운's wing header: the agent, 권한 and which of how many on the left; "위험한 명령"
 /// when it is, and an X, on the right. The time left is on 허용 itself (user, 2026-11-18: not twice).
 struct PermissionPeekHeader: View {
@@ -518,7 +573,7 @@ struct PermissionPeekHeader: View {
     var body: some View {
         WingHeader(side: side) {
             AgentIcon(agent: item.agent)
-            Text(L("권한", "Permission"))
+            Text(item.offerTitle == nil ? L("권한", "Permission") : L("새 세션 제안", "New session?"))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(accent)
             if total > 1 {
@@ -585,12 +640,14 @@ struct DonePeekHeader: View {
     let elapsed: TimeInterval?
     let accent: Color
     let side: CGFloat
+    /// "셸 실패" for the 셸 실패 드롭다운.
+    var label = L("완료", "Done")
     let onClose: () -> Void
 
     var body: some View {
         WingHeader(side: side) {
             AgentIcon(agent: agent)
-            Text(L("완료", "Done"))
+            Text(label)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(accent)
         } right: {

@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Combine
 
 /// A tool approval waiting on the 권한 드롭다운.
@@ -16,6 +16,10 @@ struct PermissionRequestItem: Identifiable, Equatable {
     /// Signs of danger; any of them keeps 허용 off in the notch.
     let risks: [PermissionRisk]
     let receivedAt: Date
+    /// A Claude app session asking whether to start a new session for this (`SessionOffer`): the
+    /// 새 세션 드롭다운 instead of the 권한 드롭다운. 허용 is 새 세션, 거부 is 여기서 하기 and
+    /// 터미널에서 is 앱에서 고르기, which allows the tool so the app draws its card.
+    var offerTitle: String? = nil
 }
 
 /// Holds `PermissionRequest` hooks from Claude Code and Codex until the notch answers.
@@ -43,6 +47,9 @@ final class PermissionRequestCenter: ObservableObject {
     private var replies: [UUID: HookReply] = [:]
     private var timeouts: [UUID: Task<Void, Never>] = [:]
     private var transcriptWatch: AnyCancellable?
+    /// Held offers' transcripts, and the calls an answered offer leads to (`SessionOffer.FollowUp`).
+    private var offerTranscripts: [UUID: String] = [:]
+    private var offerFollowUps: [SessionOffer.FollowUp] = []
 
     /// Claude sessions whose AskUserQuestion the 질문 드롭다운 can answer right now.
     @Published private(set) var answerableQuestionSessions: Set<String> = []
@@ -91,6 +98,16 @@ final class PermissionRequestCenter: ObservableObject {
         guard agent == .claude ? AppSettings.shared.showSourceClaudeCode : AppSettings.shared.showSourceCodex else {
             reply.send(nil)
             return
+        }
+        // The app asks again for the call an answer in the 새 세션 드롭다운 just led to.
+        if agent == .claude, toolName == SessionOffer.toolName {
+            let input = json["tool_input"] as? [String: Any] ?? [:]
+            offerFollowUps.removeAll { Date().timeIntervalSince($0.at) > SessionOffer.followUpWindow }
+            if let index = offerFollowUps.firstIndex(where: { $0.transcript == transcript && $0.matches(input) }) {
+                offerFollowUps.remove(at: index)
+                reply.send(Self.allowBody)
+                return
+            }
         }
         let sessionId: String? = switch agent {
         case .claude: ClaudeCodeManager.shared.sessionId(forTranscript: transcript)
@@ -143,21 +160,95 @@ final class PermissionRequestCenter: ObservableObject {
         }
     }
 
+    private static let allowBody = Data(#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#.utf8)
+
     func decide(_ id: UUID, _ decision: Decision) {
-        let body: String? = switch decision {
-        case .allow: #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#
-        case .deny: #"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from ClangNotch"}}}"#
+        if let title = queue.first(where: { $0.id == id })?.offerTitle {
+            if decision != .deny, let transcript = offerTranscripts[id] {
+                offerFollowUps.append(SessionOffer.FollowUp(transcript: transcript, title: title, newSession: decision == .allow))
+            }
+            replies[id]?.send(decision == .terminal ? nil : SessionOffer.deny(newSession: decision == .allow, title: title))
+            remove(id)
+            return
+        }
+        let body: Data? = switch decision {
+        case .allow: Self.allowBody
+        case .deny: Data(#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from ClangNotch"}}}"#.utf8)
         case .terminal: nil
         }
-        replies[id]?.send(body.map { Data($0.utf8) })
+        replies[id]?.send(body)
         remove(id)
     }
 
     private func remove(_ id: UUID) {
         timeouts.removeValue(forKey: id)?.cancel()
         replies.removeValue(forKey: id)
+        offerTranscripts.removeValue(forKey: id)
         queue.removeAll { $0.id == id }
         stopWatchingIfIdle()
+    }
+
+    // MARK: Session offers
+
+    /// The `PreToolUse` hook of a Claude app session's `start_session` (`SessionOffer`). An offer
+    /// waits for the 새 세션 드롭다운, whichever app is in front; anything else goes on as it would
+    /// without the hook.
+    func receiveSessionOffer(_ body: Data, reply: HookReply) {
+        let settings = AppSettings.shared
+        guard settings.experimentalClaudeSessionOffers, settings.showSourceClaudeCode,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              json["tool_name"] as? String == SessionOffer.toolName,
+              let input = json["tool_input"] as? [String: Any] else {
+            reply.send(nil)
+            return
+        }
+        let transcript = json["transcript_path"] as? String ?? ""
+        guard let title = SessionOffer.offerTitle(input), UICoordinator.shared.isVisible, queue.count < Self.maxQueued else {
+            reply.send(nil)
+            return
+        }
+        let cwd = json["cwd"] as? String ?? ""
+        let item = PermissionRequestItem(
+            agent: .claude,
+            sessionId: ClaudeCodeManager.shared.sessionId(forTranscript: transcript),
+            projectName: cwd.isEmpty ? "" : URL(fileURLWithPath: cwd).lastPathComponent,
+            toolName: SessionOffer.toolName,
+            text: PermissionText(""),
+            risks: [],
+            receivedAt: Date(),
+            offerTitle: title
+        )
+        queue.append(item)
+        replies[item.id] = reply
+        offerTranscripts[item.id] = transcript
+        reply.setOnClose { [weak self] in
+            Task { @MainActor in self?.remove(item.id) }
+        }
+        // Past this the card shows in the app, as if 앱에서 고르기 was pressed.
+        timeouts[item.id] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.waitLimit))
+            guard !Task.isCancelled else { return }
+            self?.decide(item.id, .terminal)
+        }
+        watchClaudeApp()
+    }
+
+    private static let claudeAppBundleID = "com.anthropic.claudefordesktop"
+    private var claudeAppWatch: NSObjectProtocol?
+
+    /// The Claude app coming forward lets its cards show: the user went there to answer.
+    private func watchClaudeApp() {
+        guard claudeAppWatch == nil else { return }
+        claudeAppWatch = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier == Self.claudeAppBundleID else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                for item in self.queue where item.offerTitle != nil { self.decide(item.id, .terminal) }
+            }
+        }
     }
 
     // MARK: Questions

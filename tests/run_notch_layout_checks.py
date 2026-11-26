@@ -130,6 +130,7 @@ struct FixtureSession { let id: String }
         var showSourceClaudeCode = true
         var showPermissionIndicator = true
         var nowPlayingMiniWhileWorking = true
+        var showClaudeBackgroundShells = true
     }
     struct Tether {
         var activePlaceName: String?
@@ -169,7 +170,9 @@ with tempfile.TemporaryDirectory(prefix="clangnotch-layout-checks-") as folder:
     components = (root / "ClangNotch/Views/Notch/NotchDashboardComponents.swift").read_text()
     start = components.index("enum NotchPalette {")
     palette = components[start:components.index("\n}\n", start) + 3]
-    enum_file.write_text("import SwiftUI\nimport AppKit\nfunc L(_ korean: String, _ english: String) -> String { korean }\n" + palette + mode + questions)
+    # NotchSizing's island check reads one setting; the checks run with it off.
+    settings = "@MainActor final class AppSettings { static let shared = AppSettings(); var experimentalExternalIsland = false }\n"
+    enum_file.write_text("import SwiftUI\nimport AppKit\nfunc L(_ korean: String, _ english: String) -> String { korean }\n" + settings + palette + mode + questions)
     binary = temp / "checks"
     subprocess.run([
         "xcrun", "swiftc", "-swift-version", "5", "-parse-as-library",

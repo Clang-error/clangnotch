@@ -13,6 +13,9 @@ struct ClosedAgentIconStack: View {
     let count: Int
     /// 아이콘 모자: the front icon's hat, then one per copy in order; empty draws none.
     var hats: [ClaudeIconHat?] = []
+    /// Background shells running: a small terminal on the front icon's lower trailing corner,
+    /// with their number from two on. It overlaps the icon, so the width stays as it is.
+    var shells = 0
     /// Copies spread toward the leading edge (left wing) or the trailing edge (right wing).
     let spreadsLeading: Bool
     let glowColor: Color
@@ -83,6 +86,15 @@ struct ClosedAgentIconStack: View {
             // ring too and swell into an orange blob behind the front icon.
             icon(outlined: count > 1)
                 .shadow(color: glowColor.opacity(count > 1 ? 0 : 0.6), radius: 3)
+                // Pinned to the front icon's corner, so a number grows over the icon, not
+                // toward the label, whichever side the copies spread to.
+                .overlay(alignment: .bottomTrailing) {
+                    if shells > 0 {
+                        shellMark
+                            .offset(x: 4, y: 4)
+                            .transition(hatTransition)
+                    }
+                }
             if let hat = hat(at: 0) {
                 ClaudeIconHatView(hat: hat, iconSize: Self.iconSize)
                     .transition(hatTransition)
@@ -96,6 +108,23 @@ struct ClosedAgentIconStack: View {
                    value: count)
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.6),
                    value: hats)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.6),
+                   value: shells)
+    }
+
+    private var shellMark: some View {
+        HStack(spacing: 0.5) {
+            Image(systemName: "apple.terminal.fill")
+                .font(.system(size: 6.5, weight: .bold))
+            if shells > 1 {
+                Text("\(shells)")
+                    .font(.system(size: 6.5, weight: .bold).monospacedDigit())
+            }
+        }
+        .foregroundColor(Color(red: 0.35, green: 0.7, blue: 1.0))
+        .padding(1)
+        .background(NotchPalette.inkInverse, in: RoundedRectangle(cornerRadius: 2))
+        .fixedSize()
     }
 
     private func hat(at index: Int) -> ClaudeIconHat? {

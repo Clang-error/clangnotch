@@ -169,6 +169,8 @@ final class CodexManager: ObservableObject {
     /// Each watched rollout's unread end, read off the main thread (`SessionFileTail`).
     private var sessionTails: [String: SessionFileTail] = [:]
     private var isLoadingHistoryBySession: [String: Bool] = [:]
+    /// Each session's last `total_token_usage` seen, so a repeated token_count isn't counted twice.
+    private var seenTokenTotals: [String: Int] = [:]
     private var externalImportSessions: Set<String> = []
     private var sessionActivityCache: [URL: (modifiedAt: Date, fileSize: UInt64, activity: Date?)] = [:]
 
@@ -941,6 +943,23 @@ final class CodexManager: ObservableObject {
         applyRecord(json, sessionId: sessionId)
     }
 
+    /// A token_count's last call for the 오늘 page (`AgentActivityLog`), without cached input.
+    /// Codex can write the same count again (a rate-limit update); an unchanged total is skipped.
+    private func logTokens(_ payload: [String: Any], model: String?, sessionId: String, live: Bool) {
+        guard payload["type"] as? String == "token_count", let info = payload["info"] as? [String: Any],
+              let total = (info["total_token_usage"] as? [String: Any])?["total_tokens"] as? Int,
+              seenTokenTotals[sessionId] != total else { return }
+        seenTokenTotals[sessionId] = total
+        guard live, let last = info["last_token_usage"] as? [String: Any] else { return }
+        AgentActivityLog.shared.addTokens((last["total_tokens"] as? Int ?? 0) - (last["cached_input_tokens"] as? Int ?? 0), model: model)
+    }
+
+    /// An editing tool that went through, for the 오늘 page's 고친 줄.
+    private func logChange(_ tool: CodexToolExecution, sessionId: String) {
+        guard isLoadingHistoryBySession[sessionId] != true, (tool.exitCode ?? 0) == 0 else { return }
+        AgentActivityLog.shared.addChange(tool.change)
+    }
+
     private func applyRecord(_ json: [String: Any], sessionId: String) {
         guard var sessionState = sessionStates[sessionId] else { return }
 
@@ -963,6 +982,7 @@ final class CodexManager: ObservableObject {
             if let payload = json["payload"] as? [String: Any] {
                 if ignoreActivity, let eventType = payload["type"] as? String,
                    ["task_started", "task_complete", "turn_aborted", "agent_reasoning"].contains(eventType) { return }
+                logTokens(payload, model: sessionState.model, sessionId: sessionId, live: !isLoadingHistory && !ignoreActivity)
                 parseEventMsg(
                     payload,
                     sessionState: &sessionState,
@@ -1218,6 +1238,7 @@ final class CodexManager: ObservableObject {
                 }
 
                 debugLog("[Codex] Tool completed: \(tool.toolName) (id: \(callId.prefix(8))...) duration: \(tool.formattedDuration)")
+                logChange(tool, sessionId: sessionId)
 
                 sessionState.recentTools.insert(tool, at: 0)
                 if sessionState.recentTools.count > 10 {

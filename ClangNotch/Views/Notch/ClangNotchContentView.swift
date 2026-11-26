@@ -193,8 +193,12 @@ struct ClangNotchContentView: View {
         let source: DoneFlash.Source
         let turn: CompletedTurn
         let projectName: String
+        /// Set for the 셸 실패 드롭다운, which goes down and away the way Done does.
+        var failure: ShellFailure? = nil
         let at = Date()
     }
+
+    private static let shellFailureRed = Color(red: 1.0, green: 0.33, blue: 0.3)
 
     private var isExpanded: Bool {
         notchVM.notchState == .open || notchVM.notchState == .peeking
@@ -210,7 +214,28 @@ struct ClangNotchContentView: View {
     }
 
     private var bottomCornerRadius: CGFloat {
-        isExpanded ? cornerRadiusInsets.opened.bottom : cornerRadiusInsets.closed.bottom
+        // The closed island is a capsule: round ends half its height.
+        if isIsland && !isExpanded { return NotchIsland.height / 2 }
+        return isExpanded ? cornerRadiusInsets.opened.bottom : cornerRadiusInsets.closed.bottom
+    }
+
+    /// The closed island's glow goes round its outline, counterclockwise from the top's middle
+    /// (down the left end, along the bottom, up the right: `NotchShape.islandPath`). The notch's
+    /// sideways sweep lit the island's top and bottom edges at once (user, 2026-11-23).
+    private var closedGlowTraces: Bool { isIsland }
+
+    /// The island's pill shows even with nothing going on (설정 › 쉴 때도 표시). Without that it
+    /// comes and goes with the wings like the notch on a bare edge, and the effects that keep a
+    /// standing pill in place don't apply.
+    private var islandStands: Bool { isIsland && settings.experimentalExternalIslandIdle }
+
+    /// How far the island floats below the top edge; 0 for the notch.
+    private var islandGap: CGFloat { isIsland ? NotchIsland.gap : 0 }
+
+    /// 다이내믹 아일랜드 (`NotchIsland`): the notch's display is an external one and the setting is on.
+    private var isIsland: Bool {
+        _ = settings.experimentalExternalIsland
+        return NotchIsland.isOn()
     }
 
     /// Determines if Claude Code has real activity (not just grace period)
@@ -332,7 +357,8 @@ struct ClangNotchContentView: View {
     /// A collapse from the panel keeps the surface black until it lands on the physical notch,
     /// then drops it in one frame — it already sits under the camera housing, so no exit effect.
     private var notchBackground: Color {
-        notchActive || notchVM.isSettlingClosed ? theme.surface ?? .black : .clear
+        // The island is there even when all is quiet, as the OLED MacBook's camera cutout is.
+        notchActive || notchVM.isSettlingClosed || islandStands ? theme.surface ?? .black : .clear
     }
 
     /// Whether to draw the notch chrome at all. When fully idle (no AI, not
@@ -392,7 +418,7 @@ struct ClangNotchContentView: View {
                 // Opening from closed, it keeps the closed sweep until the surface settles.
                 NotchGlowBorder(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
                                 glowColor: errorGlowColor, brightColor: errorBrightColor,
-                                tracesOutline: notchVM.notchState != .closed
+                                tracesOutline: closedGlowTraces || notchVM.notchState != .closed
                                     && (isGlowSettled || !glowExpandsFromClosed),
                                 wingFade: wingFade)
             } else if shouldShowActivityGlow {
@@ -403,7 +429,7 @@ struct ClangNotchContentView: View {
                                 brightColor: showBothSources ? codexBrightColor : currentBrightColor,
                                 secondaryGlowColor: showBothSources ? claudeGlowColor : nil,
                                 secondaryBrightColor: showBothSources ? claudeBrightColor : nil,
-                                tracesOutline: notchVM.notchState != .closed,
+                                tracesOutline: closedGlowTraces || notchVM.notchState != .closed,
                                 wingFade: wingFade)
             }
 
@@ -495,7 +521,7 @@ struct ClangNotchContentView: View {
     /// glow traced a line inside the notch. Widen the glow by both flares so its sides land
     /// just outside the housing. With wings the sides are out in the menu bar anyway.
     private var glowSurfaceWidth: CGFloat {
-        guard notchVM.notchState == .closed,
+        guard notchVM.notchState == .closed, !isIsland,
               notchVM.notchSize.width <= notchVM.closedNotchSize.width + 0.5 else { return notchSurfaceSize.width }
         return notchVM.closedNotchSize.width + topCornerRadius * 2
     }
@@ -520,7 +546,8 @@ struct ClangNotchContentView: View {
             .contentShape(
                 NotchShape(
                     topCornerRadius: topCornerRadius,
-                    bottomCornerRadius: bottomCornerRadius
+                    bottomCornerRadius: bottomCornerRadius,
+                    island: isIsland
                 )
             )
             // The window is click-through except over the notch, so the coordinator's
@@ -529,33 +556,7 @@ struct ClangNotchContentView: View {
                 handleHover(hovering)
             }
             .onTapGesture(coordinateSpace: .local) { location in
-                // Only open on tap. Don't close when tapping empty space while open —
-                // a near-miss on a button shouldn't dismiss the notch (closing is
-                // handled by the cursor leaving the notch region).
-                // A dropdown opens the notch from its top row only (the camera and the wings
-                // beside it): a click just under 터미널 열기 opened the whole notch (user, 2026-11-18).
-                let onNotchRow = location.y <= notchVM.closedNotchSize.height
-                if notchVM.notchState == .closed {
-                    if let doneFlash, let turn = doneFlash.turn {
-                        focusSession(doneFlash.source, turn.sessionId)
-                        return
-                    }
-                    openSelectedMode()
-                } else if notchVM.notchState == .peeking, onNotchRow, doneNotice != nil,
-                          !showPermissionNotice, !showQuestionNotice {
-                    // Hovering holds the 완료 드롭다운 to read it; a click opens the notch,
-                    // which used to wait until the dropdown had folded away by itself.
-                    doneNoticeTask?.cancel()
-                    doneNotice = nil
-                    openSelectedMode()
-                } else if notchVM.notchState == .peeking, onNotchRow, mediaNotice != nil, doneNotice == nil,
-                          !showPermissionNotice, !showQuestionNotice {
-                    // The attached player opens the notch on a click the same way.
-                    housingWatch?.cancel()
-                    mediaNoticeTask?.cancel()
-                    mediaNotice = nil
-                    openSelectedMode()
-                }
+                handleNotchTap(at: location)
             }
             // The mask, glow and jelly scale sit on a fixed-width container, and only the
             // shapes inside them resize. With those effects on the resizing frame itself,
@@ -582,7 +583,8 @@ struct ClangNotchContentView: View {
                 // a dropdown coming down while the cursor rests on a wing.
                 WingFadeMask(fade: wingFade)
                     .animation(WingFade.animation, value: wingFade)
-                    .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius))
+                    .clipShape(NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
+                                          island: isIsland))
                     .frame(width: notchSurfaceSize.width, height: notchSurfaceSize.height)
             }
             // The quiet notch's 위치 알림 and the startup glow, moved by the render server.
@@ -603,7 +605,8 @@ struct ClangNotchContentView: View {
             }
             .modifier(IdleLandingFade(height: notchSurfaceSize.height,
                                       closedHeight: notchVM.closedNotchSize.height,
-                                      isLanding: notchVM.isSettlingClosed && !baseNotchActive))
+                                      // The island is still there when it lands.
+                                      isLanding: notchVM.isSettlingClosed && !baseNotchActive && !islandStands))
             .onChange(of: notchVM.notchState) { oldState, newState in
                 // Dropdown <-> open panel keeps the same outline-tracing glow, which resizes
                 // with the surface; hiding it there only blinked it out for half a second.
@@ -632,6 +635,20 @@ struct ClangNotchContentView: View {
                 y: closedJellyScaleY,
                 anchor: .top
             )
+            .environment(\.notchIsland, isIsland)
+            // The island floats under the screen's top edge. The window stays at the top, so the
+            // glow and the 위치 알림 have room above the pill (`UICoordinator` adds the same gap
+            // to the hover box).
+            .padding(.top, islandGap)
+            // A click flung to the screen's top edge lands in that gap: it is the notch's.
+            .overlay(alignment: .top) {
+                if isIsland {
+                    Color.clear
+                        .frame(width: notchVM.notchSize.width, height: NotchIsland.gap)
+                        .contentShape(Rectangle())
+                        .onTapGesture { handleNotchTap(at: CGPoint(x: notchVM.notchSize.width / 2, y: 0)) }
+                }
+            }
     }
 
     private var notchChangesA: some View {
@@ -736,6 +753,10 @@ struct ClangNotchContentView: View {
                     recordTurn(turn, .claude)
                     handleCompletedTurn(turn, .claude)
                 }
+                .onChange(of: claudeCodeManager.shellFailure) { _, failure in
+                    guard let failure, settings.showSourceClaudeCode, settings.showClaudeBackgroundShells else { return }
+                    handleShellFailure(failure)
+                }
                 .onChange(of: codexManager.lastCompletedTurn) { _, turn in
                     guard let turn, settings.showSourceCodex else { return }
                     recordTurn(turn, .codex)
@@ -822,12 +843,14 @@ struct ClangNotchContentView: View {
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
         .overlay(alignment: .top) {
             ClipboardOrbView(surfaceWidth: notchVM.notchSize.width, surfaceHeight: notchVM.closedNotchSize.height,
-                             fromSurface: (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 || baseNotchActive,
+                             fromSurface: (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 || baseNotchActive || islandStands,
                              enabled: notchVM.notchState == .closed && ui.isVisible,
                              showsCopies: settings.clipboardOrb && settings.enableClipboardHistory,
                              direction: settings.clipboardOrbDirection,
                              style: settings.clipboardOrbStyle,
                              holdSeconds: settings.foldSecondsCopy)
+                // From the floating island, which `notchVisual` sets this far down.
+                .padding(.top, islandGap)
         }
         .compositingGroup()
         .environment(\.notchTyping, { UICoordinator.shared.notchTyping($0) })
@@ -852,12 +875,13 @@ struct ClangNotchContentView: View {
                 airPodsWingContent = card.map { ClosedAirPodsWings(card: $0, notchHeight: notchVM.closedNotchSize.height) }
             }
         .onChange(of: settings.notchAppearance) { appearance.refreshWallpaper() }
-        // The 조절창 moves under the open notch instead of covering it.
-        .onChange(of: notchVM.notchState == .open ? notchVM.notchSize.height : 0, initial: true) { _, depth in
+        // The 조절창 moves under the open notch instead of covering it. The island's surface
+        // starts its gap below the top edge.
+        .onChange(of: notchVM.notchState == .open ? notchVM.notchSize.height + islandGap : 0, initial: true) { _, depth in
             SystemControlOSD.shared.openNotchDepth = depth
         }
         // The 에어팟 드롭다운 stays up under a dropdown that comes down meanwhile.
-        .onChange(of: notchVM.notchState == .peeking ? notchVM.notchSize.height : 0, initial: true) { _, depth in
+        .onChange(of: notchVM.notchState == .peeking ? notchVM.notchSize.height + islandGap : 0, initial: true) { _, depth in
             AirPodsDropdown.shared.peekDepth = depth
             AirPodsDropdown.media.peekDepth = depth
         }
@@ -980,7 +1004,7 @@ struct ClangNotchContentView: View {
     /// A closed wing's Claude icons. With 설정 › 실험 기능 › "Claude 아이콘에 모자 씌우기" on,
     /// each wears its session's hat (아이콘 모자).
     private func claudeWingIcons(count: Int, spreadsLeading: Bool, glowColor: Color) -> some View {
-        ClosedAgentIconStack(agent: .claude, count: count, hats: claudeWingHats,
+        ClosedAgentIconStack(agent: .claude, count: count, hats: claudeWingHats, shells: claudeWingShells,
                              spreadsLeading: spreadsLeading, glowColor: glowColor)
             // A turn that only thinks writes nothing for minutes, so nothing would redraw
             // the wing when it reaches the hard hat: sleep until then, once.
@@ -989,6 +1013,12 @@ struct ClangNotchContentView: View {
                 try? await Task.sleep(for: .seconds(due.timeIntervalSinceNow + 0.2))
                 if !Task.isCancelled { hatClock &+= 1 }
             }
+    }
+
+    /// Background shells of the working Claude sessions, for the terminal mark on the icon.
+    private var claudeWingShells: Int {
+        guard settings.showClaudeBackgroundShells else { return 0 }
+        return claudeCodeManager.sessionStates.values.filter(\.isActive).reduce(0) { $0 + $1.backgroundShells.count }
     }
 
     /// The hat of every working Claude session, in the order the wing draws its icons. The
@@ -1030,6 +1060,11 @@ struct ClangNotchContentView: View {
             ?? claudeCodeManager.sessionStates.values.compactMap { $0.activeTools.first }.first
             // A session that only waits on its subagents shows what one of them is running.
             ?? claudeCodeManager.sessionStates.values.compactMap { $0.subagents.compactMap(\.tool).first }.first
+            // One whose finished turn waits on its background shells names the first of them.
+            ?? (settings.showClaudeBackgroundShells
+                ? claudeCodeManager.sessionStates.values
+                    .first { $0.shellWaitSince != nil && $0.turnStartTime == nil }?.backgroundShells.first?.asTool
+                : nil)
         // Recent completed Claude tool (within last 5 seconds).
         // Only while the session is still active — once activity ends, notchActive goes
         // false (clear background), so drawing wings here would ghost over the desktop.
@@ -2014,7 +2049,9 @@ struct ClangNotchContentView: View {
                 TetherPeekHeader(placeName: tetherPlaceName)
             } else if let doneNotice {
                 DonePeekHeader(agent: doneNotice.source == .codex ? .codex : .claude,
-                               elapsed: doneNotice.turn.elapsed, accent: doneBlue, side: wingSide) {
+                               elapsed: doneNotice.turn.elapsed,
+                               accent: doneNotice.failure == nil ? doneBlue : Self.shellFailureRed, side: wingSide,
+                               label: doneNotice.failure == nil ? L("완료", "Done") : L("셸 실패", "Shell failed")) {
                     dismissDoneNotice()
                 }
             } else if mediaNotice != nil {
@@ -2982,7 +3019,10 @@ struct ClangNotchContentView: View {
         showClosedJellyRipple = false
         showClosedJellyDismiss = true
 
-        if reduceMotion {
+        // A standing island stays when the work ends: its wings fade and fold back into the pill instead
+        // of the whole surface shrinking away, which blinked the pill out and back.
+        let island = islandStands
+        if reduceMotion || island {
             withAnimation(.easeOut(duration: 0.12)) {
                 closedJellyContentOpacity = 0
             }
@@ -2994,7 +3034,7 @@ struct ClangNotchContentView: View {
         }
 
         closedJellyDismissTask = Task {
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 120 : 380))
+            try? await Task.sleep(for: .milliseconds(reduceMotion || island ? 120 : 380))
             guard !Task.isCancelled else { return }
 
             var transaction = Transaction(animation: nil)
@@ -3004,7 +3044,10 @@ struct ClangNotchContentView: View {
                 closedJellyScaleX = 1
                 closedJellyScaleY = 1
                 closedJellyContentOpacity = 1
-                notchVM.resetClosedPresentationAfterDismiss()
+                if !island { notchVM.resetClosedPresentationAfterDismiss() }
+            }
+            if island {
+                withAnimation(closedWingResizeAnimation) { notchVM.resetClosedPresentationAfterDismiss() }
             }
             closedJellyDismissTask = nil
         }
@@ -3260,7 +3303,22 @@ struct ClangNotchContentView: View {
         agent == .codex ? codexGlowColor : claudeGlowColor
     }
 
+    @ViewBuilder
     private func permissionDropdown(_ item: PermissionRequestItem, expanded: Bool? = nil) -> some View {
+        if let title = item.offerTitle {
+            SessionOfferDropdownView(title: title, sessionLabel: item.sessionId.map { sessionLabel(.claude, $0) } ?? item.projectName,
+                                     accent: agentAccent(.claude)) { decision in
+                permissionCenter.decide(item.id, decision)
+                // 앱에서 고르기 brings the app forward, where its card shows now.
+                if decision == .terminal, let sessionId = item.sessionId { focusSession(.claude, sessionId) }
+            }
+            .id(item.id)
+        } else {
+            plainPermissionDropdown(item, expanded: expanded)
+        }
+    }
+
+    private func plainPermissionDropdown(_ item: PermissionRequestItem, expanded: Bool?) -> some View {
         PermissionDropdownView(
             item: item, position: 1, total: permissionCenter.queue.count, accent: agentAccent(item.agent),
             inTerminal: item.sessionId.flatMap { sessionDestination(item.agent == .codex ? .codex : .claude, $0) }?.isTerminal ?? true,
@@ -3387,8 +3445,9 @@ struct ClangNotchContentView: View {
     private func doneDropdown(_ notice: DoneNotice) -> some View {
         DoneDropdownView(
             agent: notice.source == .codex ? .codex : .claude,
-            projectName: notice.projectName, turn: notice.turn, accent: doneBlue,
-            openTitle: openTitle(notice.source, notice.turn.sessionId)
+            projectName: notice.projectName, turn: notice.turn,
+            accent: notice.failure == nil ? doneBlue : Self.shellFailureRed,
+            openTitle: openTitle(notice.source, notice.turn.sessionId), failure: notice.failure
         ) {
             // Fold first, then switch apps: doing both at once cut the fold off mid-way.
             dismissDoneNotice()
@@ -3552,6 +3611,29 @@ struct ClangNotchContentView: View {
         }
     }
 
+    /// 셸 실패 드롭다운: rides the 완료 드롭다운 (its place in the order, its wait behind a
+    /// question, its fold), drawn red. A failure merged into the one down (same session,
+    /// within a minute) updates it and starts its time again. Not while the session's app is
+    /// in front: the failure is on screen there.
+    private func handleShellFailure(_ failure: ShellFailure) {
+        guard notchVM.notchState != .open, !isSessionAppFrontmost(.claude, failure.sessionId) else { return }
+        let shown = [doneNotice, pendingDoneNotice].compactMap { $0 }.first { $0.failure?.id == failure.id }
+        // A merged one only updates the dropdown still down or waiting; once that has gone,
+        // the loop it belongs to drops nothing more.
+        guard failure.count == 1 || shown != nil else { return }
+        let notice = DoneNotice(source: .claude,
+                                turn: shown?.turn ?? CompletedTurn(sessionId: failure.sessionId, answer: "", elapsed: nil),
+                                projectName: sessionLabel(.claude, failure.sessionId), failure: failure)
+        if pendingDoneNotice?.failure?.id == failure.id {
+            pendingDoneNotice = notice
+        } else if doneNotice?.failure?.id != failure.id, dropdownNotices.holdsDoneBack {
+            // A Done already waiting keeps its place; there is room for one.
+            if pendingDoneNotice == nil { pendingDoneNotice = notice }
+        } else {
+            showDoneNotice(notice)
+        }
+    }
+
     private func showDoneNotice(_ notice: DoneNotice) {
         doneFlashTask?.cancel()
         doneFlash = nil
@@ -3686,6 +3768,37 @@ struct ClangNotchContentView: View {
         notchVM.resizeOpen(to: target == nil ? activeMode.expandedSize : sessionDetailNotchSize)
     }
 
+    /// A click on the notch, at `location` from the surface's top left.
+    private func handleNotchTap(at location: CGPoint) {
+        // Only open on tap. Don't close when tapping empty space while open —
+        // a near-miss on a button shouldn't dismiss the notch (closing is
+        // handled by the cursor leaving the notch region).
+        // A dropdown opens the notch from its top row only (the camera and the wings
+        // beside it): a click just under 터미널 열기 opened the whole notch (user, 2026-11-18).
+        let onNotchRow = location.y <= notchVM.closedNotchSize.height
+        if notchVM.notchState == .closed {
+            if let doneFlash, let turn = doneFlash.turn {
+                focusSession(doneFlash.source, turn.sessionId)
+                return
+            }
+            openSelectedMode()
+        } else if notchVM.notchState == .peeking, onNotchRow, doneNotice != nil,
+                  !showPermissionNotice, !showQuestionNotice {
+            // Hovering holds the 완료 드롭다운 to read it; a click opens the notch,
+            // which used to wait until the dropdown had folded away by itself.
+            doneNoticeTask?.cancel()
+            doneNotice = nil
+            openSelectedMode()
+        } else if notchVM.notchState == .peeking, onNotchRow, mediaNotice != nil, doneNotice == nil,
+                  !showPermissionNotice, !showQuestionNotice {
+            // The attached player opens the notch on a click the same way.
+            housingWatch?.cancel()
+            mediaNoticeTask?.cancel()
+            mediaNotice = nil
+            openSelectedMode()
+        }
+    }
+
     private func openSelectedMode() {
         expandedMode = keyboardLockManager.isLocked ? .keyboardLock : activeMode
         resetClosedJellyReveal()
@@ -3699,7 +3812,7 @@ struct ClangNotchContentView: View {
         UICoordinator.shared.setInteractiveSize(
             notchVM.notchSize,
             shape: isExpanded ? NotchShape(topCornerRadius: topCornerRadius,
-                                          bottomCornerRadius: bottomCornerRadius) : nil,
+                                          bottomCornerRadius: bottomCornerRadius, island: isIsland) : nil,
             wingsBeyond: hasWings && settings.wingStepAside ? notchVM.closedNotchSize.width : nil
         )
     }
@@ -3719,8 +3832,11 @@ struct ClangNotchContentView: View {
                         hintWidth: settings.wingOpenHint ? WingOpenHint.tabWidth : 0)
     }
 
-    /// The notch is drawn over a camera housing (not an external display's bare top edge).
-    private var notchOverHousing: Bool { (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 }
+    /// The notch is drawn over a camera housing (not an external display's bare top edge). The
+    /// island never is, even in a preview under the built-in display's housing: its 위치 알림
+    /// pushed out by the housing's flare popped up 6 pt wider than the pill (user's recording,
+    /// 2026-11-23).
+    private var notchOverHousing: Bool { (NotchDetector.notchScreen?.safeAreaInsets.top ?? 0) > 0 && !isIsland }
 
     /// The 위치 알림 shows only on the quiet closed notch; with the wings up the notch's own surface
     /// is there, and the startup glow lies on it alone.
@@ -3730,7 +3846,7 @@ struct ClangNotchContentView: View {
             presence: notchPresence && quiet, fadesOut: quiet, housing: notchOverHousing,
             glow: showStartupGlow && notchVM.notchState == .closed,
             surfaceSize: notchSurfaceSize, sideInset: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
-            surface: NSColor(theme.surface ?? .black), still: reduceMotion)
+            surface: NSColor(theme.surface ?? .black), still: reduceMotion, island: isIsland, standing: islandStands)
     }
 
     /// Shows or hides the quiet notch's 위치 알림 (`NotchPresenceLayer` grows it out, breathes and

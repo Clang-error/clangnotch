@@ -59,10 +59,13 @@ public final class UICoordinator: ObservableObject {
         let f = panel.frame
         let w = panel.notchInteractiveSize.width
         let h = panel.notchInteractiveSize.height
+        // The island floats this far under the top edge (`NotchIsland`); the gap above it counts
+        // as the notch, like the space above the screen does.
+        let inset = islandInset
         // Interactive region: top-centered within the panel (screen coords, bottom-left).
         // Extend above the screen top (+20) so a cursor flicked to the very top edge still
         // counts — contains() treats maxY as exclusive and the cursor clamps to screen top.
-        let region = CGRect(x: f.midX - w / 2, y: f.maxY - h, width: w, height: h + 20)
+        let region = CGRect(x: f.midX - w / 2, y: f.maxY - inset - h, width: w, height: h + inset + 20)
         // The 1s visibility poll can lag Mission Control appearing by up to a second, and
         // that's exactly when the cursor is racing to the top. `&&` short-circuits, so the
         // window-list check only runs while the cursor is actually over the notch.
@@ -72,7 +75,7 @@ public final class UICoordinator: ObservableObject {
         var over = false
         var wing: NotchWing?
         if region.contains(mouse) {
-            let localPoint = CGPoint(x: mouse.x - region.minX, y: max(0.001, f.maxY - mouse.y))
+            let localPoint = CGPoint(x: mouse.x - region.minX, y: max(0.001, f.maxY - inset - mouse.y))
             let insideShape = panel.notchInteractiveShape?.path(in: CGRect(origin: .zero, size: panel.notchInteractiveSize))
                 .contains(localPoint) ?? true
             if insideShape, let notchWidth = wingsBeyond, abs(mouse.x - region.midX) > notchWidth / 2 {
@@ -156,7 +159,13 @@ public final class UICoordinator: ObservableObject {
         }
     }
 
+    /// How far the 다이내믹 아일랜드 floats under the top edge (`NotchIsland`), 0 without it. Kept
+    /// here for the cursor check, which runs on every mouse move; set where the panel is placed,
+    /// which a display change and the setting both go through.
+    private var islandInset: CGFloat = 0
+
     private func repositionNotchPanel() {
+        islandInset = NotchIsland.isOn() ? NotchIsland.gap : 0
         guard let panel = notchPanel, let screen = NotchDetector.notchScreen else { return }
         let f = screen.frame
         let frame = NSRect(
@@ -207,6 +216,7 @@ public final class UICoordinator: ObservableObject {
     }
 
     private func setupNotchPanel() {
+        islandInset = NotchIsland.isOn() ? NotchIsland.gap : 0
         guard let screen = NotchDetector.notchScreen else { return }
 
         let screenFrame = screen.frame

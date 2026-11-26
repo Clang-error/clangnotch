@@ -34,7 +34,8 @@ struct NotchGlowLayers: NSViewRepresentable, Animatable {
             topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius,
             glow: glowColor.srgb, bright: brightColor.srgb,
             secondaryGlow: secondaryGlowColor?.srgb, secondaryBright: secondaryBrightColor?.srgb,
-            tracesOutline: tracesOutline, paused: paused, maxFrameRate: maxFrameRate, wingFade: wingFade, tabProgress: tabProgress))
+            tracesOutline: tracesOutline, paused: paused, maxFrameRate: maxFrameRate, wingFade: wingFade, tabProgress: tabProgress,
+            island: context.environment.notchIsland))
     }
 }
 
@@ -51,6 +52,7 @@ final class NotchGlowLayerView: NSView {
         var maxFrameRate: Float
         var wingFade: WingFade?
         var tabProgress: CGFloat
+        var island: Bool
     }
 
     /// Seconds for the closed band to cross the notch once.
@@ -182,14 +184,25 @@ final class NotchGlowLayerView: NSView {
 
     private func applyPath(_ config: Config) {
         var shape = NotchShape(topCornerRadius: config.topCornerRadius,
-                               bottomCornerRadius: config.bottomCornerRadius, drawsTopEdge: false)
+                               bottomCornerRadius: config.bottomCornerRadius, drawsTopEdge: false, island: config.island)
         shape.tabWidth = config.wingFade?.hintWidth ?? 0
         shape.tabProgress = config.tabProgress
         let path = shape.path(in: bounds).cgPath
         if config.tracesOutline {
+            // The island's outline is a closed loop with its seam at the top's middle: drawn
+            // twice over, a segment can run across the seam (`loopSegment`).
+            let traced: CGPath
+            if config.island {
+                let twice = CGMutablePath()
+                twice.addPath(path)
+                twice.addPath(path)
+                traced = twice
+            } else {
+                traced = path
+            }
             for layer in traceLayers {
                 layer.frame = bounds
-                layer.path = path
+                layer.path = traced
             }
         } else {
             bandMask.frame = bounds
@@ -197,9 +210,13 @@ final class NotchGlowLayerView: NSView {
             // Taller than the outline so the stroke's outer half along the bottom is covered,
             // and the 열리는 곳 표시 tab under it.
             band.bounds = CGRect(x: 0, y: 0, width: bounds.width * Self.bandWidth,
-                                 height: bounds.height + 6 + NotchShape.tabDepth)
+                                 height: bounds.height + 6 + NotchShape.tabDepth - bandTop(config))
         }
     }
+
+    /// The island's outline is stroked along its top too: the band starts above it to cover the
+    /// stroke's outer half there.
+    private func bandTop(_ config: Config) -> CGFloat { config.island ? -3 : 0 }
 
     private func applyWingFade(animated: Bool) {
         let fade = config?.wingFade
@@ -260,13 +277,14 @@ final class NotchGlowLayerView: NSView {
         }
         if config.tracesOutline {
             for (layer, style) in zip(traceLayers, Self.outlineLayers) {
-                let (from, to) = Self.segment(style.length, at: CGFloat(phase))
+                let (from, to) = config.island ? Self.loopSegment(style.length, at: CGFloat(phase))
+                    : Self.segment(style.length, at: CGFloat(phase))
                 layer.strokeStart = from
                 layer.strokeEnd = to
                 layer.strokeColor = (style.isBright ? bright : glow).withAlphaComponent(style.opacity).cgColor
             }
         } else {
-            band.position = CGPoint(x: Self.bandX(phase, width: bounds.width), y: 0)
+            band.position = CGPoint(x: Self.bandX(phase, width: bounds.width), y: bandTop(config))
             band.colors = Self.bandColors(glow: glow, bright: bright)
         }
         guard !config.paused, bounds.width > 0 else { return }
@@ -285,8 +303,13 @@ final class NotchGlowLayerView: NSView {
 
         if config.tracesOutline {
             for (layer, style) in zip(traceLayers, Self.outlineLayers) {
-                add(Self.strokeKeyframes("strokeStart", length: style.length, end: false), to: layer, key: "start")
-                add(Self.strokeKeyframes("strokeEnd", length: style.length, end: true), to: layer, key: "end")
+                if config.island {
+                    add(Self.loopTravel("strokeStart", length: style.length, end: false), to: layer, key: "start")
+                    add(Self.loopTravel("strokeEnd", length: style.length, end: true), to: layer, key: "end")
+                } else {
+                    add(Self.strokeKeyframes("strokeStart", length: style.length, end: false), to: layer, key: "start")
+                    add(Self.strokeKeyframes("strokeEnd", length: style.length, end: true), to: layer, key: "end")
+                }
             }
         } else {
             let travel = CABasicAnimation(keyPath: "position.x")
@@ -364,6 +387,28 @@ final class NotchGlowLayerView: NSView {
         animation.keyTimes = times.map { NSNumber(value: Double($0)) }
         animation.values = times.map(value)
         animation.calculationMode = .linear
+        return animation
+    }
+
+    /// One segment on the island's loop, which the trace layers draw twice over: its centre goes
+    /// once round, starting half way (the bottom's middle), so it never reaches either end of
+    /// the doubled path. The segment the notch uses enters and leaves at the outline's ends,
+    /// which on the island is the top's middle: the line shrank into that point, vanished and
+    /// came back (user, 2026-11-23: "그냥 한 선이 계속 뺑 돌게").
+    private static func loopSegment(_ length: CGFloat, at phase: CGFloat) -> (CGFloat, CGFloat) {
+        let centre = phase + 0.5
+        return ((centre - length / 2) / 2, (centre + length / 2) / 2)
+    }
+
+    /// `loopSegment`'s start or end over one period: a straight run, ending where it began.
+    private static func loopTravel(_ keyPath: String, length: CGFloat, end: Bool) -> CABasicAnimation {
+        let value: (CGFloat) -> CGFloat = { t in
+            let (from, to) = loopSegment(length, at: t)
+            return end ? to : from
+        }
+        let animation = CABasicAnimation(keyPath: keyPath)
+        animation.fromValue = value(0)
+        animation.toValue = value(1)
         return animation
     }
 

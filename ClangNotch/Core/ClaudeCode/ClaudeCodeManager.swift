@@ -40,6 +40,11 @@ final class ClaudeCodeManager: ObservableObject {
     /// The last turn any session finished normally (end_turn); drives the closed-notch Done and the 완료 드롭다운.
     @Published private(set) var lastCompletedTurn: CompletedTurn?
 
+    /// The latest background shell that failed (셸 실패 드롭다운). Failures in one session
+    /// within `shellFailureMergeWindow` of each other add to its count instead of dropping again.
+    @Published private(set) var shellFailure: ShellFailure?
+    private let shellFailureMergeWindow: TimeInterval = 60
+
     var sessionsAwaitingInput: [ClaudeSession] {
         availableSessions.filter { sessionStates[$0.id]?.isAwaitingInput == true }
     }
@@ -162,6 +167,9 @@ final class ClaudeCodeManager: ObservableObject {
     private var completedTurnMessageIDs: [String: String] = [:]
     /// A finished turn not announced yet, because the session's subagents were still running.
     private var heldCompletions: [String: CompletedTurn] = [:]
+    /// The message whose tokens the 오늘 page last counted, per session: one message is written as
+    /// several lines, each repeating its usage so far.
+    private var countedUsage: [String: (message: String, tokens: Int)] = [:]
     /// Transcripts that ended with "continued-in" (the conversation went on in another
     /// process and file, as when a session is sent to the background), with the file's
     /// modification date then. They are listed as the session they continued in.
@@ -403,6 +411,7 @@ final class ClaudeCodeManager: ObservableObject {
             stopWatchingSession(id: watchedId)
         }
 
+        refreshBackgroundShells()
         refreshSubagents()
         followActiveSession()
     }
@@ -428,8 +437,9 @@ final class ClaudeCodeManager: ObservableObject {
                 let conversation = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
                 if live[conversation].map({ !$0.isIdle }) != true {
                     running = []
-                    // The process has stopped after all: the turn held back was the end.
-                    if let held {
+                    // The process has stopped after all: the turn held back was the end, unless
+                    // it waits on background shells (`shell` reads as idle here).
+                    if let held, state.shellWaitSince == nil {
                         heldCompletions[sessionId] = nil
                         lastCompletedTurn = held
                     }
@@ -437,6 +447,116 @@ final class ClaudeCodeManager: ObservableObject {
             }
             guard running != shown else { continue }
             sessionStates[sessionId]?.subagents = running
+            syncStateIfSelected(sessionId)
+            changed = true
+        }
+        if changed { objectWillChange.send() }
+    }
+
+    // MARK: - Background shells
+
+    /// Starts and ends 셸 줄 from a line: a Bash or Monitor result that left a task running,
+    /// or a notification naming one. A history load builds the list too, but never reports
+    /// a failure.
+    private func trackBackgroundShells(_ json: [String: Any], sessionId: String, lineDate: Date) {
+        guard AppSettings.shared.showClaudeBackgroundShells, var state = sessionStates[sessionId] else { return }
+        let before = state.backgroundShells
+        if let result = json["toolUseResult"] as? [String: Any],
+           let block = ((json["message"] as? [String: Any])?["content"] as? [[String: Any]])?
+               .first(where: { $0["type"] as? String == "tool_result" }),
+           let toolUseId = block["tool_use_id"] as? String {
+            let tool = state.recentTools.first { $0.id == toolUseId } ?? state.activeTools.first { $0.id == toolUseId }
+            let text = block["content"] as? String
+                ?? (block["content"] as? [[String: Any]])?.compactMap { $0["text"] as? String }.joined(separator: "\n")
+            if let shell = ClaudeBackgroundShells.started(by: result, tool: tool, resultText: text, at: lineDate),
+               !state.backgroundShells.contains(where: { $0.id == shell.id }) {
+                state.backgroundShells.append(shell)
+            }
+        }
+        if let text = ClaudeBackgroundShells.notificationText(in: json) {
+            let abandoned = Set(ClaudeBackgroundShells.abandoned(in: text))
+            state.backgroundShells.removeAll { abandoned.contains($0.id) }
+            // One block comes up to three times (queued, dequeued, as the turn's prompt): only
+            // the first finds its shell still listed.
+            for notice in ClaudeBackgroundShells.notices(in: text) {
+                guard let index = state.backgroundShells.firstIndex(where: { $0.id == notice.taskId }) else { continue }
+                if notice.status != nil {
+                    let shell = state.backgroundShells.remove(at: index)
+                    // Claude takes its next turn on this; the wait holds until it has had the
+                    // moment the registry takes to say so (`refreshBackgroundShells`).
+                    if isLoadingHistoryBySession[sessionId] != true { state.lastUpdateTime = max(state.lastUpdateTime ?? lineDate, lineDate) }
+                    if notice.isFailure, isLoadingHistoryBySession[sessionId] != true {
+                        reportShellFailure(shell, exitCode: notice.exitCode, sessionId: sessionId)
+                    }
+                } else if let event = notice.event {
+                    state.backgroundShells[index].lastEvent = event
+                    state.backgroundShells[index].lastOutput = lineDate
+                }
+            }
+        }
+        guard state.backgroundShells != before else { return }
+        sessionStates[sessionId] = state
+        syncStateIfSelected(sessionId)
+        objectWillChange.send()
+    }
+
+    private func reportShellFailure(_ shell: ClaudeBackgroundShell, exitCode: Int?, sessionId: String) {
+        let now = Date()
+        if var failure = shellFailure, failure.sessionId == sessionId,
+           now.timeIntervalSince(failure.at) < shellFailureMergeWindow {
+            failure.count += 1
+            failure.at = now
+            shellFailure = failure
+        } else {
+            shellFailure = ShellFailure(sessionId: sessionId, title: shell.title, exitCode: exitCode, at: now)
+        }
+    }
+
+    /// The 셸 줄's latest output and the wait they hold, on every scan before
+    /// `refreshSubagents`, which announces a held turn once nothing holds it. A process that
+    /// has exited takes its shells with it.
+    private func refreshBackgroundShells() {
+        var live: [String: LiveSessionRecord]?
+        var changed = false
+        let now = Date()
+        for (sessionId, path) in sessionJSONLPaths {
+            guard var state = sessionStates[sessionId],
+                  !state.backgroundShells.isEmpty || state.shellWaitSince != nil else { continue }
+            let before = state
+            if !AppSettings.shared.showClaudeBackgroundShells {
+                state.backgroundShells.removeAll()
+            } else {
+                if live == nil { live = liveSessionRecords() }
+                // The registry can't be read this moment: leave this session as it is.
+                guard let live else { continue }
+                let conversation = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+                if live[conversation] == nil,
+                   seenLiveConversationIds.contains(conversation) || state.entrypoint == .terminal {
+                    state.backgroundShells.removeAll()
+                    state.shellWaitSince = nil
+                }
+                for index in state.backgroundShells.indices {
+                    guard let file = state.backgroundShells[index].outputFile,
+                          let modified = (try? FileManager.default.attributesOfItem(atPath: file))?[.modificationDate] as? Date,
+                          modified > (state.backgroundShells[index].lastOutput ?? .distantPast) else { continue }
+                    state.backgroundShells[index].lastOutput = modified
+                }
+            }
+            if let since = state.shellWaitSince {
+                let holding = state.backgroundShells.filter(\.holdsDone)
+                // The last one has ended: Claude's next turn, started by its notification, says
+                // Done. Announcing the held turn too would say it twice, so it goes only if no
+                // turn came within the grace (or that turn ended without its text).
+                let releases = holding.isEmpty
+                    ? state.turnStartTime == nil && now.timeIntervalSince(state.lastUpdateTime ?? .distantPast) > idleStatusGrace
+                    : ClaudeBackgroundShells.releasesWait(since: since, holding: holding, now: now)
+                if releases {
+                    state.shellWaitSince = nil
+                    for index in state.backgroundShells.indices { state.backgroundShells[index].holdsDone = false }
+                }
+            }
+            guard state != before else { continue }
+            sessionStates[sessionId] = state
             syncStateIfSelected(sessionId)
             changed = true
         }
@@ -544,16 +664,23 @@ final class ClaudeCodeManager: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Puts the next-step `Stop` hook in `~/.claude/settings.json` while its 실험 기능 switch
-    /// is on, and takes it out otherwise.
-    func syncNextStepHook() {
+    /// Puts the next-step `Stop` hook and the session offer `PreToolUse` hook in
+    /// `~/.claude/settings.json` while their 실험 기능 switches are on, and takes them out otherwise.
+    func syncExperimentalHooks() {
         guard !DemoMode.isActive else { return }
         let settings = AppSettings.shared
+        let file = claudeDir.appendingPathComponent("settings.json")
         do {
-            try NextStepHooks.sync(in: claudeDir.appendingPathComponent("settings.json"), socket: HookSocket.path, maxTime: 600,
+            try NextStepHooks.sync(in: file, socket: HookSocket.path, maxTime: 600,
                                    enabled: settings.showSourceClaudeCode && settings.experimentalClaudeNextStepAnswers)
         } catch {
             debugLog("[ClaudeCode] Could not update the next-step hook: \(error.localizedDescription)")
+        }
+        do {
+            try SessionOffer.sync(in: file, socket: HookSocket.path,
+                                  enabled: settings.showSourceClaudeCode && settings.experimentalClaudeSessionOffers)
+        } catch {
+            debugLog("[ClaudeCode] Could not update the session offer hook: \(error.localizedDescription)")
         }
     }
 
@@ -586,7 +713,7 @@ final class ClaudeCodeManager: ObservableObject {
                 debugLog("[ClaudeCode] Could not wrap the status line: \(error.localizedDescription)")
             }
         }
-        syncNextStepHook()
+        syncExperimentalHooks()
         scanForSessions()
         startWatchingProjectsDirectory()
         startWatchingRegistryDirectory()
@@ -1073,6 +1200,7 @@ final class ClaudeCodeManager: ObservableObject {
             parseMessageForSession(message, sessionId: sessionId, lineDate: lineDate,
                                    isMeta: json["isMeta"] as? Bool == true)
         }
+        trackBackgroundShells(json, sessionId: sessionId, lineDate: lineDate)
     }
 
     /// Capture conversation text (user prompts + assistant responses) into session state.
@@ -1128,6 +1256,23 @@ final class ClaudeCodeManager: ObservableObject {
         }
     }
 
+    /// A live message's tokens for the 오늘 page (`AgentActivityLog`): input, cache writes and
+    /// output. Replayed history isn't counted; it was when it arrived, if the app ran then.
+    private func logUsage(_ message: [String: Any], sessionId: String) {
+        guard isLoadingHistoryBySession[sessionId] != true, let usage = message["usage"] as? [String: Any] else { return }
+        let tokens = ["input_tokens", "cache_creation_input_tokens", "output_tokens"].reduce(0) { $0 + (usage[$1] as? Int ?? 0) }
+        let id = message["id"] as? String ?? UUID().uuidString
+        let before = countedUsage[sessionId].flatMap { $0.message == id ? $0.tokens : nil } ?? 0
+        countedUsage[sessionId] = (id, max(tokens, before))
+        AgentActivityLog.shared.addTokens(tokens - before, model: message["model"] as? String)
+    }
+
+    /// An editing tool that went through, for the 오늘 page's 고친 줄.
+    private func logChange(_ change: ToolChange?, sessionId: String) {
+        guard isLoadingHistoryBySession[sessionId] != true else { return }
+        AgentActivityLog.shared.addChange(change)
+    }
+
     private func parseMessageForSession(_ message: [String: Any], sessionId: String, lineDate: Date? = nil,
                                         isMeta: Bool = false) {
         guard var sessionState = sessionStates[sessionId] else { return }
@@ -1138,7 +1283,7 @@ final class ClaudeCodeManager: ObservableObject {
             sessionState.model = model
         }
 
-        if let role = message["role"] as? String {
+        if let role = message["role"] as? String, !ClaudeTranscriptLine.isLocalCommand(message) {
             if role == "user" || role == "assistant" {
                 sessionState.pendingInputRequests.removeAll { $0.id == "notification" }
                 // Activity is dated by the line itself, so a replayed old line can't extend
@@ -1227,6 +1372,7 @@ final class ClaudeCodeManager: ObservableObject {
         }
 
         // Parse usage for token tracking
+        logUsage(message, sessionId: sessionId)
         if let usage = message["usage"] as? [String: Any] {
             sessionState.tokenUsage.inputTokens = usage["input_tokens"] as? Int ?? sessionState.tokenUsage.inputTokens
             sessionState.tokenUsage.cacheReadInputTokens = usage["cache_read_input_tokens"] as? Int ?? sessionState.tokenUsage.cacheReadInputTokens
@@ -1234,8 +1380,9 @@ final class ClaudeCodeManager: ObservableObject {
         }
 
         // The user wrote (or pressed a box button, which sends its message): the box is answered.
+        // A task notification (a background shell or subagent ending) comes as a user line too.
         if message["role"] as? String == "user", !isMeta,
-           message["content"] is String
+           (message["content"] as? String).map({ !$0.hasPrefix("<task-notification>") }) ?? false
             || (message["content"] as? [[String: Any]])?.contains(where: { $0["type"] as? String == "text" }) == true {
             sessionState.pendingInputRequests.removeAll { $0.isWrapUp }
             sessionState.stagedWrapUp = nil
@@ -1262,6 +1409,7 @@ final class ClaudeCodeManager: ObservableObject {
                     if let index = sessionState.activeTools.firstIndex(where: { $0.id == toolUseId }) {
                         var tool = sessionState.activeTools.remove(at: index)
                         tool.endTime = max(lineDate ?? Date(), tool.startTime)
+                        if item["is_error"] as? Bool != true { logChange(tool.change, sessionId: sessionId) }
                         debugLog("[ClaudeCode] Tool completed: \(tool.toolName) (id: \(toolUseId.prefix(8))...)")
                         sessionState.recentTools.insert(tool, at: 0)
                         if sessionState.recentTools.count > 10 {
@@ -1309,7 +1457,14 @@ final class ClaudeCodeManager: ObservableObject {
                 // was interrupted looks unfinished too); `refreshSubagents` settles it.
                 sessionState.subagents = sessionJSONLPaths[sessionId]
                     .map { subagents(inTranscriptAt: $0, waitingOn: sessionState.activeTools) } ?? []
-                if sessionState.subagents.isEmpty {
+                // Background shells hold it the same way, within limits (`refreshBackgroundShells`).
+                let shellsHold = sessionState.backgroundShells.contains(where: \.holdsDone)
+                if !shellsHold {
+                    sessionState.shellWaitSince = nil
+                } else if sessionState.shellWaitSince == nil {
+                    sessionState.shellWaitSince = Date()
+                }
+                if sessionState.subagents.isEmpty, !shellsHold {
                     heldCompletions[sessionId] = nil
                     lastCompletedTurn = turn
                 } else {
@@ -1503,6 +1658,9 @@ final class ClaudeCodeManager: ObservableObject {
                 // open) are real; only an idle state entered after our last activity ends it.
                 guard record.isIdle, let changedAt = record.statusChangedAt,
                       changedAt >= lastActivity.addingTimeInterval(-1) else { continue }
+                // `shell` while a finished turn waits on its background shells: that wait is
+                // `refreshBackgroundShells`'s to end.
+                if record.waitsOnShells, state.shellWaitSince != nil { continue }
                 // The turn is over, even if its last message had no text to mark the end.
                 if state.stagedWrapUp != nil {
                     state.showStagedWrapUp()
@@ -1529,7 +1687,11 @@ final class ClaudeCodeManager: ObservableObject {
             // A next-step box outlives idle; only an exit drops it.
             let exited = live[candidate.conversationId] == nil
             state.pendingInputRequests.removeAll { exited || !$0.isWrapUp }
-            if exited { state.stagedWrapUp = nil }
+            if exited {
+                state.stagedWrapUp = nil
+                state.backgroundShells.removeAll()
+                state.shellWaitSince = nil
+            }
             state.isThinking = false
             state.turnStartTime = nil
             state.needsPermission = false
@@ -1548,6 +1710,8 @@ final class ClaudeCodeManager: ObservableObject {
         state.turnStartTime = nil
         state.activeTools.removeAll()
         state.subagents.removeAll()
+        state.backgroundShells.removeAll()
+        state.shellWaitSince = nil
         state.pendingInputRequests.removeAll()
         state.stagedWrapUp = nil
         state.needsPermission = false
@@ -1570,6 +1734,9 @@ final class ClaudeCodeManager: ObservableObject {
         /// Not running a turn: `idle`, or `shell` (idle while the user's `!` command runs).
         /// The others are `busy` (running, including API retries) and `waiting` (a prompt is open).
         let isIdle: Bool
+        /// `shell`: no turn running, background shells still are (measured 2026-11-26), or
+        /// the user's `!` command runs.
+        let waitsOnShells: Bool
         let statusChangedAt: Date?
         /// Where the process runs, in a transcript line's `entrypoint` values; nil when unrecognised.
         let entrypoint: ClaudeEntrypoint?
@@ -1609,6 +1776,7 @@ final class ClaudeCodeManager: ObservableObject {
             live[conversationId] = LiveSessionRecord(
                 terminalPid: pid,
                 isIdle: status == "idle" || status == "shell",
+                waitsOnShells: status == "shell",
                 statusChangedAt: (record["statusUpdatedAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) },
                 entrypoint: entrypoint == .unknown ? nil : entrypoint,
                 hostSessionId: record["hostSessionId"] as? String
@@ -1751,6 +1919,7 @@ final class ClaudeCodeManager: ObservableObject {
                 var tool = sessionState.activeTools.remove(at: index)
                 sessionState.pendingInputRequests.removeAll { $0.id == tool.id }
                 tool.endTime = now
+                if event == "PostToolUse" { logChange(tool.change, sessionId: session.id) }
                 sessionState.recentTools.insert(tool, at: 0)
                 if sessionState.recentTools.count > 10 { sessionState.recentTools.removeLast() }
             }

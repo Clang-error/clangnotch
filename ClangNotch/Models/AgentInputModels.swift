@@ -43,6 +43,16 @@ struct ToolChange: Equatable {
 
     let file: String
     let lines: [Line]
+    /// All the lines the tool added and removed, before `lines` was capped: the 오늘 page's 고친 줄.
+    let added: Int
+    let removed: Int
+
+    init(file: String, lines: [Line], added: Int? = nil, removed: Int? = nil) {
+        self.file = file
+        self.lines = lines
+        self.added = added ?? lines.filter { $0.kind == .added }.count
+        self.removed = removed ?? lines.filter { $0.kind == .removed }.count
+    }
 
     static let maxLines = 60
     private static let maxLineLength = 200
@@ -109,6 +119,7 @@ struct ToolChange: Equatable {
 
     private static func make(file: String, lines: [Line]) -> ToolChange? {
         guard !lines.isEmpty else { return nil }
-        return ToolChange(file: file, lines: Array(lines.prefix(maxLines)))
+        return ToolChange(file: file, lines: Array(lines.prefix(maxLines)),
+                          added: lines.filter { $0.kind == .added }.count, removed: lines.filter { $0.kind == .removed }.count)
     }
 }

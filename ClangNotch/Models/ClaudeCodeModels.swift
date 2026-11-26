@@ -156,6 +156,44 @@ struct ClaudeSubagent: Identifiable, Equatable {
     var startTime: Date? = nil
 }
 
+/// 셸 줄: a shell Claude runs in the background, a Bash call with `run_in_background` (or
+/// a foreground one sent there on its timeout) or a Monitor. Started by the call's result,
+/// ended by a `<task-notification>` naming its task id with a status.
+struct ClaudeBackgroundShell: Identifiable, Equatable {
+    /// The task id (`b…`) its notifications name.
+    let id: String
+    let isMonitor: Bool
+    /// What Claude called it, else the command's first line.
+    let title: String
+    let startTime: Date
+    /// A Bash shell's output file, named in its start result; its modification date is the
+    /// shell's latest output. The folder isn't derived from the conversation id: it can differ.
+    let outputFile: String?
+    /// A Monitor's latest event line.
+    var lastEvent: String?
+    /// When it last printed: a Monitor event's line time, or the output file's modification date.
+    var lastOutput: Date?
+    /// Whether it still keeps the session's finished turn from being announced; false once
+    /// the wait it held has run out (`ClaudeBackgroundShells.releasesWait`).
+    var holdsDone = true
+
+    /// The closed wing's label while the session waits on it: its name, timed from its start.
+    var asTool: ClaudeToolExecution {
+        ClaudeToolExecution(id: id, toolName: title, argument: nil, startTime: startTime)
+    }
+}
+
+/// 셸 실패 드롭다운: a background shell that failed, and how many more failed in the same
+/// session right after it.
+struct ShellFailure: Equatable {
+    let id = UUID()
+    let sessionId: String
+    let title: String
+    let exitCode: Int?
+    var count = 1
+    var at: Date
+}
+
 // MARK: - Todo Item
 
 /// Claude Code todo item from TodoWrite tool
@@ -173,6 +211,22 @@ struct ClaudeTodoItem: Identifiable, Equatable {
         case pending
         case inProgress = "in_progress"
         case completed
+    }
+}
+
+/// A user line Claude Code writes for something run without the model: a slash command like
+/// /exit or /model and its output, or a `!` shell command. It starts no turn: /exit in a
+/// background session (2026-11-24) left the process idle and the notch spinning until the
+/// 5-minute safety timeout. A slash command that does prompt the model is followed by its
+/// expanded prompt and the reply, which start the turn.
+enum ClaudeTranscriptLine {
+    static func isLocalCommand(_ message: [String: Any]) -> Bool {
+        guard message["role"] as? String == "user" else { return false }
+        let text = message["content"] as? String
+            ?? (message["content"] as? [[String: Any]])?.first?["text"] as? String
+        guard let text else { return false }
+        return ["<command-name>", "<command-message>", "<local-command-", "<bash-input>", "<bash-stdout>", "<bash-stderr>"]
+            .contains { text.hasPrefix($0) }
     }
 }
 
@@ -282,6 +336,11 @@ struct ClaudeCodeState: Equatable {
     /// Subagents the session started that are still running, oldest first. A background one
     /// keeps working after the turn that started it has ended.
     var subagents: [ClaudeSubagent] = []
+    /// Background shells it started that are still running, oldest first.
+    var backgroundShells: [ClaudeBackgroundShell] = []
+    /// Since when a finished turn has waited on its background shells; nil when nothing waits.
+    /// The session still counts as working then, as it does while its subagents run.
+    var shellWaitSince: Date?
 
     /// Recent conversation messages (user prompts + assistant text), oldest first
     var recentMessages: [ClaudeMessage] = []
@@ -321,6 +380,8 @@ struct ClaudeCodeState: Equatable {
     var currentToolName: String? { activeTools.first?.toolName }
 
     /// True when the session is actively processing (thinking, running tools, or waiting
-    /// on its subagents)
-    var isActive: Bool { turnStartTime != nil || isThinking || hasActiveTools || !subagents.isEmpty }
+    /// on its subagents or its background shells)
+    var isActive: Bool {
+        turnStartTime != nil || isThinking || hasActiveTools || !subagents.isEmpty || shellWaitSince != nil
+    }
 }

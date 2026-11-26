@@ -17,6 +17,12 @@ struct AirPodsBlobGeometry {
     /// edge, so the blob hangs from it the whole way: starting in the menu bar it stuck up like a
     /// spike, and the card rose off the top as a loose rounded box (2026-11-10 recording).
     let hasHousing: Bool
+    /// 다이내믹 아일랜드 (`NotchIsland`): the pill's top, `menuBar` being its bottom. Above that
+    /// the blob shows only inside the pill, and the neck starts hidden in it as in a housing.
+    var islandTop: CGFloat? = nil
+
+    /// The neck's top is out of sight: in the housing, or in the island's pill.
+    var neckHidden: Bool { hasHousing || islandTop != nil }
 }
 
 /// The panel's content. The card and its neck are two Core Animation shape layers in the notch
@@ -173,7 +179,13 @@ final class AirPodsDropdownContainer: NSView {
         blobLayer.frame = CGRect(origin: .zero, size: g.size)
         let mask = CGMutablePath()
         mask.addRect(CGRect(x: 0, y: 0, width: g.size.width, height: g.size.height - g.menuBar))   // below the menu bar (AppKit y up)
-        if g.notchWidth > 0 {
+        if let islandTop = g.islandTop {
+            // Only the pill above its bottom: the drop swells out of it.
+            let height = g.menuBar - islandTop
+            mask.addRoundedRect(in: CGRect(x: (g.size.width - g.notchWidth) / 2, y: g.size.height - g.menuBar,
+                                           width: g.notchWidth, height: height),
+                                cornerWidth: height / 2, cornerHeight: height / 2)
+        } else if g.notchWidth > 0 {
             mask.addRect(CGRect(x: (g.size.width - g.notchWidth) / 2, y: g.size.height - g.menuBar,
                                 width: g.notchWidth, height: g.menuBar))
         }
@@ -199,10 +211,22 @@ final class AirPodsDropdownContainer: NSView {
     /// overshoots a little and settles.
     private static func paths(_ g: AirPodsBlobGeometry, at t: Double) -> (card: CGPath, neck: CGPath) {
         let w = g.card.width, h = g.card.height, mb = g.menuBar, top = g.cardTop
-        let card = sample([(0, mb - 100, 110, 70), (0.25, mb - 20, 160, 120), (0.38, mb, 180, 150),
+        let card: (CGFloat, CGFloat, CGFloat)
+        let neck: (CGFloat, CGFloat, CGFloat)
+        if let islandTop = g.islandTop {
+            // The island: the card starts as the pill itself and swells down into place, and the
+            // rise runs the same path back into it. The housing's keyframes, narrowed to the
+            // 58 pt pill, came out as a tall thin stick that snapped wide and folded back the
+            // same odd way (user, 2026-11-23).
+            card = sample([(0, islandTop, g.notchWidth, mb - islandTop), (0.4, mb + 6, w * 0.7, h * 0.6),
+                           (0.68, top + 10, w, h), (1, top, w, h)], at: t)
+            neck = (0, 0, 0)
+        } else {
+            card = sample([(0, mb - 100, 110, 70), (0.25, mb - 20, 160, 120), (0.38, mb, 180, 150),
                            (0.5, mb + 2, w * 0.92, h * 0.9), (0.68, top + 10, w, h), (1, top, w, h)], at: t) // top, width, height
-        let neck = sample([(0, 90, 70, 70), (0.38, 150, 130, 170), (0.5, 150, 110, 170), (0.6, 110, 30, 120),
+            neck = sample([(0, 90, 70, 70), (0.38, 150, 130, 170), (0.5, 150, 110, 170), (0.6, 110, 30, 120),
                            (0.68, 50, 0, 40), (0.74, 0, 0, 0), (1, 0, 0, 0)], at: t)         // top width, waist, bottom width
+        }
 
         let mid = g.size.width / 2
         let rect = CGRect(x: mid - card.1 / 2, y: card.0, width: card.1, height: card.2)
@@ -214,10 +238,10 @@ final class AirPodsDropdownContainer: NSView {
         // From inside the camera housing down into the card's top edge. The sides bow in to a
         // waist and flare out where they meet the card, so it reads as one drop; it overlaps
         // the card by 2pt so the two layers show no seam.
-        let topY = g.hasHousing ? mb - 14 : -20, bottomY = rect.minY + 2
+        let topY = g.neckHidden ? mb - 14 : -20, bottomY = rect.minY + 2
         // Without a housing the whole neck shows, and at full width it read as a thick trunk
         // going back in (user, 2026-11-10): narrower at the top, pinched in the middle.
-        let topHalf = neck.0 * (g.hasHousing ? 1 : 0.8) / 2, waist = neck.1 * (g.hasHousing ? 1 : 0.5) / 2
+        let topHalf = neck.0 * (g.neckHidden ? 1 : 0.8) / 2, waist = neck.1 * (g.neckHidden ? 1 : 0.5) / 2
         let bottomHalf = min(neck.2, rect.width - 2 * radius) / 2
         let neckPath = CGMutablePath()
         neckPath.move(to: CGPoint(x: mid - topHalf, y: topY), transform: flip)

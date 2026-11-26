@@ -23,10 +23,7 @@ struct FeaturesSettingsTab: View {
     }
 
     /// Turning on a switch that needs Accessibility asks for it straight away.
-    private func askForAccessibility(_ on: Bool) {
-        guard on, !keyboardLock.hasAccessibilityPermission else { return }
-        keyboardLock.requestPermission()
-    }
+    private func askForAccessibility(_ on: Bool) { SettingEffects.askForAccessibility(on) }
 
     var body: some View {
         Form {
@@ -50,9 +47,7 @@ struct FeaturesSettingsTab: View {
                           L("최근 복사한 글, 이미지, 파일. 파일은 위치만 기억하고 이미지는 앱이 종료되면 클립보드 기록은 삭제됨.",
                             "Recently copied text, images and files. Files by their location; images leave the history when the app quits."),
                           isOn: $settings.enableClipboardHistory)
-                .onChange(of: settings.enableClipboardHistory) { _, _ in
-                    ClipboardManager.shared.syncWithSettings()
-                }
+                .onChange(of: settings.enableClipboardHistory) { SettingEffects.clipboardHistoryChanged() }
             if settings.enableClipboardHistory {
                 CopyDropdownPicker(settings: settings)
                     .padding(.leading, 20)
@@ -60,22 +55,15 @@ struct FeaturesSettingsTab: View {
             SettingToggle(L("앱별 볼륨 믹서", "Per-app volume mixer"),
                           L("앱마다 소리 크기 조절.", "Volume per app.") + needsAudioCapture,
                           isOn: $settings.enableAudioMixer)
-                .onChange(of: settings.enableAudioMixer) { _, on in
-                    if on { AudioMixerManager.shared.start() } else { AudioMixerManager.shared.stop() }
-                }
+                .onChange(of: settings.enableAudioMixer) { _, on in SettingEffects.audioMixerChanged(on) }
             SettingToggle(L("Sidecar 빠른 연결", "Sidecar quick-connect"),
                           L("아이패드를 보조 화면으로 바로 연결.", "Connect an iPad as a second display."),
                           isOn: $settings.enableSidecar)
-                .onChange(of: settings.enableSidecar) { _, on in
-                    // The Sidecar tab starts it when shown.
-                    if !on { SidecarManager.shared.stop() }
-                }
+                .onChange(of: settings.enableSidecar) { _, on in SettingEffects.sidecarChanged(on) }
             SettingToggle(L("배터리 잔량", "Battery levels"),
                           L("맥, 블루투스 기기, 아이폰의 배터리.", "The Mac, Bluetooth accessories and iPhone."),
                           isOn: $settings.enableBattery)
-                .onChange(of: settings.enableBattery) { _, on in
-                    if on { BatteryManager.shared.startMonitoring() } else { BatteryManager.shared.stopMonitoring() }
-                }
+                .onChange(of: settings.enableBattery) { _, on in SettingEffects.batteryChanged(on) }
             EnergyHelperRow()
                 .padding(.leading, 20)
             SettingToggle(L("인터넷 속도 측정", "Internet speed test"),
@@ -106,10 +94,7 @@ struct FeaturesSettingsTab: View {
                           L("기존의 macOS 표시 대신, 메뉴 막대 아래에 조절창을 표시. 에어팟, 에어팟 맥스에서 크라운, 제스처에서 조작 시엔 기존 방식으로도 함께 표시.",
                             "A HUD under the menu bar in place of macOS's display. Volume changed on AirPods or AirPods Max (crown, gestures) shows macOS's display too.") + needsAccessibility,
                           isOn: $settings.centerSystemBanners)
-                .onChange(of: settings.centerSystemBanners) { _, on in
-                    SystemBannerCenterer.shared.syncWithSettings()
-                    askForAccessibility(on)
-                }
+                .onChange(of: settings.centerSystemBanners) { _, on in SettingEffects.systemBannersChanged(on) }
             // Only means something while the HUD switch takes the keys: shown under it, indented.
             if settings.centerSystemBanners {
                 Picker(L("조절창 위치", "HUD position"), selection: $settings.osdPosition) {

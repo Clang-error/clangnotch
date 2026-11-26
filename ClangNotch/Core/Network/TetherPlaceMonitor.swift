@@ -138,8 +138,7 @@ final class TetherPlaceMonitor: NSObject, ObservableObject {
     }
 
     private var isOnHotspot: Bool {
-        let hotspot = AppSettings.shared.tworldHotspotSSID
-        return !hotspot.isEmpty && CWWiFiClient.shared().interface()?.ssid() == hotspot
+        AppSettings.shared.isTetherHotspot(CWWiFiClient.shared().interface()?.ssid())
     }
 
     private func tick() {

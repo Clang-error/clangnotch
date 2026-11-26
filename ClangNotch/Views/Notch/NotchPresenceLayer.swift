@@ -24,6 +24,11 @@ struct NotchPresenceLayer: NSViewRepresentable {
     var bottomCornerRadius: CGFloat
     var surface: NSColor
     var still: Bool
+    /// 다이내믹 아일랜드: the outline also reaches past the top, so the view has room above too.
+    var island = false
+    /// A surface that stays when quiet (the island's pill, 쉴 때도 표시): grow out from its edges,
+    /// as from a housing, not from inside.
+    var standing = false
 
     /// Room around the surface for its growth and the glow's halo, which an NSView would cut off.
     static let margin: CGFloat = 16
@@ -33,7 +38,8 @@ struct NotchPresenceLayer: NSViewRepresentable {
     func updateNSView(_ view: NotchPresenceView, context: Context) {
         view.update(NotchPresenceView.Config(
             presence: presence, fadesOut: fadesOut, housing: housing, glow: glow, size: surfaceSize,
-            sideInset: sideInset, bottomCornerRadius: bottomCornerRadius, surface: surface, still: still))
+            sideInset: sideInset, bottomCornerRadius: bottomCornerRadius, surface: surface, still: still,
+            island: island, standing: standing))
     }
 }
 
@@ -41,9 +47,11 @@ extension View {
     /// Hangs a `NotchPresenceLayer` from the top of a surface `size` wide and tall, with its margin.
     func notchPresenceLayer(_ layer: NotchPresenceLayer) -> some View {
         overlay(alignment: .top) {
+            let above = layer.island ? NotchPresenceLayer.margin : 0
             layer
                 .frame(width: layer.surfaceSize.width + 2 * NotchPresenceLayer.margin,
-                       height: layer.surfaceSize.height + NotchPresenceLayer.margin)
+                       height: layer.surfaceSize.height + NotchPresenceLayer.margin + above)
+                .offset(y: -above)
                 .allowsHitTesting(false)
         }
     }
@@ -60,6 +68,8 @@ final class NotchPresenceView: NSView {
         var bottomCornerRadius: CGFloat
         var surface: NSColor
         var still: Bool
+        var island: Bool
+        var standing: Bool
     }
 
     /// The breath: 0.8 s each way, starting once the surface has grown.
@@ -124,16 +134,20 @@ final class NotchPresenceView: NSView {
     /// How far the surface reaches past its own edges, by stage.
     private struct Outsets { var start, grown, breath, end: CGFloat }
     private func outsets(_ c: Config) -> Outsets {
-        c.housing ? Outsets(start: 0, grown: 3, breath: 6, end: 0) : Outsets(start: -8, grown: 0, breath: 3, end: -6)
+        c.housing || c.standing ? Outsets(start: 0, grown: 3, breath: 6, end: 0) : Outsets(start: -8, grown: 0, breath: 3, end: -6)
     }
 
     /// The outline `outset` past the surface on both sides and below. Over a housing the sides are
     /// pushed out by `sideInset` first, so outset 0 is the housing's own edges.
     private func path(_ c: Config, outset: CGFloat, surface: Bool, fill: Bool) -> CGPath {
         let base = surface && c.housing ? c.sideInset : 0
-        let rect = CGRect(x: NotchPresenceLayer.margin - base - outset, y: 0,
-                          width: c.size.width + 2 * (base + outset), height: c.size.height + outset)
-        return NotchShape(topCornerRadius: c.sideInset, bottomCornerRadius: c.bottomCornerRadius, drawsTopEdge: fill)
+        // The island floats, so its outline reaches past the top too.
+        let above = c.island ? outset : 0
+        // The island's view starts `margin` higher (`notchPresenceLayer`).
+        let rect = CGRect(x: NotchPresenceLayer.margin - base - outset, y: (c.island ? NotchPresenceLayer.margin : 0) - above,
+                          width: c.size.width + 2 * (base + outset), height: c.size.height + outset + above)
+        return NotchShape(topCornerRadius: c.sideInset, bottomCornerRadius: c.bottomCornerRadius + above,
+                          drawsTopEdge: fill, island: c.island)
             .path(in: rect).cgPath
     }
 

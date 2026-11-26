@@ -19,11 +19,17 @@ struct NotchShape: Shape {
     /// broke off the edge at a right angle (user, 2026-11-14).
     static let tabFillet: CGFloat = 4
     static let tabCorner: CGFloat = 7
+    /// 다이내믹 아일랜드 (`NotchIsland`): the body floats, so its top corners round outward like
+    /// the bottom ones, `bottomCornerRadius` each, and the outline always closes along the top.
+    /// The sides stay `topCornerRadius` in from the frame, so every width worked out for the
+    /// notch (`expandedNotchInset`, `mediaNotchWidth`) holds.
+    var island: Bool
 
-    init(topCornerRadius: CGFloat = 6, bottomCornerRadius: CGFloat = 14, drawsTopEdge: Bool = true) {
+    init(topCornerRadius: CGFloat = 6, bottomCornerRadius: CGFloat = 14, drawsTopEdge: Bool = true, island: Bool = false) {
         self.topCornerRadius = topCornerRadius
         self.bottomCornerRadius = bottomCornerRadius
         self.drawsTopEdge = drawsTopEdge
+        self.island = island
     }
 
     var animatableData: AnimatablePair<CGFloat, CGFloat> {
@@ -32,6 +38,10 @@ struct NotchShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
+        island ? islandPath(in: rect) : notchPath(in: rect)
+    }
+
+    private func notchPath(in rect: CGRect) -> Path {
         let top = topCornerRadius, bottom = bottomCornerRadius
         // The body's sides sit `top` in from the frame; the flares fill the gap at the top.
         let left = rect.minX + top, right = rect.maxX - top
@@ -40,6 +50,34 @@ struct NotchShape: Shape {
         path.addQuadCurve(to: CGPoint(x: left, y: rect.minY + top), control: CGPoint(x: left, y: rect.minY))
         path.addLine(to: CGPoint(x: left, y: rect.maxY - bottom))
         path.addQuadCurve(to: CGPoint(x: left + bottom, y: rect.maxY), control: CGPoint(x: left, y: rect.maxY))
+        addTab(to: &path, in: rect)
+        path.addLine(to: CGPoint(x: right - bottom, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: right, y: rect.maxY - bottom), control: CGPoint(x: right, y: rect.maxY))
+        path.addLine(to: CGPoint(x: right, y: rect.minY + top))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY), control: CGPoint(x: right, y: rect.minY))
+        if drawsTopEdge {
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        }
+        return path
+    }
+
+    /// Round corners all the way round, circular arcs so the closed pill is a true capsule.
+    private func islandPath(in rect: CGRect) -> Path {
+        let left = rect.minX + topCornerRadius, right = rect.maxX - topCornerRadius
+        let radius = max(0, min(bottomCornerRadius, rect.height / 2, (right - left) / 2))
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addArc(tangent1End: CGPoint(x: left, y: rect.minY), tangent2End: CGPoint(x: left, y: rect.maxY), radius: radius)
+        path.addArc(tangent1End: CGPoint(x: left, y: rect.maxY), tangent2End: CGPoint(x: right, y: rect.maxY), radius: radius)
+        addTab(to: &path, in: rect)
+        path.addArc(tangent1End: CGPoint(x: right, y: rect.maxY), tangent2End: CGPoint(x: right, y: rect.minY), radius: radius)
+        path.addArc(tangent1End: CGPoint(x: right, y: rect.minY), tangent2End: CGPoint(x: rect.midX, y: rect.minY), radius: radius)
+        path.closeSubpath()
+        return path
+    }
+
+    /// The 열리는 곳 표시 tab along the bottom edge, drawn left to right.
+    private func addTab(to path: inout Path, in rect: CGRect) {
         if tabWidth > 0 {
             let from = rect.midX - tabWidth / 2, to = rect.midX + tabWidth / 2
             let fillet = Self.tabFillet, corner = Self.tabCorner, depth = Self.tabDepth
@@ -53,13 +91,11 @@ struct NotchShape: Shape {
             path.addLine(to: CGPoint(x: to - fillet, y: y(fillet)))
             path.addQuadCurve(to: CGPoint(x: to, y: rect.maxY), control: CGPoint(x: to - fillet, y: rect.maxY))
         }
-        path.addLine(to: CGPoint(x: right - bottom, y: rect.maxY))
-        path.addQuadCurve(to: CGPoint(x: right, y: rect.maxY - bottom), control: CGPoint(x: right, y: rect.maxY))
-        path.addLine(to: CGPoint(x: right, y: rect.minY + top))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY), control: CGPoint(x: right, y: rect.minY))
-        if drawsTopEdge {
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        }
-        return path
     }
+}
+
+extension EnvironmentValues {
+    /// The notch is the 다이내믹 아일랜드 (`NotchIsland`): the glow and presence layers under it
+    /// draw `NotchShape(island: true)`. Set once on the surface by `ClangNotchContentView`.
+    @Entry var notchIsland = false
 }

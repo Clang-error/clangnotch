@@ -40,7 +40,8 @@ struct ClaudeSessionListView: View {
                                 group: row,
                                 onSelect: onSelect, manager: manager, codexManager: codexManager
                             )
-                            SubagentRows(subagents: row.claude.first.flatMap { manager.sessionStates[$0.id]?.subagents } ?? [])
+                            SubagentRows(subagents: row.claude.first.flatMap { manager.sessionStates[$0.id]?.subagents } ?? [],
+                                         shells: row.claude.first.flatMap { manager.sessionStates[$0.id]?.backgroundShells } ?? [])
                         }
                         // Rows rise in one after another as the list opens (the first eight;
                         // past that the wait would be noticeable). A session that shows up
@@ -227,6 +228,12 @@ private struct UnifiedWorkspaceSessionRow: View {
         if subagentCount > 0 {
             return L("Claude: 서브에이전트 \(subagentCount)개 실행 중",
                      subagentCount == 1 ? "Claude: running 1 subagent" : "Claude: running \(subagentCount) subagents")
+        }
+        // ...or its turn is over and waits on its background shells (each has a 셸 줄 below).
+        if let shells = group.claude.compactMap({ manager.sessionStates[$0.id] })
+            .first(where: { $0.shellWaitSince != nil && $0.turnStartTime == nil })?.backgroundShells.count, shells > 0 {
+            return L("Claude: 셸 \(shells)개 기다리는 중",
+                     shells == 1 ? "Claude: waiting on 1 shell" : "Claude: waiting on \(shells) shells")
         }
         if let tool = group.codex.compactMap({ codexManager.sessionStates[$0.id]?.currentToolName }).first {
             return "Codex: \(tool)"
@@ -516,16 +523,23 @@ private struct UnifiedWorkspaceSessionRow: View {
     }
 }
 
-/// 서브에이전트 줄: the subagents a Claude session is running, hung under its 세션 줄. They
-/// only show; going anywhere is the session's row.
+/// 서브에이전트 줄 and 셸 줄: the subagents and background shells a Claude session is
+/// running, hung under its 세션 줄. They only show; going anywhere is the session's row.
 private struct SubagentRows: View {
     let subagents: [ClaudeSubagent]
+    var shells: [ClaudeBackgroundShell] = []
     @ObservedObject private var settings = AppSettings.shared
-    /// As many as the Current Tasks 카드 lists before "+N개 더".
+    /// As many as the Current Tasks 카드 lists before "+N개 더", subagents first.
     private let limit = 4
+    private static let shellBlue = Color(red: 0.35, green: 0.7, blue: 1.0)
+
+    private var shownShells: [ClaudeBackgroundShell] {
+        settings.showClaudeBackgroundShells ? Array(shells.prefix(max(0, limit - subagents.count))) : []
+    }
+    private var total: Int { subagents.count + (settings.showClaudeBackgroundShells ? shells.count : 0) }
 
     var body: some View {
-        if !subagents.isEmpty {
+        if total > 0 {
             VStack(spacing: 3) {
                 ForEach(subagents.prefix(limit)) { subagent in
                     // A working 세션 줄 in small: the lit Claude icon, the name over what it is
@@ -577,8 +591,11 @@ private struct SubagentRows: View {
                                                   since: subagent.startTime) }
                     .help(subagent.agentType)
                 }
-                if subagents.count > limit {
-                    Text(L("+\(subagents.count - limit)개 더", "+\(subagents.count - limit) more"))
+                ForEach(shownShells) { shell in
+                    shellRow(shell)
+                }
+                if total > limit {
+                    Text(L("+\(total - limit)개 더", "+\(total - limit) more"))
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -589,6 +606,50 @@ private struct SubagentRows: View {
             // Indented under the session's own text.
             .padding(.leading, 18)
         }
+    }
+
+    /// A 셸 줄: a 서브에이전트 줄 with a terminal for the icon and blue for orange. Under the
+    /// name, a Monitor's latest line, or since when it runs (fixed text: nothing here ticks).
+    private func shellRow(_ shell: ClaudeBackgroundShell) -> some View {
+        HStack(spacing: 6) {
+            FolderElbow()
+                .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+                .frame(width: 7, height: 6)
+                .offset(y: -2.5)
+            Image(systemName: "apple.terminal")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(NotchPalette.ink)
+                .frame(width: 10, height: 10)
+                .shadow(color: Self.shellBlue.opacity(0.9), radius: 3)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(shell.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    if shell.isMonitor {
+                        Text("Monitor")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundColor(Self.shellBlue)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(Self.shellBlue.opacity(0.18), in: Capsule())
+                            .fixedSize()
+                    }
+                }
+                Text(shell.lastEvent ?? L("\(shell.startTime.formatted(date: .omitted, time: .shortened))부터",
+                                          "Since \(shell.startTime.formatted(date: .omitted, time: .shortened))"))
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .padding(.vertical, 6)
+        .background(NotchPalette.ink.opacity(0.035), in: RoundedRectangle(cornerRadius: 7))
+        .overlay { TracingGlowOutline(cornerRadius: 7, color: Self.shellBlue, since: shell.startTime) }
     }
 
     /// The tool the subagent is running and what on, or that it is thinking.

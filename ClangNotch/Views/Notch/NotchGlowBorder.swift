@@ -74,11 +74,13 @@ struct ClosedNotchJellyRipple: View {
     let glowColor: Color
 
     @State private var isExpanded = false
+    @Environment(\.notchIsland) private var island
 
     var body: some View {
         NotchShape(
             topCornerRadius: topCornerRadius,
-            bottomCornerRadius: bottomCornerRadius
+            bottomCornerRadius: bottomCornerRadius,
+            island: island
         )
         .stroke(glowColor.opacity(0.75), lineWidth: 1.5)
         .scaleEffect(
@@ -107,6 +109,7 @@ struct ClosedNotchToolTransitionWipe: View {
     let secondaryGlowColor: Color?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.notchIsland) private var island
     @State private var progress: CGFloat = 1
     @State private var isVisible = false
     @State private var useSecondaryColor = false
@@ -136,7 +139,8 @@ struct ClosedNotchToolTransitionWipe: View {
                 NotchShape(
                     topCornerRadius: topCornerRadius,
                     bottomCornerRadius: bottomCornerRadius,
-                    drawsTopEdge: false
+                    drawsTopEdge: false,
+                    island: island
                 )
                 .stroke(activeColor.opacity(0.95), lineWidth: 2.5)
                 .shadow(color: activeColor.opacity(0.8), radius: 8)

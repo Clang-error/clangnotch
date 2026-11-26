@@ -166,9 +166,14 @@ struct SessionCardPages<Sessions: View>: View {
         return VStack(alignment: .leading, spacing: 12) {
             spanBar(span)
             HStack(alignment: .top, spacing: 0) {
-                stat("\(totals.sessions)", L("세션", "Sessions"))
-                stat(Self.duration(totals.seconds), L("일한 시간", "Agents at work"))
-                stat(totals.topFolder ?? "-", L("가장 많이 쓴 폴더", "Busiest folder"))
+                stat(Text("\(totals.sessions)"), L("세션", "Sessions"))
+                stat(Text(Self.duration(totals.seconds)), L("일한 시간", "Agents at work"))
+                stat(Text(totals.topFolder ?? "-"), L("가장 많이 쓴 폴더", "Busiest folder"))
+            }
+            HStack(alignment: .top, spacing: 0) {
+                stat(Text(Self.count(totals.usage.tokens)), L("토큰", "Tokens"))
+                stat(lines(totals.usage), L("고친 줄", "Lines changed"))
+                stat(Text(totals.usage.topModel ?? "-"), L("가장 많이 쓴 모델", "Top model"))
             }
         }
         .padding(.vertical, 4)
@@ -203,9 +208,9 @@ struct SessionCardPages<Sessions: View>: View {
         .background(Capsule().fill(NotchPalette.ink.opacity(0.07)))
     }
 
-    private func stat(_ value: String, _ name: String) -> some View {
+    private func stat(_ value: Text, _ name: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value)
+            value
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
@@ -215,6 +220,24 @@ struct SessionCardPages<Sessions: View>: View {
                 .foregroundStyle(NotchPalette.ink.opacity(0.5))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "+1,204 −380", the added part green and the removed part red as in the 세션 화면's diff.
+    private func lines(_ usage: AgentActivityLog.Usage) -> Text {
+        guard usage.added + usage.removed > 0 else { return Text("0") }
+        return Text("+\(usage.added.formatted())").foregroundColor(.green.opacity(0.8))
+            + Text(" −\(usage.removed.formatted())").foregroundColor(.red.opacity(0.8))
+    }
+
+    /// "8,421", "3.4만", "340만", "1.2억"; in English "8,421", "34K", "3.4M", "1.2B".
+    static func count(_ value: Int) -> String {
+        // Korean groups by 10,000.
+        let korean = L("ko", "en") == "ko"
+        let units: [(Double, String)] = korean ? [(1e8, "억"), (1e4, "만")] : [(1e9, "B"), (1e6, "M"), (1e3, "K")]
+        guard let (size, unit) = units.first(where: { Double(value) >= $0.0 }) else { return value.formatted() }
+        let scaled = Double(value) / size
+        let number = scaled < 10 ? (scaled * 10).rounded(.down) / 10 : scaled.rounded(.down)
+        return number.formatted(.number.precision(.fractionLength(0...1))) + unit
     }
 
     /// "2시간 14분", "14분", "0분".

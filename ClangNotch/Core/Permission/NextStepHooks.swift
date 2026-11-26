@@ -18,6 +18,20 @@ enum NextStepHooks {
     /// Adds the hook, or with `enabled` false takes it out. Everything else in the file
     /// stays as it was.
     static func sync(in file: URL, socket: String, maxTime: Int, enabled: Bool) throws {
+        try HookSettingsFile.sync(file, event: "Stop", marker: marker, backupSuffix: "clangnotch-nextstep-bak",
+                                  group: enabled ? ["hooks": [[
+                                      "type": "command", "command": command(socket: socket, maxTime: maxTime),
+                                      "asyncRewake": true, "timeout": maxTime + 5,
+                                  ] as [String: Any]]] : nil)
+    }
+}
+
+/// One ClangNotch hook in a `settings.json` that comes and goes with a setting.
+enum HookSettingsFile {
+    /// Takes out `event`'s handlers ending in `marker` (and a group that leaves empty), then
+    /// adds `group` if there is one. Everything else in the file stays as it was; the first
+    /// change keeps a copy of the file beside it.
+    static func sync(_ file: URL, event: String, marker: String, backupSuffix: String, group: [String: Any]?) throws {
         let existing = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
         var settings: [String: Any] = [:]
         if let existing {
@@ -28,7 +42,7 @@ enum NextStepHooks {
         }
 
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
-        let before = hooks["Stop"] as? [[String: Any]] ?? []
+        let before = hooks[event] as? [[String: Any]] ?? []
         // Without ours, and without a group ours leaves empty.
         var groups = before.compactMap { group -> [String: Any]? in
             let handlers = group["hooks"] as? [[String: Any]] ?? []
@@ -38,18 +52,13 @@ enum NextStepHooks {
             group["hooks"] = others
             return others.isEmpty ? nil : group
         }
-        if enabled {
-            groups.append(["hooks": [[
-                "type": "command", "command": command(socket: socket, maxTime: maxTime),
-                "asyncRewake": true, "timeout": maxTime + 5,
-            ] as [String: Any]]])
-        }
+        if let group { groups.append(group) }
         guard !NSArray(array: groups).isEqual(to: before) else { return }
-        hooks["Stop"] = groups.isEmpty ? nil : groups
+        hooks[event] = groups.isEmpty ? nil : groups
         settings["hooks"] = hooks.isEmpty ? nil : hooks
         let data = try JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let backup = file.appendingPathExtension("clangnotch-nextstep-bak")
+        let backup = file.appendingPathExtension(backupSuffix)
         if let existing, !FileManager.default.fileExists(atPath: backup.path) {
             try existing.write(to: backup, options: .atomic)
         }
