@@ -177,9 +177,10 @@ struct ClaudeBackgroundShell: Identifiable, Equatable {
     /// the wait it held has run out (`ClaudeBackgroundShells.releasesWait`).
     var holdsDone = true
 
-    /// The closed wing's label while the session waits on it: its name, timed from its start.
+    /// The closed wing's label while the session waits on it, timed from its start: "Shell" or
+    /// "Monitor", not its name, which the 셸 줄 has room for and the wing hasn't (user, 2026-11-26).
     var asTool: ClaudeToolExecution {
-        ClaudeToolExecution(id: id, toolName: title, argument: nil, startTime: startTime)
+        ClaudeToolExecution(id: id, toolName: isMonitor ? "Monitor" : "Shell", argument: nil, startTime: startTime)
     }
 }
 
