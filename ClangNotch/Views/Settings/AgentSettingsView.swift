@@ -75,7 +75,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     /// Words the search field matches besides the title, in both languages.
     var keywords: [String] {
         switch self {
-        case .about:    return ["버전", "업데이트", "version", "updates"]
+        case .about:    return ["버전", "업데이트", "새로운 점", "version", "updates", "what's new"]
         case .general:  return ["언어", "로그인", "메뉴 막대", "배터리 절약", "설정 창", "색상", "라이트", "다크",
                                 "language", "login", "menu bar", "battery saver", "settings window", "light", "dark",
                                 "튜토리얼", "tutorial"]

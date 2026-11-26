@@ -42,7 +42,9 @@ final class WhatsNew {
         UserDefaults.standard.set(current, forKey: Self.lastLaunchedKey)
         let arguments = CommandLine.arguments
         switch TutorialLaunch.decide(currentVersion: current, lastVersion: last, hadSettings: Self.hadSettingsAtLaunch,
-                                     tutorialSeen: Tutorial.seen, forceTutorial: arguments.contains("--tutorial"),
+                                     tutorialSeen: Tutorial.seen,
+                                     whatsNewAfterUpdate: AppSettings.shared.showWhatsNewAfterUpdate,
+                                     forceTutorial: arguments.contains("--tutorial"),
                                      forceWhatsNew: arguments.contains("--whats-new")) {
         case .nothing:
             return

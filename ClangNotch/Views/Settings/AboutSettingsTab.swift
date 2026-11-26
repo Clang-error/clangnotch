@@ -81,6 +81,8 @@ struct AboutSettingsTab: View {
                                   isOn: $settings.autoInstallUpdates)
                         .onChange(of: settings.autoInstallUpdates) { _, _ in updates.syncAutoInstall() }
                 }
+                SettingToggle(L("업데이트 후 새로운 점 표시", "Show What's New after an update"),
+                              isOn: $settings.showWhatsNewAfterUpdate)
                 if let version = updates.readyVersion {
                     HStack {
                         Text(L("새 버전 \(version) 준비됨", "Version \(version) is ready"))

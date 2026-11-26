@@ -4,9 +4,9 @@ import Foundation
 struct TutorialLaunchChecks {
     static func main() {
         func d(_ last: String?, settings: Bool = true, seen: Bool = false, tutorial: Bool = false,
-               whatsNew: Bool = false) -> TutorialLaunch {
+               whatsNew: Bool = false, after: Bool = true) -> TutorialLaunch {
             TutorialLaunch.decide(currentVersion: "1.6.0", lastVersion: last, hadSettings: settings, tutorialSeen: seen,
-                                  forceTutorial: tutorial, forceWhatsNew: whatsNew)
+                                  whatsNewAfterUpdate: after, forceTutorial: tutorial, forceWhatsNew: whatsNew)
         }
         precondition(d(nil, settings: false) == .tutorial(linksWhatsNew: false), "A first install gets the tutorial, with no notes to link")
         precondition(d("1.5.0") == .tutorial(linksWhatsNew: true), "The first update with it: the tutorial instead of 새로운 점, linking to it")
@@ -16,6 +16,10 @@ struct TutorialLaunchChecks {
         precondition(d("1.6.0", seen: true) == .nothing && d("1.6.0") == .nothing, "The same version again: nothing")
         precondition(d("1.6.0", seen: true, tutorial: true) == .tutorial(linksWhatsNew: false), "--tutorial shows it any time")
         precondition(d("1.6.0", seen: true, whatsNew: true) == .whatsNew, "--whats-new still shows 새로운 점")
+        precondition(d("1.5.0", seen: true, after: false) == .nothing && d("1.5.0", after: false) == .nothing,
+                     "With 업데이트 후 새로운 점 표시 off, an update opens no window, the tutorial in its place included")
+        precondition(d(nil, settings: false, after: false) == .tutorial(linksWhatsNew: false), "A first install still gets the tutorial")
+        precondition(d("1.6.0", seen: true, whatsNew: true, after: false) == .whatsNew, "--whats-new still shows it")
         print("TutorialLaunchChecks: all passed")
     }
 }

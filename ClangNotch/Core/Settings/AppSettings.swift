@@ -273,6 +273,9 @@ public final class AppSettings: ObservableObject {
     /// "받은 업데이트 자동으로 설치": a downloaded update is put in place by itself once nothing
     /// is going on (`UpdateChecker.autoInstallIfQuiet`). On by default (user, 2026-11-16).
     @AppStorage("autoInstallUpdates") public var autoInstallUpdates: Bool = true
+    /// "업데이트 후 새로운 점 표시": off, the first launch after an update opens no window,
+    /// neither 새로운 점 nor the 튜토리얼 in its place (user, 2026-11-26: it can be a nuisance).
+    @AppStorage("showWhatsNewAfterUpdate") public var showWhatsNewAfterUpdate: Bool = true
     /// App copy language — settings window, notch and menu bar popover: "system" (default since
     /// 2026-11-13: Korean on a Korean system, English on any other), "ko" or "en".
     /// The key keeps its old name so existing choices survive. See `L(_:_:)`.
