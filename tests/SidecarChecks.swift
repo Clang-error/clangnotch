@@ -5,6 +5,10 @@ private final class FakeSidecarClient: SidecarClientProtocol {
     var requests: [(Error?) -> Void] = []
     func fetchDevices(completion: @escaping (Result<[SidecarDeviceInfo], Error>) -> Void) { fetches.append(completion) }
     func setConnected(_ connected: Bool, deviceID: UUID, completion: @escaping (Error?) -> Void) { requests.append(completion) }
+    var optionFetches: [(Set<SidecarDisplayOption>) -> Void] = []
+    var writes: [(Bool, SidecarDisplayOption)] = []
+    func fetchShownOptions(completion: @escaping (Set<SidecarDisplayOption>) -> Void) { optionFetches.append(completion) }
+    func setShown(_ shown: Bool, option: SidecarDisplayOption) { writes.append((shown, option)) }
 }
 
 @main
@@ -76,6 +80,35 @@ struct SidecarChecks {
         await settle()
         precondition(manager.busyDeviceID == nil && manager.devices == [device])
         print("PASS: independent timeout, stale completion ignored, stopped manager ignores results")
+
+        // 사이드바·Touch Bar 칩
+        let optionClient = FakeSidecarClient()
+        let options = SidecarManager(client: optionClient)
+        options.start()
+        optionClient.fetches[0](.success([device]))
+        await settle()
+        options.toggleShown(.sidebar)
+        precondition(optionClient.optionFetches.isEmpty && optionClient.writes.isEmpty && options.shownOptions.isEmpty,
+                     "No iPad connected: no reads, and a press does nothing")
+        options.refresh()
+        optionClient.fetches[1](.success([connected]))
+        await settle()
+        precondition(optionClient.optionFetches.count == 1, "Options are read while connected")
+        optionClient.optionFetches[0]([.touchBar])
+        await settle()
+        precondition(options.shownOptions == [.touchBar])
+        options.refresh()
+        optionClient.fetches[2](.success([connected]))
+        await settle()
+        options.toggleShown(.sidebar)
+        precondition(options.shownOptions == [.touchBar, .sidebar] && optionClient.writes.count == 1
+                     && optionClient.writes[0] == (true, .sidebar), "A press shows at once and writes")
+        optionClient.optionFetches[1]([.touchBar])
+        await settle()
+        precondition(options.shownOptions == [.touchBar, .sidebar], "A read started before the press can't undo it")
+        options.toggleShown(.touchBar)
+        precondition(options.shownOptions == [.sidebar] && optionClient.writes.last! == (false, .touchBar))
+        print("PASS: Sidecar chips read only while connected, press shows at once, stale read ignored")
 
         if CommandLine.arguments.contains("--live") {
             let real = SidecarClient()

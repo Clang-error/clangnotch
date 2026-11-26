@@ -15,6 +15,8 @@ final class SidecarManager: ObservableObject {
     @Published private(set) var busyDeviceID: UUID?
     @Published private(set) var busyTarget: Bool?
     @Published private(set) var errorMessage: String?
+    /// The display options shown, read while an iPad is connected (the iPad 카드's chips).
+    @Published private(set) var shownOptions: Set<SidecarDisplayOption> = []
 
     private let client: SidecarClientProtocol
     private let operationTimeout: TimeInterval
@@ -27,6 +29,8 @@ final class SidecarManager: ObservableObject {
     private var generation = 0
     /// The tab went away mid-connect: stop once that connect is confirmed or fails.
     private var stopWhenIdle = false
+    /// Bumped by each chip press, so a read started before it can't undo the press.
+    private var optionWrites = 0
 
     init(client: SidecarClientProtocol = SidecarClient(), operationTimeout: TimeInterval = 20) {
         self.client = client
@@ -108,6 +112,26 @@ final class SidecarManager: ObservableObject {
         }
     }
 
+    /// A chip press: shows the change at once; the write and the agent's reply follow.
+    func toggleShown(_ option: SidecarDisplayOption) {
+        guard running, devices.contains(where: \.isConnected) else { return }
+        let shown = !shownOptions.contains(option)
+        if shown { shownOptions.insert(option) } else { shownOptions.remove(option) }
+        optionWrites += 1
+        guard !DemoMode.isActive else { return }
+        client.setShown(shown, option: option)
+    }
+
+    private func refreshShownOptions() {
+        let writes = optionWrites
+        client.fetchShownOptions { [weak self] shown in
+            Task { @MainActor in
+                guard let self, self.running, self.optionWrites == writes, self.shownOptions != shown else { return }
+                self.shownOptions = shown
+            }
+        }
+    }
+
     private func clearBusy() {
         timeoutTask?.cancel()
         timeoutTask = nil
@@ -130,6 +154,7 @@ final class SidecarManager: ObservableObject {
                 switch result {
                 case .success(let devices):
                     if self.devices != devices { self.devices = devices }
+                    if devices.contains(where: \.isConnected) { self.refreshShownOptions() }
                     if let id = self.busyDeviceID, let target = self.busyTarget {
                         let current = devices.first { $0.id == id }
                         if self.requestAccepted && (current?.isConnected == target || (!target && current == nil)) {

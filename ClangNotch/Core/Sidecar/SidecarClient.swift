@@ -6,6 +6,9 @@ import Foundation
     @objc(connectedDevices) var connectedDevices: [AnyObject] { get }
     @objc(connectToDevice:completion:) func connect(to device: AnyObject, completion: @escaping (NSError?) -> Void)
     @objc(disconnectFromDevice:completion:) func disconnect(from device: AnyObject, completion: @escaping (NSError?) -> Void)
+    /// Tells the display agent which preference keys changed; it applies them to the
+    /// session that is up (measured 2026-11-26, macOS 27.2).
+    @objc(preferencesChanged:) optional func preferencesChanged(_ keys: [String])
 }
 
 @objc private protocol SCDeviceProto {
@@ -13,9 +16,18 @@ import Foundation
     @objc(identifier) var identifier: UUID { get }
 }
 
+/// The Sidecar display's options that the Sidecar menu in Control Center switches, by their
+/// key in `com.apple.sidecar.display`.
+enum SidecarDisplayOption: String, CaseIterable, Sendable {
+    case sidebar = "sidebarShown"
+    case touchBar = "showTouchbar"
+}
+
 protocol SidecarClientProtocol {
     func fetchDevices(completion: @escaping (Result<[SidecarDeviceInfo], Error>) -> Void)
     func setConnected(_ connected: Bool, deviceID: UUID, completion: @escaping (Error?) -> Void)
+    func fetchShownOptions(completion: @escaping (Set<SidecarDisplayOption>) -> Void)
+    func setShown(_ shown: Bool, option: SidecarDisplayOption)
 }
 
 enum SidecarError: LocalizedError {
@@ -70,6 +82,29 @@ final class SidecarClient: SidecarClientProtocol, @unchecked Sendable {
             else { manager.disconnect(from: raw) { completion($0) } }
         }
     }
+
+    func fetchShownOptions(completion: @escaping (Set<SidecarDisplayOption>) -> Void) {
+        queue.async {
+            // Picks up a change Control Center or System Settings made since the last read.
+            CFPreferencesAppSynchronize(Self.domain)
+            completion(Set(SidecarDisplayOption.allCases.filter {
+                (CFPreferencesCopyAppValue($0.rawValue as CFString, Self.domain) as? Bool) ?? true
+            }))
+        }
+    }
+
+    /// As the Sidecar menu in Control Center does it: shown is the key taken out, hidden is
+    /// false, then the agent is told the key changed. The file alone is read only at the
+    /// next connect.
+    func setShown(_ shown: Bool, option: SidecarDisplayOption) {
+        queue.async { [self] in
+            CFPreferencesSetAppValue(option.rawValue as CFString, shown ? nil : kCFBooleanFalse, Self.domain)
+            CFPreferencesAppSynchronize(Self.domain)
+            manager()?.preferencesChanged?([option.rawValue])
+        }
+    }
+
+    private static let domain = "com.apple.sidecar.display" as CFString
 
     private func manager() -> SCManagerProto? {
         if !frameworkLoaded {

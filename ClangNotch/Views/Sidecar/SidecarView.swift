@@ -110,6 +110,10 @@ private struct SidecarCard: View {
                             .matchedGeometryEffect(id: "status", in: morph)
                     }
                     Spacer(minLength: 8)
+                    HStack(spacing: 6) {
+                        optionChip(.sidebar, symbol: "sidebar.left", name: L("사이드바 보기", "Show Sidebar"))
+                        optionChip(.touchBar, symbol: "rectangle.bottomthird.inset.filled", name: L("Touch Bar 보기", "Show Touch Bar"))
+                    }
                     actionButton
                         .frame(width: 110)
                         .matchedGeometryEffect(id: "button", in: morph)
@@ -220,6 +224,25 @@ private struct SidecarCard: View {
                 .font(.system(size: 18, weight: .light))
                 .foregroundColor(NotchPalette.ink.opacity(0.35))
         }
+    }
+
+    /// 사이드바·Touch Bar 칩: the switches of the Sidecar menu in Control Center, green while on.
+    private func optionChip(_ option: SidecarDisplayOption, symbol: String, name: String) -> some View {
+        let on = manager.shownOptions.contains(option)
+        return Button { manager.toggleShown(option) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(on ? accent : NotchPalette.ink.opacity(0.55))
+                .frame(width: 30, height: 26)
+                .background(on ? accent.opacity(0.18) : NotchPalette.ink.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(on ? accent.opacity(0.5) : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private var actionButton: some View {
