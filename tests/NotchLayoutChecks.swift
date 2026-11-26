@@ -188,6 +188,12 @@ struct NotchLayoutChecks {
         claudeQuestion.dismissQuestionNotice()
         check(!claudeQuestion.showQuestionNotice && claudeQuestion.notchVM.notchState == .closed)
         check(claudeQuestion.claudeInputRequest == claudeInput, "Manual collapse must keep the question pending")
+        // The shell chip sits beside the icons, so it counts in the wing's width (2026-11-26: as a
+        // mark on the icon's corner it covered the zigzag).
+        check(ClosedAgentIconStack.width(for: 2, shells: 0) == ClosedAgentIconStack.width(for: 2), "No shells, no chip")
+        check(ClosedAgentIconStack.width(for: 2, shells: 2) == ClosedAgentIconStack.width(for: 2) + 4 + ClosedAgentIconStack.chipWidth(for: 2),
+              "The chip widens the stack by its width and the gap")
+        check(ClosedAgentIconStack.chipWidth(for: 1) < ClosedAgentIconStack.chipWidth(for: 2), "One shell: the terminal alone")
         print("PASS: question layout, Claude waiting past 12s, source replacement and manual collapse")
     }
 }

@@ -1182,7 +1182,7 @@ struct ClangNotchContentView: View {
         let codexWorkingCount = codexManager.availableSessions
             .filter { codexManager.sessionStates[$0.id]?.isActive == true }.count
         let leftIconWidth: CGFloat = showsCodexIcon ? ClosedAgentIconStack.width(for: codexWorkingCount)
-            : showsClaudeIcon ? ClosedAgentIconStack.width(for: claudeIconCount)
+            : showsClaudeIcon ? ClosedAgentIconStack.width(for: claudeIconCount, shells: claudeWingShells)
             : 8
         let leftWingWidth: CGFloat = showsDone ? 12 + 6 + measuredTextWidth("Done", 10, .medium)
             : showsCodexQuestionOnLeft ? 58
@@ -1212,7 +1212,7 @@ struct ClangNotchContentView: View {
             if showsDone { return DoneCheckmarkView.size }
             if showsSimultaneousClaudeWing {
                 return min(Self.wingLabelCap, measuredTextWidth(simultaneousClaudeLabel, 10, .medium) + 12) + 6
-                    + ClosedAgentIconStack.width(for: claudeIconCount)
+                    + ClosedAgentIconStack.width(for: claudeIconCount, shells: claudeWingShells)
             }
             if showsQuestionOnRight || hasPermissionNeeded { return 58 }
             if let codexTool = currentCodexTool, isCodexActive || codexActiveTool != nil {

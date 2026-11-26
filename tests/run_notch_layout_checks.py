@@ -146,6 +146,7 @@ struct FixtureSession { let id: String }
     var airPodsWingContent: ClosedAirPodsWings?
     let notchVM = NotchViewModel()
     var closedDisplayedLabel = ""
+    var claudeWingShells = 0
     struct DoneFlash { enum Source { case claude, codex }; let id = UUID(); let source: Source }
     var doneFlash: DoneFlash?
     var claudeHasRealActivity: Bool { claudeCodeManager.state.isActive }

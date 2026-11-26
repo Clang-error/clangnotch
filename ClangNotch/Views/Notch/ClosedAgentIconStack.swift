@@ -13,8 +13,9 @@ struct ClosedAgentIconStack: View {
     let count: Int
     /// 아이콘 모자: the front icon's hat, then one per copy in order; empty draws none.
     var hats: [ClaudeIconHat?] = []
-    /// Background shells running: a small terminal on the front icon's lower trailing corner,
-    /// with their number from two on. It overlaps the icon, so the width stays as it is.
+    /// Background shells running: a blue chip with a terminal, and their number from two on,
+    /// between the icons and the label (2026-11-26: a mark on the icon's corner covered the
+    /// zigzag and squeezed its number). It widens the stack by `chipWidth` and a gap.
     var shells = 0
     /// Copies spread toward the leading edge (left wing) or the trailing edge (right wing).
     let spreadsLeading: Bool
@@ -27,9 +28,20 @@ struct ClosedAgentIconStack: View {
     private static let columnStep: CGFloat = 9
     private static let rowOffset: CGFloat = 5
 
-    /// The width this stack takes for `count` sessions; it grows only as copies are added.
-    static func width(for count: Int) -> CGFloat {
+    /// The width this stack takes for `count` sessions and `shells` background shells; it grows
+    /// only as copies or the shell chip are added.
+    static func width(for count: Int, shells: Int = 0) -> CGFloat {
+        iconsWidth(for: count) + (shells > 0 ? chipGap + chipWidth(for: shells) : 0)
+    }
+
+    private static func iconsWidth(for count: Int) -> CGFloat {
         iconSize + columnStep * CGFloat(columns(for: count))
+    }
+
+    private static let chipGap: CGFloat = 4
+    /// Fixed per digit count, so the wing's width math needn't measure it.
+    static func chipWidth(for shells: Int) -> CGFloat {
+        shells <= 1 ? 14 : shells < 10 ? 21 : 26
     }
 
     private static func columns(for count: Int) -> Int {
@@ -53,8 +65,20 @@ struct ClosedAgentIconStack: View {
     }
 
     var body: some View {
-        let width = Self.width(for: count)
-        ZStack(alignment: spreadsLeading ? .trailing : .leading) {
+        // The chip sits on the label's side: after the icons in the left wing, before them in the right.
+        HStack(spacing: Self.chipGap) {
+            if shells > 0, !spreadsLeading { shellChip }
+            icons
+            if shells > 0, spreadsLeading { shellChip }
+        }
+        .frame(width: Self.width(for: count, shells: shells), alignment: spreadsLeading ? .trailing : .leading)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.6),
+                   value: shells)
+    }
+
+    private var icons: some View {
+        let width = Self.iconsWidth(for: count)
+        return ZStack(alignment: spreadsLeading ? .trailing : .leading) {
             // Outermost first, so each nearer icon lands on top of the ones behind it.
             ForEach(copies.reversed()) { copy in
                 let column = CGFloat(copy.column)
@@ -86,15 +110,6 @@ struct ClosedAgentIconStack: View {
             // ring too and swell into an orange blob behind the front icon.
             icon(outlined: count > 1)
                 .shadow(color: glowColor.opacity(count > 1 ? 0 : 0.6), radius: 3)
-                // Pinned to the front icon's corner, so a number grows over the icon, not
-                // toward the label, whichever side the copies spread to.
-                .overlay(alignment: .bottomTrailing) {
-                    if shells > 0 {
-                        shellMark
-                            .offset(x: 4, y: 4)
-                            .transition(hatTransition)
-                    }
-                }
             if let hat = hat(at: 0) {
                 ClaudeIconHatView(hat: hat, iconSize: Self.iconSize)
                     .transition(hatTransition)
@@ -108,23 +123,22 @@ struct ClosedAgentIconStack: View {
                    value: count)
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.6),
                    value: hats)
-        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.3, dampingFraction: 0.6),
-                   value: shells)
     }
 
-    private var shellMark: some View {
-        HStack(spacing: 0.5) {
+    private var shellChip: some View {
+        let blue = Color(red: 0.35, green: 0.7, blue: 1.0)
+        return HStack(spacing: 1.5) {
             Image(systemName: "apple.terminal.fill")
-                .font(.system(size: 6.5, weight: .bold))
+                .font(.system(size: 7, weight: .bold))
             if shells > 1 {
                 Text("\(shells)")
-                    .font(.system(size: 6.5, weight: .bold).monospacedDigit())
+                    .font(.system(size: 7.5, weight: .bold).monospacedDigit())
             }
         }
-        .foregroundColor(Color(red: 0.35, green: 0.7, blue: 1.0))
-        .padding(1)
-        .background(NotchPalette.inkInverse, in: RoundedRectangle(cornerRadius: 2))
-        .fixedSize()
+        .foregroundColor(blue)
+        .frame(width: Self.chipWidth(for: shells), height: 12)
+        .background(blue.opacity(0.18), in: Capsule())
+        .transition(hatTransition)
     }
 
     private func hat(at index: Int) -> ClaudeIconHat? {
